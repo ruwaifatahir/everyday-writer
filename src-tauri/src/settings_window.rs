@@ -16,7 +16,10 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::autostart::{self, TauriAutostart};
 use crate::llm::{self, ModelList};
-use crate::settings::{ApiKey, AppSettings, KeyringApiKeys, ProviderKind, SaveKeyError, Settings};
+use crate::settings::{
+    ApiKey, ApiKeySource, AppSettings, KeyError, KeyringApiKeys, Provider, ProviderKind,
+    SaveKeyError, Settings,
+};
 use crate::shortcut::{self, Hotkeys, ShortcutError, TauriHotkeys};
 
 /// Label of the settings window. The `settings` capability is granted to it.
@@ -162,24 +165,34 @@ pub fn save_api_key(
     Ok(settings.set_key(provider, &ApiKey::new(key))?)
 }
 
-/// The models `provider` offers, for the model dropdown. Uses `provider`'s
-/// saved key and, for Custom, `custom_base_url`. Falls back to built-in
-/// suggestions when the list can't be fetched; never fails.
+/// The models `provider` offers, for the model dropdown, at
+/// `custom_base_url` for Custom. The saved key goes along only where
+/// [`Settings::may_send_saved_key`] allows: a Custom URL typed but not saved
+/// is asked without a key. Falls back to built-in suggestions when the list
+/// can't be fetched; never fails.
 #[tauri::command]
 pub async fn list_models(
     app: AppHandle,
     provider: ProviderKind,
     custom_base_url: String,
 ) -> ModelList {
-    let target = Settings {
-        provider,
-        custom_base_url,
-        ..Settings::default()
+    let target = Provider::from_kind(provider, &custom_base_url);
+    let saved = app.state::<Arc<AppSettings>>().settings();
+    if saved.may_send_saved_key(&target) {
+        let keys = app.state::<KeyringApiKeys>().inner().clone();
+        llm::model_list(&target, Arc::new(keys)).await
+    } else {
+        llm::model_list(&target, Arc::new(NoKey)).await
     }
-    .model_settings()
-    .provider;
-    let keys = Arc::new(KeyringApiKeys::new(app.config().identifier.clone()));
-    llm::model_list(&target, keys).await
+}
+
+/// A key source with no keys, for endpoints the saved key must not reach.
+struct NoKey;
+
+impl ApiKeySource for NoKey {
+    fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
+        Ok(None)
+    }
 }
 
 /// Removes `provider`'s key from the Windows Credential Manager.
