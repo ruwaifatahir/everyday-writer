@@ -91,7 +91,7 @@ pub enum MessageAction {
 
 /// What a capture found: the selection and the window it came from.
 pub struct Captured<W> {
-    /// The selected text. User data: never log it.
+    /// The selection. User data: never log it.
     pub selection: String,
     /// The window the selection came from, where Replace goes back to.
     pub window: W,
