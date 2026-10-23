@@ -9,6 +9,22 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct InstructionSetId(u64);
 
+impl std::fmt::Display for InstructionSetId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::str::FromStr for InstructionSetId {
+    type Err = std::num::ParseIntError;
+
+    /// Reads back the text [`Display`](std::fmt::Display) writes, for ids
+    /// that travel as text (tray menu item ids).
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        text.parse().map(Self)
+    }
+}
+
 /// One of the starter templates that ship with the app. A set installed
 /// from a template keeps this marker, so Restore can find it after the user
 /// edits it.
