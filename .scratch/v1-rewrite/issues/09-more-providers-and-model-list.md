@@ -10,12 +10,12 @@ Spec: `.scratch/v1-rewrite/spec.md`
 
 **Blocked by:** 01 (Rename Corrector to Rewriter), 02 (Minimal settings)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Rewriter tests cover the adapter and endpoint for every provider, including OpenRouter, Ollama and a Custom URL
-- [ ] Tests cover the key rules: a blank key is refused for OpenAI, Anthropic, Gemini and OpenRouter, and accepted for Ollama and Custom
-- [ ] The settings view reports Ollama and Custom as ready without a key
-- [ ] The model list is fetched with the same explicit service target, never environment variables
+- [x] Rewriter tests cover the adapter and endpoint for every provider, including OpenRouter, Ollama and a Custom URL
+- [x] Tests cover the key rules: a blank key is refused for OpenAI, Anthropic, Gemini and OpenRouter, and accepted for Ollama and Custom
+- [x] The settings view reports Ollama and Custom as ready without a key
+- [x] The model list is fetched with the same explicit service target, never environment variables
 - [ ] Checked once against a local Ollama and LM Studio with no key; LM Studio's default port confirmed and noted
 - [ ] Offline, the dropdown falls back to the built-in list and still accepts a typed name
 
@@ -27,3 +27,5 @@ Spec: `.scratch/v1-rewrite/spec.md`
 - The settings window hides the key field for Ollama, because genai's Ollama adapter never sends a key. Custom shows the field as "API key (optional)".
 - The model list uses the provider's saved key. A key typed into the field but not yet saved isn't used, so the list refreshes after Save.
 - The built-in suggestions in `llm::suggested_models` are a best guess at current model names. Check them before release.
+
+**Merger:** merged into feat/v1-rewrite as 6fdc2e2. `pnpm check` passed. Manual checks (local Ollama/LM Studio, offline dropdown in running app) still open.
