@@ -151,6 +151,16 @@ input[type="password"]:focus-visible {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* The model field's dropdown arrow, from its datalist. */
+input[list]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+input[list]:hover::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+
 input[aria-invalid="true"] {
   border-color: var(--danger);
 }
@@ -164,7 +174,7 @@ input[aria-invalid="true"]:focus-visible {
 
 .segmented {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   padding: 3px;
   background: var(--surface-sunken);

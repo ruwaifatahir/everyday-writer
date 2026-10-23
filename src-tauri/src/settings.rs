@@ -36,6 +36,10 @@ pub enum ProviderKind {
     Anthropic,
     /// Google Gemini.
     Gemini,
+    /// `OpenRouter`.
+    OpenRouter,
+    /// Ollama on this computer.
+    Ollama,
     /// Any endpoint that speaks the `OpenAI` chat completions API.
     Custom,
 }
@@ -47,8 +51,17 @@ impl ProviderKind {
             Self::OpenAi => "openai",
             Self::Anthropic => "anthropic",
             Self::Gemini => "gemini",
+            Self::OpenRouter => "openrouter",
+            Self::Ollama => "ollama",
             Self::Custom => "custom",
         }
+    }
+
+    /// Whether a rewrite needs a saved key. Ollama and Custom work without
+    /// one, so local servers work. A blank key there is sent as an empty
+    /// key, never looked up anywhere else (ADR 0001 amendment).
+    pub fn requires_key(self) -> bool {
+        !matches!(self, Self::Ollama | Self::Custom)
     }
 }
 
@@ -74,6 +87,8 @@ impl Settings {
             ProviderKind::OpenAi => Provider::OpenAi,
             ProviderKind::Anthropic => Provider::Anthropic,
             ProviderKind::Gemini => Provider::Gemini,
+            ProviderKind::OpenRouter => Provider::OpenRouter,
+            ProviderKind::Ollama => Provider::Ollama,
             ProviderKind::Custom => Provider::Custom {
                 base_url: self.custom_base_url.trim().to_owned(),
             },
@@ -94,6 +109,10 @@ pub enum Provider {
     Anthropic,
     /// Google Gemini.
     Gemini,
+    /// `OpenRouter`.
+    OpenRouter,
+    /// Ollama on this computer, at its default address.
+    Ollama,
     /// Any endpoint that speaks the `OpenAI` chat completions API.
     Custom {
         /// Base URL, for example `https://api.example.com/v1/`.
@@ -107,12 +126,19 @@ impl Provider {
         self.kind().key_name()
     }
 
+    /// Whether a rewrite needs a saved key. See [`ProviderKind::requires_key`].
+    pub fn requires_key(&self) -> bool {
+        self.kind().requires_key()
+    }
+
     /// Which provider this is, without its details.
     pub fn kind(&self) -> ProviderKind {
         match self {
             Self::OpenAi => ProviderKind::OpenAi,
             Self::Anthropic => ProviderKind::Anthropic,
             Self::Gemini => ProviderKind::Gemini,
+            Self::OpenRouter => ProviderKind::OpenRouter,
+            Self::Ollama => ProviderKind::Ollama,
             Self::Custom { .. } => ProviderKind::Custom,
         }
     }

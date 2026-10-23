@@ -4,7 +4,8 @@
 //! Every call goes to a fully resolved `ServiceTarget`: the adapter, endpoint
 //! and key are set here from the user's settings. That skips genai's
 //! model-name inference (unknown names would silently go to a local Ollama)
-//! and its auth fallback to environment variables.
+//! and its auth fallback to environment variables. The model list uses the
+//! same explicit endpoint and key.
 //!
 //! Privacy: a `genai::Error` can hold the request payload (the selection)
 //! and the provider's response body. It is mapped to [`RewriteError`]
@@ -18,15 +19,21 @@ use genai::chat::{ChatMessage, ChatRequest};
 use genai::resolver::{AuthData, Endpoint};
 use genai::{Client, ModelIden, ServiceTarget, WebConfig};
 
-use super::{RewriteError, RewritePrompt, Rewriter};
+use super::{ModelList, RewriteError, RewritePrompt, Rewriter, suggested_models};
 use crate::settings::{ApiKeySource, ModelSettings, Provider};
 
 const OPENAI_URL: &str = "https://api.openai.com/v1/";
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/";
 const GEMINI_URL: &str = "https://generativelanguage.googleapis.com/v1beta/";
+const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/";
+/// Ollama's native API, not its `/v1` OpenAI-compatible one.
+const OLLAMA_URL: &str = "http://localhost:11434/";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// The model list is a convenience: give up quickly and show suggestions.
+const LIST_TIMEOUT: Duration = Duration::from_secs(8);
+const LIST_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 
 /// Sends rewrites to the provider and model from the user's settings.
 pub struct GenaiRewriter<K> {
@@ -51,19 +58,8 @@ impl<K: ApiKeySource + 'static> GenaiRewriter<K> {
         if model.is_empty() {
             return Err(RewriteError::InvalidSettings("the model name is empty"));
         }
-        let (kind, endpoint) = match &settings.provider {
-            Provider::OpenAi => (AdapterKind::OpenAI, Endpoint::from_static(OPENAI_URL)),
-            Provider::Anthropic => (AdapterKind::Anthropic, Endpoint::from_static(ANTHROPIC_URL)),
-            Provider::Gemini => (AdapterKind::Gemini, Endpoint::from_static(GEMINI_URL)),
-            Provider::Custom { base_url } => (AdapterKind::OpenAI, custom_endpoint(base_url)?),
-        };
-        let web_config = WebConfig::default()
-            .with_timeout(REQUEST_TIMEOUT)
-            .with_connect_timeout(CONNECT_TIMEOUT);
-        let client = Client::builder()
-            .with_web_config(web_config)
-            .build()
-            .map_err(|_| RewriteError::Other)?;
+        let (kind, endpoint) = adapter_and_endpoint(&settings.provider)?;
+        let client = client(REQUEST_TIMEOUT, CONNECT_TIMEOUT)?;
         Ok(Self {
             client,
             provider: settings.provider,
@@ -73,20 +69,20 @@ impl<K: ApiKeySource + 'static> GenaiRewriter<K> {
         })
     }
 
-    /// Reads the key on a blocking thread: the keyring call is synchronous
-    /// and must not stall the async runtime.
+    /// Sends requests to `base_url` instead, keeping the provider's adapter.
+    /// Lets tests point fixed endpoints (Ollama, `OpenRouter`) at a local
+    /// test server.
+    #[cfg(test)]
+    fn at(mut self, base_url: String) -> Self {
+        self.endpoint = Endpoint::from_owned(base_url);
+        self
+    }
+
     async fn target(&self) -> Result<ServiceTarget, RewriteError> {
-        let keys = Arc::clone(&self.keys);
-        let provider = self.provider.clone();
-        let key = tokio::task::spawn_blocking(move || keys.api_key(&provider))
-            .await
-            .map_err(|_| RewriteError::KeyStore)?
-            .map_err(|_| RewriteError::KeyStore)?
-            // Never fall back to genai's default auth: it reads env vars.
-            .ok_or(RewriteError::MissingApiKey)?;
+        let auth = read_auth(&self.provider, Arc::clone(&self.keys)).await?;
         Ok(ServiceTarget {
             endpoint: self.endpoint.clone(),
-            auth: AuthData::from_single(key.expose_secret()),
+            auth,
             model: self.model.clone(),
         })
     }
@@ -105,6 +101,99 @@ impl<K: ApiKeySource + 'static> Rewriter for GenaiRewriter<K> {
             .into_first_text()
             .filter(|text| !text.trim().is_empty())
             .ok_or(RewriteError::EmptyResponse)
+    }
+}
+
+/// The models `provider` offers, for the settings dropdown, read with the
+/// saved key from `keys`. Falls back to [`suggested_models`] when the list
+/// can't be fetched, for any reason, or is empty.
+pub async fn model_list<K: ApiKeySource + 'static>(provider: &Provider, keys: Arc<K>) -> ModelList {
+    let fetched = async {
+        let (kind, endpoint) = adapter_and_endpoint(provider)?;
+        let auth = read_auth(provider, keys).await?;
+        model_names_at(kind, endpoint, auth).await
+    };
+    match fetched.await {
+        Ok(names) if !names.is_empty() => ModelList {
+            names,
+            from_provider: true,
+        },
+        _ => ModelList {
+            names: suggested_models(provider.kind())
+                .iter()
+                .map(|&name| name.to_owned())
+                .collect(),
+            from_provider: false,
+        },
+    }
+}
+
+/// Fetches the model names at an explicit endpoint with explicit auth,
+/// sorted and without duplicates. Both are always given, so genai never
+/// consults its resolvers or environment variables.
+async fn model_names_at(
+    kind: AdapterKind,
+    endpoint: Endpoint,
+    auth: AuthData,
+) -> Result<Vec<String>, RewriteError> {
+    let client = client(LIST_TIMEOUT, LIST_CONNECT_TIMEOUT)?;
+    let mut names = client
+        .all_model_names(kind, (endpoint, auth))
+        .await
+        .map_err(|e| map_error(&e))?;
+    names.sort_unstable();
+    names.dedup();
+    Ok(names)
+}
+
+fn client(timeout: Duration, connect_timeout: Duration) -> Result<Client, RewriteError> {
+    let web_config = WebConfig::default()
+        .with_timeout(timeout)
+        .with_connect_timeout(connect_timeout);
+    Client::builder()
+        .with_web_config(web_config)
+        .build()
+        .map_err(|_| RewriteError::Other)
+}
+
+/// The genai adapter and endpoint for `provider`. Never inferred from the
+/// model name.
+fn adapter_and_endpoint(provider: &Provider) -> Result<(AdapterKind, Endpoint), RewriteError> {
+    Ok(match provider {
+        Provider::OpenAi => (AdapterKind::OpenAI, Endpoint::from_static(OPENAI_URL)),
+        Provider::Anthropic => (AdapterKind::Anthropic, Endpoint::from_static(ANTHROPIC_URL)),
+        Provider::Gemini => (AdapterKind::Gemini, Endpoint::from_static(GEMINI_URL)),
+        Provider::OpenRouter => (
+            AdapterKind::OpenRouter,
+            Endpoint::from_static(OPENROUTER_URL),
+        ),
+        Provider::Ollama => (AdapterKind::Ollama, Endpoint::from_static(OLLAMA_URL)),
+        Provider::Custom { base_url } => (AdapterKind::OpenAI, custom_endpoint(base_url)?),
+    })
+}
+
+/// Reads `provider`'s key and turns it into explicit auth. Reads on a
+/// blocking thread: the keyring call is synchronous and must not stall the
+/// async runtime.
+///
+/// A blank or missing key is an error for providers that need one. For the
+/// rest it is sent as an empty key: never `AuthData::None` (genai refuses
+/// it) and never genai's default auth (it reads environment variables).
+async fn read_auth<K: ApiKeySource + 'static>(
+    provider: &Provider,
+    keys: Arc<K>,
+) -> Result<AuthData, RewriteError> {
+    let lookup = provider.clone();
+    let key = tokio::task::spawn_blocking(move || keys.api_key(&lookup))
+        .await
+        .map_err(|_| RewriteError::KeyStore)?
+        .map_err(|_| RewriteError::KeyStore)?;
+    match key {
+        Some(key) if !key.expose_secret().trim().is_empty() => {
+            Ok(AuthData::from_single(key.expose_secret().trim()))
+        }
+        _ if provider.requires_key() => Err(RewriteError::MissingApiKey),
+        _ => Ok(AuthData::from_single("")),
     }
 }
 
@@ -152,6 +241,10 @@ fn map_error(error: &genai::Error) -> RewriteError {
         genai::Error::WebModelCall {
             webc_error: genai::webc::Error::Reqwest(_),
             ..
+        }
+        | genai::Error::WebAdapterCall {
+            webc_error: genai::webc::Error::Reqwest(_),
+            ..
         } => RewriteError::Network,
         _ => RewriteError::Other,
     }
@@ -159,7 +252,12 @@ fn map_error(error: &genai::Error) -> RewriteError {
 
 #[cfg(test)]
 mod tests {
-    use super::GenaiRewriter;
+    use std::sync::Arc;
+
+    use genai::adapter::AdapterKind;
+    use genai::resolver::{AuthData, Endpoint};
+
+    use super::{GenaiRewriter, adapter_and_endpoint, model_list, model_names_at};
     use crate::llm::{RewriteError, Rewriter};
     use crate::settings::{ApiKey, ApiKeySource, KeyError, ModelSettings, Provider};
 
@@ -263,6 +361,9 @@ mod tests {
             }
             let mut raw = vec![0; length];
             reader.read_exact(&mut raw).unwrap();
+            if raw.is_empty() {
+                raw = b"null".to_vec();
+            }
             let response = format!(
                 "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                 body.len()
@@ -362,6 +463,224 @@ mod tests {
         let result = rewriter.rewrite("Fix mistakes only.", "helo").await;
 
         assert_eq!(result, Err(RewriteError::Network));
+    }
+
+    #[test]
+    fn each_provider_goes_to_its_own_adapter_and_endpoint() {
+        let cases = [
+            (
+                Provider::OpenAi,
+                AdapterKind::OpenAI,
+                "https://api.openai.com/v1/",
+            ),
+            (
+                Provider::Anthropic,
+                AdapterKind::Anthropic,
+                "https://api.anthropic.com/v1/",
+            ),
+            (
+                Provider::Gemini,
+                AdapterKind::Gemini,
+                "https://generativelanguage.googleapis.com/v1beta/",
+            ),
+            (
+                Provider::OpenRouter,
+                AdapterKind::OpenRouter,
+                "https://openrouter.ai/api/v1/",
+            ),
+            (
+                Provider::Ollama,
+                AdapterKind::Ollama,
+                "http://localhost:11434/",
+            ),
+            (
+                Provider::Custom {
+                    base_url: " https://gateway.example.com/v1 ".to_owned(),
+                },
+                AdapterKind::OpenAI,
+                "https://gateway.example.com/v1/",
+            ),
+        ];
+
+        for (provider, kind, url) in cases {
+            let (actual_kind, endpoint) = adapter_and_endpoint(&provider).unwrap();
+
+            assert_eq!(actual_kind, kind, "{provider:?}");
+            assert_eq!(endpoint.base_url(), url, "{provider:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_blank_key_is_refused_for_providers_that_need_one() {
+        let providers = [
+            Provider::OpenAi,
+            Provider::Anthropic,
+            Provider::Gemini,
+            Provider::OpenRouter,
+        ];
+        let blanks = [
+            None,
+            Some(ApiKey::new(String::new())),
+            Some(ApiKey::new("  ".to_owned())),
+        ];
+
+        for provider in providers {
+            for blank in &blanks {
+                let settings = ModelSettings {
+                    provider: provider.clone(),
+                    model: "some-model".to_owned(),
+                };
+                let rewriter = GenaiRewriter::new(settings, TestKeys(Ok(blank.clone()))).unwrap();
+
+                let result = rewriter.rewrite("Fix mistakes only.", "helo").await;
+
+                assert_eq!(result, Err(RewriteError::MissingApiKey), "{provider:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn custom_sends_a_blank_key_as_an_empty_key() {
+        let (base_url, server) = serve_once(200, REPLY);
+        let rewriter = GenaiRewriter::new(custom(base_url), TestKeys(Ok(None))).unwrap();
+
+        let result = rewriter.rewrite("Fix mistakes only.", "helo wrld").await;
+
+        let received = server.join().unwrap();
+        assert_eq!(result.as_deref(), Ok("Hello, world."));
+        // The test server trims header values: this is `Bearer ` with no token.
+        assert_eq!(received.authorization.as_deref(), Some("Bearer"));
+    }
+
+    const OLLAMA_REPLY: &str = r#"{"model":"llama3.2","created_at":"2026-01-01T00:00:00Z",
+        "message":{"role":"assistant","content":"Hello, world."},"done":true}"#;
+
+    #[tokio::test]
+    async fn ollama_needs_no_key_and_uses_its_native_chat_api() {
+        let (base_url, server) = serve_once(200, OLLAMA_REPLY);
+        let settings = ModelSettings {
+            provider: Provider::Ollama,
+            model: "llama3.2".to_owned(),
+        };
+        let rewriter = GenaiRewriter::new(settings, TestKeys(Ok(None)))
+            .unwrap()
+            .at(server_root(&base_url));
+
+        let result = rewriter.rewrite("Fix mistakes only.", "helo wrld").await;
+
+        let received = server.join().unwrap();
+        assert_eq!(result.as_deref(), Ok("Hello, world."));
+        assert_eq!(received.request_line, "POST /api/chat HTTP/1.1");
+        assert_eq!(received.authorization, None);
+        assert_eq!(received.body["model"], "llama3.2");
+        assert_eq!(received.body["messages"][1]["content"], "helo wrld");
+    }
+
+    #[tokio::test]
+    async fn openrouter_gets_the_key_on_the_chat_completions_api() {
+        let (base_url, server) = serve_once(200, REPLY);
+        let settings = ModelSettings {
+            provider: Provider::OpenRouter,
+            model: "openai/gpt-4.1-mini".to_owned(),
+        };
+        let rewriter = GenaiRewriter::new(settings, key())
+            .unwrap()
+            .at(format!("{base_url}/"));
+
+        let result = rewriter.rewrite("Fix mistakes only.", "helo wrld").await;
+
+        let received = server.join().unwrap();
+        assert_eq!(result.as_deref(), Ok("Hello, world."));
+        assert_eq!(received.request_line, "POST /v1/chat/completions HTTP/1.1");
+        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
+        assert_eq!(received.body["model"], "openai/gpt-4.1-mini");
+    }
+
+    /// `http://host:port/v1` -> `http://host:port/`.
+    fn server_root(base_url: &str) -> String {
+        base_url.trim_end_matches("v1").to_owned()
+    }
+
+    #[tokio::test]
+    async fn custom_model_names_come_from_the_models_list_with_the_key() {
+        let (base_url, server) = serve_once(
+            200,
+            r#"{"object":"list","data":[{"id":"zeta-model","object":"model"},{"id":"alpha-model","object":"model"}]}"#,
+        );
+
+        let names = model_names_at(
+            AdapterKind::OpenAI,
+            Endpoint::from_owned(format!("{base_url}/")),
+            AuthData::from_single("test-key"),
+        )
+        .await;
+
+        let received = server.join().unwrap();
+        assert_eq!(
+            names,
+            Ok(vec!["alpha-model".to_owned(), "zeta-model".to_owned()])
+        );
+        assert_eq!(received.request_line, "GET /v1/models HTTP/1.1");
+        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
+    }
+
+    #[tokio::test]
+    async fn ollama_model_names_come_from_its_tags_list() {
+        let (base_url, server) = serve_once(
+            200,
+            r#"{"models":[{"name":"qwen2.5:7b"},{"name":"llama3.2:latest"}]}"#,
+        );
+
+        let names = model_names_at(
+            AdapterKind::Ollama,
+            Endpoint::from_owned(server_root(&base_url)),
+            AuthData::from_single(""),
+        )
+        .await;
+
+        let received = server.join().unwrap();
+        assert_eq!(
+            names,
+            Ok(vec!["llama3.2:latest".to_owned(), "qwen2.5:7b".to_owned()])
+        );
+        assert_eq!(received.request_line, "GET /api/tags HTTP/1.1");
+    }
+
+    #[tokio::test]
+    async fn the_model_list_reads_the_saved_key_for_the_chosen_provider() {
+        let (base_url, server) = serve_once(
+            200,
+            r#"{"object":"list","data":[{"id":"local-model","object":"model"}]}"#,
+        );
+        let provider = Provider::Custom { base_url };
+
+        let list = model_list(&provider, Arc::new(key())).await;
+
+        let received = server.join().unwrap();
+        assert_eq!(list.names, vec!["local-model".to_owned()]);
+        assert!(list.from_provider);
+        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
+    }
+
+    #[tokio::test]
+    async fn without_a_key_the_model_list_falls_back_to_suggestions() {
+        let list = model_list(&Provider::OpenAi, Arc::new(TestKeys(Ok(None)))).await;
+
+        assert!(!list.from_provider);
+        assert!(list.names.iter().any(|name| name == "gpt-4.1-mini"));
+        assert!(list.names.iter().all(|name| name.starts_with("gpt-")));
+    }
+
+    #[tokio::test]
+    async fn offline_the_model_list_falls_back_to_suggestions() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
+        drop(listener);
+
+        let list = model_list(&Provider::Custom { base_url }, Arc::new(key())).await;
+
+        assert!(!list.from_provider);
+        assert_eq!(list.names, Vec::<String>::new());
     }
 
     #[test]
