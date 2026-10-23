@@ -3,10 +3,14 @@
 use std::future::{Future, ready};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use tokio::sync::{Notify, oneshot};
 
-use super::{BridgeError, Captured, Event, PopupState, PopupView, RewriteSession, TextBridge};
+use super::{
+    BridgeError, Captured, Event, MAX_SELECTION_CHARS, MessageAction, PopupState, PopupView,
+    REWRITE_TIMEOUT, RewriteSession, TextBridge,
+};
 use crate::llm::{RewriteError, Rewriter};
 use crate::settings::{ModelSettings, Provider, SettingsView};
 
@@ -120,6 +124,18 @@ impl TestRewriter {
         (rewriter, answer)
     }
 
+    /// Like [`TestRewriter::gated`], but later calls answer `then` at once.
+    fn gated_then(
+        then: Result<String, RewriteError>,
+    ) -> (Self, oneshot::Sender<Result<String, RewriteError>>) {
+        let (rewriter, answer) = Self::gated();
+        let rewriter = Self {
+            answer: Some(then),
+            ..rewriter
+        };
+        (rewriter, answer)
+    }
+
     fn calls(&self) -> Vec<(String, String)> {
         self.calls.lock().unwrap().clone()
     }
@@ -156,7 +172,33 @@ impl Rewriter for TestRewriter {
 
 const INSTRUCTIONS: &str = "Fix mistakes only.";
 
-struct FakeSettings;
+/// Settings whose readiness and active instructions a test can set.
+struct FakeSettings {
+    ready: bool,
+    instructions: Mutex<String>,
+}
+
+impl Default for FakeSettings {
+    fn default() -> Self {
+        Self {
+            ready: true,
+            instructions: Mutex::new(INSTRUCTIONS.to_owned()),
+        }
+    }
+}
+
+impl FakeSettings {
+    fn not_ready() -> Self {
+        Self {
+            ready: false,
+            ..Self::default()
+        }
+    }
+
+    fn activate(&self, instructions: &str) {
+        *self.instructions.lock().unwrap() = instructions.to_owned();
+    }
+}
 
 impl SettingsView for FakeSettings {
     fn model_settings(&self) -> ModelSettings {
@@ -167,11 +209,11 @@ impl SettingsView for FakeSettings {
     }
 
     fn is_provider_ready(&self) -> bool {
-        true
+        self.ready
     }
 
     fn active_instructions(&self) -> String {
-        INSTRUCTIONS.to_owned()
+        self.instructions.lock().unwrap().clone()
     }
 }
 
@@ -195,7 +237,18 @@ impl PopupView for RecordingPopup {
 type TestSession = RewriteSession<FakeBridge, TestRewriter, FakeSettings, RecordingPopup>;
 
 fn session(bridge: FakeBridge, rewriter: TestRewriter) -> TestSession {
-    RewriteSession::new(bridge, rewriter, FakeSettings, RecordingPopup::default())
+    session_with(bridge, rewriter, FakeSettings::default())
+}
+
+fn session_with(bridge: FakeBridge, rewriter: TestRewriter, settings: FakeSettings) -> TestSession {
+    RewriteSession::new(bridge, rewriter, settings, RecordingPopup::default())
+}
+
+fn message(text: &str, action: Option<MessageAction>) -> PopupState {
+    PopupState::Message {
+        text: text.to_owned(),
+        action,
+    }
 }
 
 fn states(session: &TestSession) -> Vec<PopupState> {
@@ -505,6 +558,205 @@ async fn open_settings_hides_the_popup_and_opens_settings() {
 
     assert_eq!(states(&session).last(), Some(&PopupState::Hidden));
     assert_eq!(session.popup.settings_opened.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn the_limits_are_5000_characters_and_30_seconds() {
+    assert_eq!(MAX_SELECTION_CHARS, 5_000);
+    assert_eq!(REWRITE_TIMEOUT, Duration::from_secs(30));
+}
+
+#[tokio::test]
+async fn a_selection_over_5000_characters_shows_too_long_and_sends_nothing() {
+    let session = session(
+        FakeBridge::selecting(&"a".repeat(5_001)),
+        TestRewriter::returning("unused"),
+    );
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(
+        states(&session),
+        [message(
+            "This text is too long. Select up to 5,000 characters.",
+            None
+        )]
+    );
+    assert_eq!(session.rewriter.calls(), []);
+}
+
+#[tokio::test]
+async fn a_selection_of_5000_characters_is_rewritten() {
+    // 5,000 characters but 10,000 bytes: the limit counts characters.
+    let session = rewritten(&"é".repeat(5_000), "done").await;
+
+    assert_eq!(states(&session), [PopupState::Working, result("done")]);
+}
+
+#[tokio::test]
+async fn no_key_asks_for_one_with_open_settings_and_sends_nothing() {
+    let session = session_with(
+        FakeBridge::selecting("helo"),
+        TestRewriter::returning("unused"),
+        FakeSettings::not_ready(),
+    );
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(
+        states(&session),
+        [message(
+            "Add your API key to get started",
+            Some(MessageAction::OpenSettings)
+        )]
+    );
+    assert_eq!(session.rewriter.calls(), []);
+}
+
+#[tokio::test]
+async fn open_settings_from_the_no_key_message_closes_the_popup() {
+    let session = session_with(
+        FakeBridge::selecting("helo"),
+        TestRewriter::returning("unused"),
+        FakeSettings::not_ready(),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::OpenSettings).await;
+
+    assert_eq!(states(&session).last(), Some(&PopupState::Hidden));
+    assert_eq!(session.popup.settings_opened.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_rewrite_with_no_answer_after_30_seconds_is_cancelled() {
+    let (rewriter, _answer) = TestRewriter::gated();
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        tokio::time::sleep(Duration::from_millis(29_999)).await;
+        assert_eq!(states(&session), [PopupState::Working]);
+    });
+
+    assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert_eq!(
+        states(&session),
+        [
+            PopupState::Working,
+            message("The AI took too long. Try again.", None)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_shortcut_while_working_restarts_on_the_same_selection_without_capturing() {
+    let (rewriter, first_answer) = TestRewriter::gated_then(Ok("Second.".to_owned()));
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        session.settings.activate("Be formal.");
+        session.handle(Event::ShortcutPressed).await;
+        let _ = first_answer.send(Ok("First.".to_owned()));
+    });
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
+    assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert_eq!(
+        session.rewriter.calls(),
+        [
+            (INSTRUCTIONS.to_owned(), "helo wrld".to_owned()),
+            ("Be formal.".to_owned(), "helo wrld".to_owned()),
+        ]
+    );
+    assert_eq!(states(&session), [PopupState::Working, result("Second.")]);
+}
+
+#[tokio::test]
+async fn the_shortcut_on_a_result_rewrites_the_same_selection_again() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
+    assert_eq!(session.rewriter.calls().len(), 2);
+    assert_eq!(
+        states(&session),
+        [
+            PopupState::Working,
+            result("Hello, world."),
+            PopupState::Working,
+            result("Hello, world."),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn each_rewrite_error_shows_its_own_message() {
+    let open_settings = Some(MessageAction::OpenSettings);
+    let cases = [
+        (
+            RewriteError::Network,
+            "Can't reach the AI. Check your internet connection.",
+            None,
+        ),
+        (
+            RewriteError::Unauthorized,
+            "Your API key was rejected. Check it in Settings.",
+            open_settings,
+        ),
+        (
+            RewriteError::RateLimited,
+            "Too many requests right now. Wait a moment and try again.",
+            None,
+        ),
+        (
+            RewriteError::Provider { status: 500 },
+            "The AI service had a problem. Try again.",
+            None,
+        ),
+        (
+            RewriteError::EmptyResponse,
+            "The AI sent back nothing. Try again.",
+            None,
+        ),
+        (
+            RewriteError::Other,
+            "Couldn't rewrite your text. Try again.",
+            None,
+        ),
+        (
+            RewriteError::MissingApiKey,
+            "Add your API key to get started",
+            open_settings,
+        ),
+        (
+            RewriteError::KeyStore,
+            "Couldn't read your saved API key. Check it in Settings.",
+            open_settings,
+        ),
+        (
+            RewriteError::InvalidSettings("model"),
+            "Your AI settings need a look.",
+            open_settings,
+        ),
+    ];
+
+    for (error, text, action) in cases {
+        let session = session(
+            FakeBridge::selecting("helo"),
+            TestRewriter::answering(Err(error.clone())),
+        );
+
+        session.handle(Event::ShortcutPressed).await;
+
+        assert_eq!(
+            states(&session),
+            [PopupState::Working, message(text, action)],
+            "for {error:?}"
+        );
+    }
 }
 
 #[test]

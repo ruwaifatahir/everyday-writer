@@ -26,9 +26,10 @@ serde_json = { version = "1", default-features = false, features = ["std"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-clipboard-manager = "2"
 thiserror = "2.0.21"
-# `rt` for `spawn_blocking`, `sync` for the rewrite session's cancel signal.
-# genai and Tauri already bring the runtime with both.
-tokio = { version = "1.54.1", default-features = false, features = ["rt", "sync"] }
+# `rt` for `spawn_blocking`, `sync` for the rewrite session's cancel signal,
+# `time` for its 30-second timeout.
+# genai and Tauri already bring the runtime with all three.
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "sync", "time"] }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 
@@ -79,4 +80,5 @@ module_name_repetitions = "allow"
 must_use_candidate = "allow"
 
 [dev-dependencies]
-tokio = { version = "1.54.1", default-features = false, features = ["macros"] }
+# `test-util` pauses time for the session timeout test.
+tokio = { version = "1.54.1", default-features = false, features = ["macros", "test-util"] }
