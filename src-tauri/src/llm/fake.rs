@@ -1,35 +1,35 @@
-//! A [`Corrector`] for tests: no network, no API key.
+//! A [`Rewriter`] for tests: no network, no API key.
 
 use std::future::{Future, ready};
 
-use super::{CorrectionError, Corrector};
+use super::{RewriteError, Rewriter};
 
 /// Returns the same preset result on every call.
 #[derive(Debug, Clone)]
-pub struct FakeCorrector {
-    result: Result<String, CorrectionError>,
+pub struct FakeRewriter {
+    result: Result<String, RewriteError>,
 }
 
-impl FakeCorrector {
-    /// A fake whose corrections always succeed with `text`.
+impl FakeRewriter {
+    /// A fake whose rewrites always succeed with `text`.
     pub fn returning(text: impl Into<String>) -> Self {
         Self {
             result: Ok(text.into()),
         }
     }
 
-    /// A fake whose corrections always fail with `error`.
-    pub fn failing(error: CorrectionError) -> Self {
+    /// A fake whose rewrites always fail with `error`.
+    pub fn failing(error: RewriteError) -> Self {
         Self { result: Err(error) }
     }
 }
 
-impl Corrector for FakeCorrector {
-    fn correct(
+impl Rewriter for FakeRewriter {
+    fn rewrite(
         &self,
         _instructions: &str,
         _text: &str,
-    ) -> impl Future<Output = Result<String, CorrectionError>> + Send {
+    ) -> impl Future<Output = Result<String, RewriteError>> + Send {
         ready(self.result.clone())
     }
 }
