@@ -1,0 +1,28 @@
+{
+  "name": "everyday-writer",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@11.6.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "check": "pnpm run check:rs && pnpm run check:ts",
+    "check:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml && cargo deny --manifest-path src-tauri/Cargo.toml check",
+    "check:ts": "biome ci . && tsc --noEmit",
+    "fix": "cargo fmt --manifest-path src-tauri/Cargo.toml && biome check --write ."
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.2",
+    "@tauri-apps/cli": "^2",
+    "lefthook": "2.2.2",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16"
+  }
+}

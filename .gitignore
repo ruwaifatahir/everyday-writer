@@ -1,0 +1,29 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Rust / Cargo
+target/
+**/*.rs.bk
+*.pdb
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.sw?
+
+# Agent worktrees
+.claude/worktrees/

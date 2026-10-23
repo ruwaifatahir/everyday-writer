@@ -1,0 +1,72 @@
+[package]
+name = "everyday-writer"
+version = "0.1.0"
+description = "Fixes typos and grammar in text selected in any app"
+authors = ["Ruwaifa Tahir"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ruwaifatahir/everyday-writer"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "everyday_writer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+genai = { version = "0.7.0", default-features = false, features = ["native-tls", "system-proxy"] }
+keyring-core = "1.0.1"
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-clipboard-manager = "2"
+thiserror = "2.0.21"
+# `rt` only, for `spawn_blocking`. genai and Tauri already bring the runtime.
+tokio = { version = "1.54.1", default-features = false, features = ["rt"] }
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+
+[target."cfg(windows)".dependencies]
+windows-native-keyring-store = { version = "1.1.0", default-features = false }
+
+# Size-focused release profile: https://tauri.app/concept/size/
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+# Lint levels for every target. `pnpm check` runs clippy with `-D warnings`,
+# so every "warn" here fails the check. Lint options live in clippy.toml.
+[lints.rust]
+# Win32 FFI may need unsafe later: use a local
+# #[expect(unsafe_code, reason = "...")] plus a `// SAFETY:` comment on each unsafe block.
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+# Groups need priority -1 so the single lints below override them.
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+# Privacy: never print selected text or clipboard. Use `tracing` with safe fields.
+print_stdout = "warn"
+print_stderr = "warn"
+unwrap_used = "warn"
+todo = "warn"
+undocumented_unsafe_blocks = "warn"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1.54.1", default-features = false, features = ["macros"] }

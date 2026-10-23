@@ -1,0 +1,19 @@
+﻿# Git hooks. `pnpm install` installs them (lefthook postinstall, allowed in pnpm-workspace.yaml).
+# Pre-commit runs fast, check-only jobs on staged files: a failing file blocks the commit.
+# Fix with `pnpm fix`. Run every check on the whole project with `pnpm check`.
+# Docs: https://lefthook.dev/configuration/
+
+# The default gobwas matcher's `**` needs one or more dirs; doublestar also matches zero.
+glob_matcher: doublestar
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: rustfmt
+      glob: "src-tauri/**/*.rs"
+      # rustup's bin dir is often missing from PATH in Git's sh; add it here.
+      # Don't use ${VAR:-default}: lefthook mangles it.
+      run: PATH="$HOME/.cargo/bin:$PATH" rustfmt --check --edition 2024 {staged_files}
+    - name: biome
+      glob: "**/*.{js,ts,mjs,cjs,json,jsonc,css}"
+      run: pnpm exec biome check --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}

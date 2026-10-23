@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "popup",
+  "description": "Popup window that shows the correction. Grants nothing until the popup needs it: plugin calls made from Rust need no capability.",
+  "windows": ["popup"],
+  "permissions": []
+}

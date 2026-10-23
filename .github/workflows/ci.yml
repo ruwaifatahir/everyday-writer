@@ -1,0 +1,56 @@
+# Mirrors the local gate (`pnpm check`) on a Windows runner.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # This name is the required status check on `main`. Rename both together.
+    name: check
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # pnpm version comes from package.json "packageManager". Must run before setup-node's pnpm cache.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Installs the toolchain pinned in rust-toolchain.toml. Before rust-cache: its key includes rustc's version.
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: "src-tauri -> target"
+      # cargo-deny's own action is Docker-only and can't run on Windows runners.
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: rustfmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - name: clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: cargo-deny
+        run: cargo deny --manifest-path src-tauri/Cargo.toml check
+      - name: Biome
+        run: pnpm exec biome ci .
+      - name: tsc
+        run: pnpm exec tsc --noEmit

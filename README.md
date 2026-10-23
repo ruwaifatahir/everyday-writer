@@ -1,0 +1,42 @@
+# everyday-writer
+
+Background Windows app: select text in any app, press a shortcut, and an LLM fixes typos and grammar. One click replaces the original.
+
+[![CI](https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml/badge.svg)](https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml)
+
+## What it does
+
+Typos and messy grammar slip into everyday writing, and fixing them usually means copying text into a chatbot, retyping the same instructions and pasting the result back. everyday-writer runs quietly in the background on Windows. Select text in any app and press one shortcut (default `Ctrl+Shift+Space`). It rewrites the text with your own instructions, using the LLM provider you choose (OpenAI, Anthropic, Gemini or any OpenAI-compatible endpoint) and your own API key. A small popup near the mouse shows the result, and one click swaps your original text for the new one. The API key lives in the Windows Credential Manager, your clipboard is restored afterwards, and nothing leaves your machine except the correction request. Full requirements: [docs/PRD.md](docs/PRD.md).
+
+Status: early. The project skeleton is in place; product features are not built yet.
+
+## Build
+
+Prerequisites: Rust via rustup (stable MSVC), Microsoft C++ Build Tools ("Desktop development with C++"), WebView2, Node 24 and pnpm.
+
+```sh
+pnpm install
+pnpm tauri dev     # run the app
+pnpm tauri build   # build the NSIS installer
+```
+
+## Checks
+
+```sh
+pnpm check   # every check on the whole project
+pnpm fix     # apply rustfmt and Biome fixes
+```
+
+`pnpm check` runs rustfmt, clippy (warnings as errors), `cargo test`, cargo-deny (licenses, advisories, bans, sources), Biome lint and format, and `tsc --noEmit`. Install cargo-deny 0.20.2 first (`cargo binstall cargo-deny@0.20.2`, or `cargo install cargo-deny --locked`).
+
+Clippy lint levels live in the `[lints]` table of `src-tauri/Cargo.toml`. cargo-deny config is `src-tauri/deny.toml`; Biome config is `biome.json`.
+
+`pnpm install` also installs lefthook git hooks. The pre-commit hook runs rustfmt and Biome in check-only mode on staged files, so a badly formatted or lint-failing file blocks the commit. Run `pnpm fix`, re-stage and commit again.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
