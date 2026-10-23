@@ -81,7 +81,7 @@ impl<K: ApiKeySource> GenaiCorrector<K> {
             .ok_or(CorrectionError::MissingApiKey)?;
         Ok(ServiceTarget {
             endpoint: self.endpoint.clone(),
-            auth: AuthData::from_single(key),
+            auth: AuthData::from_single(key.expose_secret()),
             model: self.model.clone(),
         })
     }
@@ -156,13 +156,13 @@ fn map_error(error: &genai::Error) -> CorrectionError {
 mod tests {
     use super::GenaiCorrector;
     use crate::llm::{CorrectionError, Corrector};
-    use crate::settings::{ApiKeySource, KeyError, ModelSettings, Provider};
+    use crate::settings::{ApiKey, ApiKeySource, KeyError, ModelSettings, Provider};
 
     /// Keys from memory, so tests never touch the OS keyring.
-    struct TestKeys(Result<Option<String>, KeyError>);
+    struct TestKeys(Result<Option<ApiKey>, KeyError>);
 
     impl ApiKeySource for TestKeys {
-        fn api_key(&self, _provider: &Provider) -> Result<Option<String>, KeyError> {
+        fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
             self.0.clone()
         }
     }
@@ -262,7 +262,7 @@ mod tests {
     }
 
     fn key() -> TestKeys {
-        TestKeys(Ok(Some("test-key".to_owned())))
+        TestKeys(Ok(Some(ApiKey::new("test-key".to_owned()))))
     }
 
     #[tokio::test]
