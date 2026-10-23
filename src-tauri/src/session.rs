@@ -25,7 +25,7 @@ use serde::Serialize;
 use tokio::sync::oneshot;
 
 use crate::llm::{RewriteError, Rewriter};
-use crate::settings::SettingsView;
+use crate::settings::{ProviderReadiness, SettingsView};
 
 /// Something the user did that the session reacts to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,7 +91,7 @@ pub enum MessageAction {
 
 /// What a capture found: the selection and the window it came from.
 pub struct Captured<W> {
-    /// The selected text. User data: never log it.
+    /// The selection. User data: never log it.
     pub selection: String,
     /// The window the selection came from, where Replace goes back to.
     pub window: W,
@@ -167,6 +167,8 @@ pub const REWRITE_TIMEOUT: Duration = Duration::from_secs(30);
 // The popup's messages. None carries request or response content.
 const TOO_LONG: &str = "This text is too long. Select up to 5,000 characters.";
 const NO_KEY: &str = "Add your API key to get started";
+const NO_MODEL: &str = "Choose a model to get started";
+const NO_CUSTOM_URL: &str = "Add your Custom base URL to get started";
 const TIMED_OUT: &str = "The AI took too long. Try again.";
 const NO_INTERNET: &str = "Can't reach the AI. Check your internet connection.";
 const KEY_REJECTED: &str = "Your API key was rejected. Check it in Settings.";
@@ -344,10 +346,8 @@ where
     ) -> Option<Working> {
         let refused = if captured.selection.chars().count() > MAX_SELECTION_CHARS {
             Some(message(TOO_LONG, None))
-        } else if self.settings.is_provider_ready() {
-            None
         } else {
-            Some(message(NO_KEY, Some(MessageAction::OpenSettings)))
+            not_ready_message(self.settings.provider_readiness())
         };
         let (view, working) = if let Some(shown) = refused {
             (View::Message(shown), None)
@@ -486,6 +486,18 @@ where
             self.popup.render(&PopupState::Hidden);
         }
     }
+}
+
+/// The message shown when the provider can't take a rewrite yet, naming
+/// what is missing, or `None` when it is ready.
+fn not_ready_message(readiness: ProviderReadiness) -> Option<PopupState> {
+    let text = match readiness {
+        ProviderReadiness::Ready => return None,
+        ProviderReadiness::MissingKey => NO_KEY,
+        ProviderReadiness::NoModel => NO_MODEL,
+        ProviderReadiness::NoCustomUrl => NO_CUSTOM_URL,
+    };
+    Some(message(text, Some(MessageAction::OpenSettings)))
 }
 
 /// The message shown for a failed rewrite. Never includes request or

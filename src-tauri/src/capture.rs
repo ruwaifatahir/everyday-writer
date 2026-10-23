@@ -1,4 +1,4 @@
-//! Text capture: reads the text the user selected in the foreground app.
+//! Text capture: reads the selection in the foreground app.
 //!
 //! It copies the selection with a synthetic Ctrl+C and reads it from the
 //! clipboard, the approach Microsoft `PowerToys` uses:
@@ -10,7 +10,7 @@
 //!    nothing was selected.
 //! 5. Read the text, then restore the clipboard.
 //!
-//! Privacy rule: the selected text and the clipboard contents are user data.
+//! Privacy rule: the selection and the clipboard contents are user data.
 //! Never log them, and restore the user's clipboard after capture.
 
 use std::thread;

@@ -11,7 +11,6 @@
 
 use std::sync::Arc;
 
-use serde::Serialize;
 use tauri::{App, Emitter, Manager, State};
 
 use crate::settings::{
@@ -41,11 +40,7 @@ pub enum CommandError {
     Save,
 }
 
-impl Serialize for CommandError {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_str(self)
-    }
-}
+serialize_as_message!(CommandError);
 
 impl From<ChangeError> for CommandError {
     fn from(error: ChangeError) -> Self {
@@ -168,4 +163,16 @@ pub fn restore_starter_templates(
         sets.restore_starter_templates();
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CommandError;
+
+    #[test]
+    fn an_error_reaches_the_window_as_its_message() {
+        let json = serde_json::to_string(&CommandError::LastSet).unwrap();
+
+        assert_eq!(json, r#""Keep at least one instruction set.""#);
+    }
 }

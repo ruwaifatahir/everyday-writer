@@ -11,7 +11,7 @@ const NETWORK_CRATES: [&str; 4] = ["genai", "reqwest", "hyper", "hyper_util"];
 
 /// Installs the global `tracing` subscriber.
 ///
-/// Privacy rule: log events and fields must never include selected text,
+/// Privacy rule: log events and fields must never include the selection,
 /// clipboard contents, prompts, LLM responses or API keys. Log only what
 /// happened (for example "capture failed") and non-content metadata such as
 /// lengths or error kinds.

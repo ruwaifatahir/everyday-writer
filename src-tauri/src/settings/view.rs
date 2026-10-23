@@ -20,9 +20,8 @@ pub trait SettingsView: Send + Sync {
     /// The chosen provider and model.
     fn model_settings(&self) -> ModelSettings;
 
-    /// Whether a rewrite can be sent: a model is set, the provider has a key
-    /// (or doesn't need one) and a Custom provider has an `http(s)` base URL.
-    fn is_provider_ready(&self) -> bool;
+    /// Whether a rewrite can be sent and, if not, the first thing missing.
+    fn provider_readiness(&self) -> ProviderReadiness;
 
     /// The active instruction set's instructions, which every rewrite
     /// follows.
@@ -34,13 +33,28 @@ impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
         (**self).model_settings()
     }
 
-    fn is_provider_ready(&self) -> bool {
-        (**self).is_provider_ready()
+    fn provider_readiness(&self) -> ProviderReadiness {
+        (**self).provider_readiness()
     }
 
     fn active_instructions(&self) -> String {
         (**self).active_instructions()
     }
+}
+
+/// Whether the chosen provider can take a rewrite, or what it still needs.
+/// When several things are missing, the key is reported first, then the
+/// model, then the Custom base URL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderReadiness {
+    /// A rewrite can be sent.
+    Ready,
+    /// The provider needs a key and none is saved (or the store failed).
+    MissingKey,
+    /// No model is set.
+    NoModel,
+    /// Custom is chosen without an `http(s)` base URL.
+    NoCustomUrl,
 }
 
 /// How the settings were found at startup.
@@ -255,15 +269,18 @@ impl SettingsView for AppSettings {
         self.settings().model_settings()
     }
 
-    fn is_provider_ready(&self) -> bool {
+    fn provider_readiness(&self) -> ProviderReadiness {
         let settings = self.settings();
-        if settings.model.trim().is_empty() {
-            return false;
-        }
-        match settings.provider {
-            ProviderKind::Custom => is_http_url(&settings.custom_base_url),
-            provider if provider.requires_key() => self.is_key_saved(provider),
-            _ => true,
+        if settings.provider.requires_key() && !self.is_key_saved(settings.provider) {
+            ProviderReadiness::MissingKey
+        } else if settings.model.trim().is_empty() {
+            ProviderReadiness::NoModel
+        } else if settings.provider == ProviderKind::Custom
+            && !is_http_url(&settings.custom_base_url)
+        {
+            ProviderReadiness::NoCustomUrl
+        } else {
+            ProviderReadiness::Ready
         }
     }
 
@@ -294,7 +311,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    use super::{AppSettings, ChangeError, Startup};
+    use super::{AppSettings, ChangeError, ProviderReadiness, Startup};
     use crate::settings::{
         ApiKey, InstructionSetError, InstructionSetId, InstructionSets, KeyError, KeyStore,
         Provider, ProviderKind, Settings, SettingsFile, SettingsView, StarterTemplate,
@@ -488,7 +505,7 @@ mod tests {
             .unwrap();
         app.set_key(ProviderKind::Anthropic, &key("k")).unwrap();
 
-        assert!(app.is_provider_ready());
+        assert_eq!(app.provider_readiness(), ProviderReadiness::Ready);
     }
 
     #[test]
@@ -499,7 +516,7 @@ mod tests {
         app.update(settings(ProviderKind::OpenAi, "gpt-test"))
             .unwrap();
 
-        assert!(!app.is_provider_ready());
+        assert_eq!(app.provider_readiness(), ProviderReadiness::MissingKey);
     }
 
     #[test]
@@ -509,7 +526,25 @@ mod tests {
 
         app.update(settings(ProviderKind::OpenAi, "  ")).unwrap();
 
-        assert!(!app.is_provider_ready());
+        assert_eq!(app.provider_readiness(), ProviderReadiness::NoModel);
+    }
+
+    #[test]
+    fn a_missing_key_is_reported_before_a_missing_model() {
+        let (app, _) = open(&temp_file(), Arc::default());
+
+        app.update(settings(ProviderKind::OpenAi, "")).unwrap();
+
+        assert_eq!(app.provider_readiness(), ProviderReadiness::MissingKey);
+    }
+
+    #[test]
+    fn custom_without_a_model_reports_the_model_before_the_base_url() {
+        let (app, _) = open(&temp_file(), Arc::default());
+
+        app.update(settings(ProviderKind::Custom, " ")).unwrap();
+
+        assert_eq!(app.provider_readiness(), ProviderReadiness::NoModel);
     }
 
     #[test]
@@ -517,13 +552,13 @@ mod tests {
         let (app, _) = open(&temp_file(), Arc::default());
         let mut custom = settings(ProviderKind::Custom, "local-model");
         app.update(custom.clone()).unwrap();
-        let without_url = app.is_provider_ready();
+        let without_url = app.provider_readiness();
 
         custom.custom_base_url = "http://localhost:1234/v1".to_owned();
         app.update(custom).unwrap();
 
-        assert!(!without_url);
-        assert!(app.is_provider_ready());
+        assert_eq!(without_url, ProviderReadiness::NoCustomUrl);
+        assert_eq!(app.provider_readiness(), ProviderReadiness::Ready);
     }
 
     #[test]
@@ -533,7 +568,7 @@ mod tests {
         app.update(settings(ProviderKind::Ollama, "llama3.2"))
             .unwrap();
 
-        assert!(app.is_provider_ready());
+        assert_eq!(app.provider_readiness(), ProviderReadiness::Ready);
     }
 
     #[test]
@@ -542,11 +577,11 @@ mod tests {
 
         app.update(settings(ProviderKind::OpenRouter, "openai/gpt-4.1-mini"))
             .unwrap();
-        let without_key = app.is_provider_ready();
+        let without_key = app.provider_readiness();
         app.set_key(ProviderKind::OpenRouter, &key("k")).unwrap();
 
-        assert!(!without_key);
-        assert!(app.is_provider_ready());
+        assert_eq!(without_key, ProviderReadiness::MissingKey);
+        assert_eq!(app.provider_readiness(), ProviderReadiness::Ready);
     }
 
     #[test]
@@ -561,7 +596,7 @@ mod tests {
         })
         .unwrap();
 
-        assert!(!app.is_provider_ready());
+        assert_eq!(app.provider_readiness(), ProviderReadiness::NoCustomUrl);
     }
 
     #[test]
@@ -575,7 +610,7 @@ mod tests {
         app.update(settings(ProviderKind::OpenAi, "gpt-test"))
             .unwrap();
 
-        assert!(!app.is_provider_ready());
+        assert_eq!(app.provider_readiness(), ProviderReadiness::MissingKey);
         assert!(!app.is_key_saved(ProviderKind::OpenAi));
     }
 

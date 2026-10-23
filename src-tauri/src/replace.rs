@@ -34,7 +34,13 @@ pub fn replace(window: SourceWindow, text: &str) -> Result<(), BridgeError> {
         return Err(BridgeError);
     }
     let saved = clipboard::save()?;
-    clipboard::write_text(text)?;
+    if clipboard::write_text(text).is_err() {
+        // A failed write may have emptied the clipboard: put the user's back.
+        if clipboard::restore(&saved).is_err() {
+            tracing::warn!("the clipboard couldn't be restored after a failed write");
+        }
+        return Err(BridgeError);
+    }
     let written = clipboard::sequence_number();
     let pasted = win32::release_held_modifiers() && win32::send_paste();
     if pasted {

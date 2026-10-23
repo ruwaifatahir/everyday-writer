@@ -4,6 +4,18 @@
 //! settings window on its own on first launch and when the shortcut can't be
 //! registered. A second launch opens Settings in the running app and exits.
 
+/// Serializes a command error as its `Display` message, which the window
+/// shows as is. Defined before the modules so they can all use it.
+macro_rules! serialize_as_message {
+    ($error:ty) => {
+        impl serde::Serialize for $error {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.collect_str(self)
+            }
+        }
+    };
+}
+
 pub mod autostart;
 pub mod capture;
 pub mod clipboard;
@@ -113,12 +125,13 @@ pub fn run() {
 
 /// Loads the settings from the app's data folder and keys from the
 /// Credential Manager, and hands them to Tauri's state as
-/// `Arc<AppSettings>`.
+/// `Arc<AppSettings>` and the app's one [`KeyringApiKeys`].
 fn load_settings(app: &App) -> tauri::Result<Startup> {
     let path = app.path().app_data_dir()?.join("settings.json");
-    let keys = Arc::new(KeyringApiKeys::new(app.config().identifier.clone()));
-    let (settings, startup) = AppSettings::open(SettingsFile::new(path), keys);
+    let keys = KeyringApiKeys::new(app.config().identifier.clone());
+    let (settings, startup) = AppSettings::open(SettingsFile::new(path), Arc::new(keys.clone()));
     app.manage(Arc::new(settings));
+    app.manage(keys);
     Ok(startup)
 }
 
@@ -126,7 +139,7 @@ fn load_settings(app: &App) -> tauri::Result<Startup> {
 /// the popup, and creates the hidden popup.
 fn start_rewrite_session(app: &App) -> tauri::Result<()> {
     let settings = Arc::clone(app.state::<Arc<AppSettings>>().inner());
-    let keys = KeyringApiKeys::new(app.config().identifier.clone());
+    let keys = app.state::<KeyringApiKeys>().inner().clone();
     let popup = Arc::new(TauriPopup::new(app.handle().clone()));
     app.manage(Arc::clone(&popup));
     let session: AppSession = RewriteSession::new(

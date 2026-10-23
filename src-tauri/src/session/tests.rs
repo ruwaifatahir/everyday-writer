@@ -12,7 +12,7 @@ use super::{
     REWRITE_TIMEOUT, RewriteSession, TextBridge,
 };
 use crate::llm::{RewriteError, Rewriter};
-use crate::settings::{ModelSettings, Provider, SettingsView};
+use crate::settings::{ModelSettings, Provider, ProviderReadiness, SettingsView};
 
 /// A bridge whose capture finds `selection`, recording what it is asked
 /// to do.
@@ -174,23 +174,23 @@ const INSTRUCTIONS: &str = "Fix mistakes only.";
 
 /// Settings whose readiness and active instructions a test can set.
 struct FakeSettings {
-    ready: bool,
+    readiness: ProviderReadiness,
     instructions: Mutex<String>,
 }
 
 impl Default for FakeSettings {
     fn default() -> Self {
         Self {
-            ready: true,
+            readiness: ProviderReadiness::Ready,
             instructions: Mutex::new(INSTRUCTIONS.to_owned()),
         }
     }
 }
 
 impl FakeSettings {
-    fn not_ready() -> Self {
+    fn not_ready(readiness: ProviderReadiness) -> Self {
         Self {
-            ready: false,
+            readiness,
             ..Self::default()
         }
     }
@@ -208,8 +208,8 @@ impl SettingsView for FakeSettings {
         }
     }
 
-    fn is_provider_ready(&self) -> bool {
-        self.ready
+    fn provider_readiness(&self) -> ProviderReadiness {
+        self.readiness
     }
 
     fn active_instructions(&self) -> String {
@@ -598,7 +598,7 @@ async fn no_key_asks_for_one_with_open_settings_and_sends_nothing() {
     let session = session_with(
         FakeBridge::selecting("helo"),
         TestRewriter::returning("unused"),
-        FakeSettings::not_ready(),
+        FakeSettings::not_ready(ProviderReadiness::MissingKey),
     );
 
     session.handle(Event::ShortcutPressed).await;
@@ -614,11 +614,51 @@ async fn no_key_asks_for_one_with_open_settings_and_sends_nothing() {
 }
 
 #[tokio::test]
+async fn no_model_asks_for_one_with_open_settings_and_sends_nothing() {
+    let session = session_with(
+        FakeBridge::selecting("helo"),
+        TestRewriter::returning("unused"),
+        FakeSettings::not_ready(ProviderReadiness::NoModel),
+    );
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(
+        states(&session),
+        [message(
+            "Choose a model to get started",
+            Some(MessageAction::OpenSettings)
+        )]
+    );
+    assert_eq!(session.rewriter.calls(), []);
+}
+
+#[tokio::test]
+async fn no_custom_base_url_asks_for_one_with_open_settings_and_sends_nothing() {
+    let session = session_with(
+        FakeBridge::selecting("helo"),
+        TestRewriter::returning("unused"),
+        FakeSettings::not_ready(ProviderReadiness::NoCustomUrl),
+    );
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(
+        states(&session),
+        [message(
+            "Add your Custom base URL to get started",
+            Some(MessageAction::OpenSettings)
+        )]
+    );
+    assert_eq!(session.rewriter.calls(), []);
+}
+
+#[tokio::test]
 async fn open_settings_from_the_no_key_message_closes_the_popup() {
     let session = session_with(
         FakeBridge::selecting("helo"),
         TestRewriter::returning("unused"),
-        FakeSettings::not_ready(),
+        FakeSettings::not_ready(ProviderReadiness::MissingKey),
     );
     session.handle(Event::ShortcutPressed).await;
 
