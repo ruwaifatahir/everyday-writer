@@ -35,7 +35,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     }
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
         .title("everyday-writer settings")
-        .inner_size(440.0, 640.0)
+        .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
         .maximizable(false)
         .center()

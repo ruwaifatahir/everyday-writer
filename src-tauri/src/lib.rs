@@ -7,6 +7,7 @@
 pub mod autostart;
 pub mod capture;
 pub mod clipboard;
+pub mod instruction_set_commands;
 pub mod live_rewriter;
 pub mod llm;
 pub mod logging;
@@ -65,6 +66,12 @@ pub fn run() {
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
             settings_window::set_start_with_windows,
+            instruction_set_commands::get_instruction_sets,
+            instruction_set_commands::add_instruction_set,
+            instruction_set_commands::edit_instruction_set,
+            instruction_set_commands::delete_instruction_set,
+            instruction_set_commands::set_active_instruction_set,
+            instruction_set_commands::restore_starter_templates,
             popup::popup_state,
             popup::popup_replace,
             popup::popup_copy,
@@ -73,6 +80,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let startup = load_settings(app)?;
+            instruction_set_commands::announce_changes(app);
             start_rewrite_session(app)?;
             tray::init(app)?;
             apply_start_with_windows(app);

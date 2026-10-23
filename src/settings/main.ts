@@ -16,6 +16,7 @@ import {
   saveApiKey,
   saveSettings,
 } from "./api";
+import { initInstructionSets } from "./instruction-sets";
 import { initLaunch } from "./launch";
 
 const PROVIDER_NAMES: Record<ProviderKind, string> = {
@@ -333,3 +334,6 @@ async function init(): Promise<void> {
 }
 
 void init();
+
+// The Instruction sets section runs on its own; see instruction-sets.ts.
+void initInstructionSets();
