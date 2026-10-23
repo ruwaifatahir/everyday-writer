@@ -5,7 +5,7 @@
 //! touches goes through four ports, so tests drive it with fakes and no
 //! Windows, network or key:
 //!
-//! - [`TextBridge`]: captures the selection and copies text;
+//! - [`TextBridge`]: captures the selection, replaces it and copies text;
 //! - [`Rewriter`]: rewrites the selection;
 //! - [`SettingsView`]: the active instruction set;
 //! - [`PopupView`]: shows each [`PopupState`].
@@ -117,6 +117,22 @@ pub trait TextBridge: Send + Sync {
     ///
     /// Returns [`BridgeError`] if the clipboard can't be written.
     fn copy(&self, text: &str) -> impl Future<Output = Result<(), BridgeError>> + Send;
+
+    /// Whether `window` still exists.
+    fn is_open(&self, window: &Self::Window) -> bool;
+
+    /// Brings `window` back to the front and pastes `text` in place of its
+    /// selection, leaving the user's clipboard as it was.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BridgeError`] if the window can't be brought back, or the
+    /// clipboard or the key presses fail. Nothing was pasted then.
+    fn replace(
+        &self,
+        window: &Self::Window,
+        text: &str,
+    ) -> impl Future<Output = Result<(), BridgeError>> + Send;
 }
 
 /// Shows the popup states the session decides on.
@@ -143,6 +159,12 @@ impl<T: PopupView + ?Sized> PopupView for Arc<T> {
 /// response content.
 const REWRITE_FAILED: &str = "Couldn't rewrite your text. Try again.";
 
+/// Replace found the original window closed and copied the result.
+const WINDOW_CLOSED: &str = "Original window closed, copied instead";
+
+/// Replace couldn't reach the original window and copied the result.
+const REPLACE_FAILED: &str = "Couldn't replace your text, copied instead";
+
 /// The session's own state, richer than the popup state it shows.
 enum Phase<W> {
     /// The popup is hidden and nothing is going on.
@@ -150,14 +172,9 @@ enum Phase<W> {
     /// A capture is in progress; the popup is still hidden.
     Capturing,
     /// The popup is open for `captured`.
-    Open {
-        #[expect(
-            dead_code,
-            reason = "kept for Replace (ticket 04) and re-running on the same selection (ticket 05)"
-        )]
-        captured: Captured<W>,
-        view: View,
-    },
+    Open { captured: Captured<W>, view: View },
+    /// The result is going into the original window; the popup is hidden.
+    Replacing,
 }
 
 /// What an open popup shows.
@@ -229,8 +246,7 @@ where
                 self.close();
                 self.popup.open_settings();
             }
-            // Replace arrives in ticket 04.
-            Event::Replace => {}
+            Event::Replace => self.replace().await,
         }
     }
 
@@ -343,9 +359,65 @@ where
         self.close();
     }
 
+    /// Hides the popup and puts the result into the original window. If
+    /// that window has closed, copies the result instead and says so.
+    async fn replace(&self) {
+        let (captured, result) = {
+            let mut state = self.lock();
+            match std::mem::replace(&mut state.phase, Phase::Replacing) {
+                Phase::Open {
+                    captured,
+                    view: View::Result(result),
+                } => (captured, result),
+                other => {
+                    state.phase = other;
+                    return;
+                }
+            }
+        };
+        if !self.bridge.is_open(&captured.window) {
+            self.copy_instead(captured, result, WINDOW_CLOSED).await;
+            return;
+        }
+        self.popup.render(&PopupState::Hidden);
+        if self.bridge.replace(&captured.window, &result).await.is_ok() {
+            self.lock().phase = Phase::Hidden;
+        } else {
+            tracing::warn!("the result couldn't be put into the original window");
+            self.copy_instead(captured, result, REPLACE_FAILED).await;
+        }
+    }
+
+    /// Copies `result` after Replace couldn't go ahead, and shows `message`.
+    /// If even the copy fails, the result is shown again so the user can
+    /// try Copy.
+    async fn copy_instead(&self, captured: Captured<B::Window>, result: String, message: &str) {
+        let copied = self.bridge.copy(&result).await;
+        let mut state = self.lock();
+        let (view, shown) = if copied.is_ok() {
+            let shown = PopupState::Message {
+                text: message.to_owned(),
+                action: None,
+            };
+            (View::Message, shown)
+        } else {
+            tracing::warn!("the result couldn't be copied");
+            let shown = PopupState::Result {
+                text: result.clone(),
+            };
+            (View::Result(result), shown)
+        };
+        state.phase = Phase::Open { captured, view };
+        self.popup.render(&shown);
+    }
+
     /// Hides the popup. Dropping the phase cancels a rewrite in progress.
     fn close(&self) {
         let mut state = self.lock();
+        if matches!(state.phase, Phase::Replacing) {
+            // The popup is already hidden; hiding it is what lost focus.
+            return;
+        }
         let was_open = matches!(state.phase, Phase::Open { .. });
         state.phase = Phase::Hidden;
         if was_open {

@@ -16,8 +16,15 @@ use crate::settings::{ModelSettings, Provider, SettingsView};
 struct FakeBridge {
     selection: Option<String>,
     copy_fails: bool,
+    window_closed: bool,
+    replace_fails: bool,
     captures: AtomicUsize,
     copied: Mutex<Vec<String>>,
+    replaced: Mutex<Vec<(u32, String)>>,
+    /// If set, Replace waits for this before it finishes.
+    replace_gate: Mutex<Option<oneshot::Receiver<()>>>,
+    /// Notified when Replace starts.
+    replacing: Notify,
 }
 
 impl FakeBridge {
@@ -30,6 +37,10 @@ impl FakeBridge {
 
     fn copied(&self) -> Vec<String> {
         self.copied.lock().unwrap().clone()
+    }
+
+    fn replaced(&self) -> Vec<(u32, String)> {
+        self.replaced.lock().unwrap().clone()
     }
 }
 
@@ -50,6 +61,26 @@ impl TextBridge for FakeBridge {
         }
         self.copied.lock().unwrap().push(text.to_owned());
         ready(Ok(()))
+    }
+
+    fn is_open(&self, _window: &u32) -> bool {
+        !self.window_closed
+    }
+
+    async fn replace(&self, window: &u32, text: &str) -> Result<(), BridgeError> {
+        let gate = self.replace_gate.lock().unwrap().take();
+        self.replacing.notify_one();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        if self.replace_fails {
+            return Err(BridgeError);
+        }
+        self.replaced
+            .lock()
+            .unwrap()
+            .push((*window, text.to_owned()));
+        Ok(())
     }
 }
 
@@ -281,6 +312,127 @@ async fn copy_does_nothing_while_working() {
     });
 
     assert_eq!(session.bridge.copied(), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn replace_puts_the_result_into_the_original_window_and_hides_the_popup() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+
+    session.handle(Event::Replace).await;
+
+    assert_eq!(session.bridge.replaced(), [(7, "Hello, world.".to_owned())]);
+    assert_eq!(
+        states(&session),
+        [
+            PopupState::Working,
+            result("Hello, world."),
+            PopupState::Hidden
+        ]
+    );
+    assert_eq!(session.bridge.copied(), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn replace_into_a_closed_window_copies_the_result_and_shows_a_message() {
+    let session = session(
+        FakeBridge {
+            window_closed: true,
+            ..FakeBridge::selecting("helo wrld")
+        },
+        TestRewriter::returning("Hello, world."),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::Replace).await;
+
+    assert_eq!(session.bridge.replaced(), []);
+    assert_eq!(session.bridge.copied(), ["Hello, world."]);
+    assert_eq!(
+        states(&session).last(),
+        Some(&PopupState::Message {
+            text: "Original window closed, copied instead".to_owned(),
+            action: None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_failed_replace_copies_the_result_and_says_so() {
+    let session = session(
+        FakeBridge {
+            replace_fails: true,
+            ..FakeBridge::selecting("helo wrld")
+        },
+        TestRewriter::returning("Hello, world."),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::Replace).await;
+
+    assert_eq!(session.bridge.copied(), ["Hello, world."]);
+    assert_eq!(
+        states(&session).last(),
+        Some(&PopupState::Message {
+            text: "Couldn't replace your text, copied instead".to_owned(),
+            action: None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn replace_into_a_closed_window_keeps_the_result_shown_if_copy_fails() {
+    let session = session(
+        FakeBridge {
+            window_closed: true,
+            copy_fails: true,
+            ..FakeBridge::selecting("helo wrld")
+        },
+        TestRewriter::returning("Hello, world."),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::Replace).await;
+
+    assert_eq!(states(&session).last(), Some(&result("Hello, world.")));
+}
+
+#[tokio::test]
+async fn replace_does_nothing_while_working() {
+    let (rewriter, _answer) = TestRewriter::gated();
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        session.handle(Event::Replace).await;
+        session.handle(Event::Close).await;
+    });
+
+    assert_eq!(session.bridge.replaced(), []);
+    assert_eq!(states(&session), [PopupState::Working, PopupState::Hidden]);
+}
+
+#[tokio::test]
+async fn the_shortcut_does_not_capture_while_replacing() {
+    let (finish_replace, gate) = oneshot::channel();
+    let session = session(
+        FakeBridge {
+            replace_gate: Mutex::new(Some(gate)),
+            ..FakeBridge::selecting("helo wrld")
+        },
+        TestRewriter::returning("Hello, world."),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    tokio::join!(session.handle(Event::Replace), async {
+        session.bridge.replacing.notified().await;
+        // Hiding the popup makes it lose focus, which closes it.
+        session.handle(Event::Close).await;
+        session.handle(Event::ShortcutPressed).await;
+        let _ = finish_replace.send(());
+    });
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
+    assert_eq!(session.bridge.replaced(), [(7, "Hello, world.".to_owned())]);
 }
 
 #[tokio::test]

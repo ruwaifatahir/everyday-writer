@@ -4,15 +4,25 @@
 //! The only module with `unsafe`. Each wrapper allows it locally and
 //! documents every block with a `// SAFETY:` comment.
 
+use std::thread;
+use std::time::{Duration, Instant};
+
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT,
     KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LCONTROL,
-    VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN,
+    VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_V,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GA_ROOT, GetAncestor, GetForegroundWindow, GetWindowThreadProcessId, IsWindow,
+    GA_ROOT, GetAncestor, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindow,
+    SW_RESTORE, SetForegroundWindow, ShowWindow,
 };
+
+/// How long a window gets to come to the front after we ask for it.
+const FOREGROUND_WAIT: Duration = Duration::from_millis(150);
+
+/// How often the foreground window is checked while waiting.
+const FOREGROUND_POLL: Duration = Duration::from_millis(10);
 
 /// The top-level window a selection came from. Stored as plain numbers,
 /// since `HWND` can't cross threads; the process ID guards against Windows
@@ -53,6 +63,59 @@ impl SourceWindow {
         // whether it names an existing window.
         let exists = unsafe { IsWindow(Some(window)) }.as_bool();
         exists && process_id(window) == Some(self.process_id)
+    }
+
+    /// Brings the window back to the front with keyboard focus, restoring
+    /// it first if it is minimised. Returns `false` if it isn't the
+    /// foreground window within [`FOREGROUND_WAIT`], even after a retry.
+    pub fn bring_to_front(self) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+        self.restore_if_minimised();
+        if self.request_foreground() {
+            return true;
+        }
+        // Windows refuses the switch unless this process sent the last
+        // input. A tap of a key nothing listens to makes that true (tao and
+        // PowerToys do the same).
+        send(&[
+            key_input(UNASSIGNED_KEY, false),
+            key_input(UNASSIGNED_KEY, true),
+        ]);
+        self.request_foreground()
+    }
+
+    /// Asks for the window to become the foreground window, then waits up
+    /// to [`FOREGROUND_WAIT`] for it to happen.
+    #[expect(unsafe_code, reason = "Win32 FFI: SetForegroundWindow")]
+    fn request_foreground(self) -> bool {
+        // SAFETY: SetForegroundWindow accepts any handle value; a refused
+        // or destroyed window makes it fail, which the check below catches.
+        let _ = unsafe { SetForegroundWindow(self.hwnd()) };
+        let deadline = Instant::now() + FOREGROUND_WAIT;
+        loop {
+            if Self::foreground() == Some(self) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(FOREGROUND_POLL);
+        }
+    }
+
+    #[expect(unsafe_code, reason = "Win32 FFI: IsIconic, ShowWindow")]
+    fn restore_if_minimised(self) {
+        let window = self.hwnd();
+        // SAFETY: IsIconic accepts any handle value and only reports
+        // whether it names a minimised window.
+        if unsafe { IsIconic(window) }.as_bool() {
+            // SAFETY: ShowWindow accepts any handle value; an invalid one
+            // makes it fail without effect. It returns the previous
+            // visibility, not an error, so it is ignored.
+            let _ = unsafe { ShowWindow(window, SW_RESTORE) };
+        }
     }
 
     fn hwnd(self) -> HWND {
@@ -127,6 +190,17 @@ pub fn send_copy() -> bool {
         key_input(VK_CONTROL, false),
         key_input(VK_C, false),
         key_input(VK_C, true),
+        key_input(VK_CONTROL, true),
+    ])
+}
+
+/// Presses Ctrl+V as virtual-key codes, so it works on every keyboard
+/// layout. Returns `false` if Windows refused the input.
+pub fn send_paste() -> bool {
+    send(&[
+        key_input(VK_CONTROL, false),
+        key_input(VK_V, false),
+        key_input(VK_V, true),
         key_input(VK_CONTROL, true),
     ])
 }
