@@ -103,6 +103,8 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | T3 | Click another set | It becomes active; next rewrite uses it; Settings shows it |
 | T4 | Add, rename, delete and restore sets in Settings | Tray submenu matches without a restart |
 | T5 | Quit | App exits |
+| T6 | Click the already active set | It stays active and keeps its check |
+| T7 | Name a set with `&` in it (e.g. "Q&A") | Tray shows the name as typed |
 
 ## Shortcut, startup and launch
 
