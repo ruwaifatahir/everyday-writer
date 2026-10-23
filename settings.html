@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>everyday-writer settings</title>
+    <link rel="stylesheet" href="/src/settings/settings.css" />
+    <script type="module" src="/src/settings/main.ts" defer></script>
+  </head>
+
+  <body>
+    <form id="settings" class="settings" novalidate autocomplete="off">
+      <header class="intro">
+        <h1>Settings</h1>
+        <p>Choose the AI that rewrites your text.</p>
+      </header>
+
+      <fieldset class="field">
+        <legend class="label">Provider</legend>
+        <div class="segmented" role="radiogroup">
+          <label><input type="radio" name="provider" value="openai" checked /><span>OpenAI</span></label>
+          <label><input type="radio" name="provider" value="anthropic" /><span>Anthropic</span></label>
+          <label><input type="radio" name="provider" value="gemini" /><span>Gemini</span></label>
+          <label><input type="radio" name="provider" value="custom" /><span>Custom</span></label>
+        </div>
+      </fieldset>
+
+      <div class="field" id="base-url-field" hidden>
+        <label class="label" for="base-url">Base URL</label>
+        <input
+          id="base-url"
+          name="customBaseUrl"
+          type="url"
+          inputmode="url"
+          spellcheck="false"
+          placeholder="http://localhost:1234/v1"
+          aria-describedby="base-url-hint"
+        />
+        <p class="hint" id="base-url-hint">Any service that speaks the OpenAI chat API.</p>
+      </div>
+
+      <div class="field">
+        <label class="label" for="model">Model</label>
+        <input id="model" name="model" type="text" spellcheck="false" aria-describedby="model-hint" />
+        <p class="hint" id="model-hint">The model name exactly as your provider lists it.</p>
+      </div>
+
+      <div class="field">
+        <label class="label" for="key" id="key-label">API key</label>
+
+        <div class="key-saved" id="key-saved" hidden>
+          <svg class="key-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="3" y="7" width="10" height="7" rx="1.5" />
+            <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+          </svg>
+          <span class="key-saved-text" id="key-saved-text">Key saved</span>
+          <button type="button" class="button quiet" id="key-replace">Replace</button>
+          <button type="button" class="button quiet danger" id="key-clear">Clear</button>
+        </div>
+
+        <div class="key-entry" id="key-entry">
+          <input
+            id="key"
+            name="key"
+            type="password"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="key-hint"
+          />
+          <button type="button" class="button quiet" id="key-cancel" hidden>Cancel</button>
+        </div>
+        <p class="hint" id="key-hint">Stored in Windows Credential Manager, never in a file.</p>
+      </div>
+
+      <footer class="actions">
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <button type="submit" class="button primary" id="save">Save</button>
+      </footer>
+    </form>
+  </body>
+</html>

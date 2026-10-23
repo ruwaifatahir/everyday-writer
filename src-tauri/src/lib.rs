@@ -1,17 +1,23 @@
 //! everyday-writer: rewrites text selected in any app.
 //!
-//! The app runs in the background with only a tray icon. It opens no window
-//! on startup, and a second launch exits right away.
+//! The app runs in the background with only a tray icon. It opens the
+//! settings window on its own only on first launch, and a second launch
+//! exits right away.
 
 pub mod capture;
 pub mod llm;
 pub mod logging;
 pub mod replace;
 pub mod settings;
+pub mod settings_window;
 pub mod shortcut;
 pub mod tray;
 
-use tauri::RunEvent;
+use std::sync::Arc;
+
+use tauri::{App, Manager, RunEvent};
+
+use settings::{AppSettings, KeyringApiKeys, SettingsFile, Startup};
 
 /// Starts the background app.
 ///
@@ -31,8 +37,19 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            settings_window::get_settings,
+            settings_window::save_settings,
+            settings_window::is_key_saved,
+            settings_window::save_api_key,
+            settings_window::clear_api_key,
+        ])
         .setup(|app| {
+            let startup = load_settings(app)?;
             tray::init(app)?;
+            if opens_settings_at_startup(startup) && settings_window::open(app.handle()).is_err() {
+                tracing::warn!("the settings window could not open");
+            }
             tracing::info!("background app started");
             Ok(())
         })
@@ -52,6 +69,23 @@ pub fn run() {
     });
 }
 
+/// Loads the settings from the app's data folder and keys from the
+/// Credential Manager, and hands them to Tauri's state as
+/// `Arc<AppSettings>`.
+fn load_settings(app: &App) -> tauri::Result<Startup> {
+    let path = app.path().app_data_dir()?.join("settings.json");
+    let keys = Arc::new(KeyringApiKeys::new(app.config().identifier.clone()));
+    let (settings, startup) = AppSettings::open(SettingsFile::new(path), keys);
+    app.manage(Arc::new(settings));
+    Ok(startup)
+}
+
+/// Settings open on their own only when there is nothing usable to start
+/// from: on first launch, or when the settings file is damaged.
+fn opens_settings_at_startup(startup: Startup) -> bool {
+    startup != Startup::Loaded
+}
+
 /// Decides whether an exit request should be ignored.
 ///
 /// Tauri asks to exit with `code: None` when the last window closes; the
@@ -63,7 +97,23 @@ fn keeps_running_on_exit_request(code: Option<i32>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::keeps_running_on_exit_request;
+    use super::{keeps_running_on_exit_request, opens_settings_at_startup};
+    use crate::settings::Startup;
+
+    #[test]
+    fn settings_open_on_their_own_on_first_launch() {
+        assert!(opens_settings_at_startup(Startup::FirstLaunch));
+    }
+
+    #[test]
+    fn settings_open_on_their_own_when_the_file_is_damaged() {
+        assert!(opens_settings_at_startup(Startup::Damaged));
+    }
+
+    #[test]
+    fn settings_stay_closed_on_a_normal_launch() {
+        assert!(!opens_settings_at_startup(Startup::Loaded));
+    }
 
     #[test]
     fn closing_the_last_window_keeps_the_app_running() {
