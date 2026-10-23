@@ -15,6 +15,7 @@ import {
   saveApiKey,
   saveSettings,
 } from "./api";
+import { initInstructionSets } from "./instruction-sets";
 
 const PROVIDER_NAMES: Record<ProviderKind, string> = {
   openai: "OpenAI",
@@ -330,3 +331,6 @@ async function init(): Promise<void> {
 }
 
 void init();
+
+// The Instruction sets section runs on its own; see instruction-sets.ts.
+void initInstructionSets();
