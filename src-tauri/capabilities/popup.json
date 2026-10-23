@@ -1,7 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "popup",
-  "description": "Popup window that shows the correction. Grants nothing until the popup needs it: plugin calls made from Rust need no capability.",
+  "description": "Popup window that shows the rewrite. It listens for the session's popup state and sends its buttons back as commands; it can't read settings or keys.",
   "windows": ["popup"],
-  "permissions": []
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-popup-state",
+    "allow-popup-replace",
+    "allow-popup-copy",
+    "allow-popup-close",
+    "allow-popup-open-settings"
+  ]
 }

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>everyday-writer settings</title>
+    <link rel="stylesheet" href="/src/settings/settings.css" />
+    <script type="module" src="/src/settings/main.ts" defer></script>
+  </head>
+
+  <body>
+    <form id="settings" class="settings" novalidate autocomplete="off">
+      <header class="intro">
+        <h1>Settings</h1>
+        <p>Choose the AI that rewrites your text.</p>
+      </header>
+
+      <fieldset class="field">
+        <legend class="label">Provider</legend>
+        <div class="segmented" role="radiogroup">
+          <label><input type="radio" name="provider" value="openai" checked /><span>OpenAI</span></label>
+          <label><input type="radio" name="provider" value="anthropic" /><span>Anthropic</span></label>
+          <label><input type="radio" name="provider" value="gemini" /><span>Gemini</span></label>
+          <label><input type="radio" name="provider" value="openrouter" /><span>OpenRouter</span></label>
+          <label><input type="radio" name="provider" value="ollama" /><span>Ollama</span></label>
+          <label><input type="radio" name="provider" value="custom" /><span>Custom</span></label>
+        </div>
+        <p class="hint" id="provider-hint" hidden>Uses Ollama on this computer at localhost:11434. No key needed.</p>
+      </fieldset>
+
+      <div class="field" id="base-url-field" hidden>
+        <label class="label" for="base-url">Base URL</label>
+        <input
+          id="base-url"
+          name="customBaseUrl"
+          type="url"
+          inputmode="url"
+          spellcheck="false"
+          placeholder="http://localhost:1234/v1"
+          aria-describedby="base-url-hint"
+        />
+        <p class="hint" id="base-url-hint">Any service that speaks the OpenAI chat API, such as LM Studio or Vercel AI Gateway.</p>
+      </div>
+
+      <div class="field">
+        <label class="label" for="model">Model</label>
+        <input
+          id="model"
+          name="model"
+          type="text"
+          list="model-options"
+          spellcheck="false"
+          aria-describedby="model-hint"
+        />
+        <datalist id="model-options"></datalist>
+        <p class="hint" id="model-hint" aria-live="polite">Pick from the list or type any model name.</p>
+      </div>
+
+      <div class="field" id="key-field">
+        <label class="label" for="key" id="key-label">API key</label>
+
+        <div class="key-saved" id="key-saved" hidden>
+          <svg class="key-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="3" y="7" width="10" height="7" rx="1.5" />
+            <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+          </svg>
+          <span class="key-saved-text" id="key-saved-text">Key saved</span>
+          <button type="button" class="button quiet" id="key-replace">Replace</button>
+          <button type="button" class="button quiet danger" id="key-clear">Clear</button>
+        </div>
+
+        <div class="key-entry" id="key-entry">
+          <input
+            id="key"
+            name="key"
+            type="password"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="key-hint"
+          />
+          <button type="button" class="button quiet" id="key-cancel" hidden>Cancel</button>
+        </div>
+        <p class="hint" id="key-hint">Stored in Windows Credential Manager, never in a file.</p>
+      </div>
+
+      <p class="hint" id="clipboard-note">Windows clipboard history (Win+V) may show text you rewrite.</p>
+
+      <section class="group" id="launch" aria-labelledby="launch-title">
+        <header class="group-head">
+          <h2 id="launch-title">Shortcut and startup</h2>
+          <p>These apply right away.</p>
+        </header>
+
+        <div class="field">
+          <label class="label" for="shortcut">Shortcut</label>
+          <div class="shortcut-entry">
+            <input
+              id="shortcut"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              aria-describedby="shortcut-hint shortcut-status"
+            />
+            <button type="button" class="button quiet" id="shortcut-apply" hidden>Use this</button>
+          </div>
+          <p class="hint" id="shortcut-hint">Press the keys, or type them like Ctrl+Alt+R. Use Ctrl, Alt or Win.</p>
+          <p class="hint field-status" id="shortcut-status" role="status" aria-live="polite"></p>
+        </div>
+
+        <label class="switch-row" for="start-with-windows">
+          <span class="switch-text">
+            <span class="label">Start with Windows</span>
+            <span class="hint">Opens in the tray when you sign in.</span>
+          </span>
+          <input type="checkbox" role="switch" aria-checked="false" class="switch" id="start-with-windows" />
+        </label>
+        <p class="hint field-status" id="startup-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <footer class="actions">
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <button type="submit" class="button primary" id="save">Save</button>
+      </footer>
+    </form>
+
+    <!-- Instruction sets. Each change saves right away, so this section has
+         no Save button of its own. Rendered by src/settings/instruction-sets.ts. -->
+    <section class="sets" aria-labelledby="sets-title">
+      <header class="sets-head">
+        <h2 id="sets-title">Instruction sets</h2>
+        <p>The shortcut follows the active set. Pick one, or edit it to write like you.</p>
+      </header>
+
+      <ul class="set-list" id="set-list" aria-labelledby="sets-title"></ul>
+
+      <div class="sets-actions">
+        <button type="button" class="button quiet with-icon" id="set-add">
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
+          Add instruction set
+        </button>
+        <button type="button" class="button quiet" id="sets-restore">Restore default templates</button>
+      </div>
+      <p class="status" id="sets-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <template id="set-editor-template">
+      <form class="set-editor" novalidate autocomplete="off">
+        <label class="field">
+          <span class="label">Name</span>
+          <input type="text" name="name" maxlength="60" spellcheck="false" required />
+        </label>
+        <div class="field">
+          <label class="field">
+            <span class="label">Instructions</span>
+            <textarea name="instructions" rows="7" spellcheck="true"></textarea>
+          </label>
+          <p class="hint">Say what a rewrite should do, in your own words. The app always replies with only the rewritten text.</p>
+        </div>
+        <div class="set-editor-actions">
+          <button type="button" class="button quiet danger" data-action="delete">Delete</button>
+          <span class="spacer"></span>
+          <button type="button" class="button quiet" data-action="cancel">Cancel</button>
+          <button type="submit" class="button primary">Save set</button>
+        </div>
+      </form>
+    </template>
+
+    <dialog class="confirm" id="restore-dialog" aria-labelledby="restore-title" aria-describedby="restore-body">
+      <form method="dialog">
+        <h2 id="restore-title">Restore default templates?</h2>
+        <p id="restore-body">
+          Deleted starter templates come back, and edited ones go back to their original wording.
+          Sets you wrote yourself stay as they are.
+        </p>
+        <div class="confirm-actions">
+          <button type="submit" class="button quiet" value="cancel" autofocus>Cancel</button>
+          <button type="submit" class="button primary" value="restore">Restore</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

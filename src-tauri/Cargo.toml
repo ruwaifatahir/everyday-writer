@@ -1,7 +1,7 @@
 [package]
 name = "everyday-writer"
-version = "0.1.0"
-description = "Fixes typos and grammar in text selected in any app"
+version = "1.0.0"
+description = "Rewrites text selected in any app"
 authors = ["Ruwaifa Tahir"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ruwaifatahir/everyday-writer"
@@ -21,21 +21,34 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 genai = { version = "0.7.0", default-features = false, features = ["native-tls", "system-proxy"] }
 keyring-core = "1.0.1"
+serde = { version = "1", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1", default-features = false, features = ["std"] }
 tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-clipboard-manager = "2"
 thiserror = "2.0.21"
-# `rt` only, for `spawn_blocking`. genai and Tauri already bring the runtime.
-tokio = { version = "1.54.1", default-features = false, features = ["rt"] }
+# `rt` for `spawn_blocking`, `sync` for the rewrite session's cancel signal,
+# `time` for its 30-second timeout.
+# genai and Tauri already bring the runtime with all three.
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "sync", "time"] }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
+# Rust-only: the toast when the saved shortcut can't be registered at startup.
+tauri-plugin-notification = "2.7.0"
 tauri-plugin-single-instance = "2"
 
 [target."cfg(windows)".dependencies]
 windows-native-keyring-store = { version = "1.1.0", default-features = false }
+# The text bridge: clipboard access (safe API) plus SendInput, key state and
+# the foreground window. Both are already in the graph through Tauri.
+clipboard-win = { version = "5.4.3", default-features = false }
+windows = { version = "0.62.2", default-features = false, features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 # Size-focused release profile: https://tauri.app/concept/size/
 [profile.release]
@@ -68,5 +81,5 @@ module_name_repetitions = "allow"
 must_use_candidate = "allow"
 
 [dev-dependencies]
-serde_json = "1"
-tokio = { version = "1.54.1", default-features = false, features = ["macros"] }
+# `test-util` pauses time for the session timeout test.
+tokio = { version = "1.54.1", default-features = false, features = ["macros", "test-util"] }

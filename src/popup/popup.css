@@ -1,0 +1,306 @@
+/* Rewrite popup. Same tokens as the settings window; follows the Windows
+   light or dark theme. The window is a fixed 400 x 220 frameless panel. */
+
+:root {
+  color-scheme: light dark;
+
+  --surface: oklch(0.985 0.003 255);
+  --surface-sunken: oklch(0.948 0.006 255);
+  --surface-raised: oklch(1 0 0);
+  --ink: oklch(0.24 0.012 260);
+  --ink-muted: oklch(0.47 0.014 260);
+  --line: oklch(0.86 0.008 260);
+  --line-strong: oklch(0.72 0.012 260);
+  --accent: oklch(0.49 0.13 262);
+  --accent-hover: oklch(0.43 0.13 262);
+  --on-accent: oklch(0.99 0.004 262);
+  --accent-soft: oklch(0.49 0.13 262 / 0.16);
+  --shadow:
+    0 1px 2px oklch(0.2 0.02 260 / 0.12), 0 2px 6px oklch(0.2 0.02 260 / 0.06);
+  --shimmer: oklch(1 0 0 / 0.7);
+
+  --radius: 6px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion: 150ms;
+
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface);
+  caret-color: var(--accent);
+  accent-color: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: oklch(0.2 0.006 260);
+    --surface-sunken: oklch(0.155 0.006 260);
+    --surface-raised: oklch(0.27 0.008 260);
+    --ink: oklch(0.94 0.005 260);
+    --ink-muted: oklch(0.72 0.01 260);
+    --line: oklch(0.33 0.01 260);
+    --line-strong: oklch(0.46 0.012 260);
+    --accent: oklch(0.76 0.1 262);
+    --accent-hover: oklch(0.82 0.08 262);
+    --on-accent: oklch(0.2 0.03 262);
+    --accent-soft: oklch(0.76 0.1 262 / 0.22);
+    --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 2px 6px oklch(0 0 0 / 0.2);
+    --shimmer: oklch(1 0 0 / 0.08);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  opacity: 0;
+  transition: opacity var(--motion) var(--ease);
+  user-select: none;
+  cursor: default;
+}
+
+body[data-ready] {
+  opacity: 1;
+}
+
+.popup {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+/* Top bar: what the popup is doing, and close */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 6px 0 16px;
+}
+
+.status {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    background-color var(--motion) var(--ease),
+    color var(--motion) var(--ease);
+}
+
+.icon-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.icon-button:hover {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Body: working lines, the result, or a message */
+
+.body {
+  min-height: 0;
+  padding: 4px 16px 0;
+}
+
+.result {
+  height: 100%;
+  margin: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  cursor: text;
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+.working {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 6px;
+}
+
+/* One shared sweep across the three lines, so they read as text being
+   written rather than three separate loaders. */
+.line {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      100deg,
+      transparent 30%,
+      var(--shimmer) 50%,
+      transparent 70%
+    )
+    0 0 / 400px 100% fixed no-repeat,
+    var(--surface-sunken);
+  animation: sweep 1.4s var(--ease) infinite;
+}
+
+.line.short {
+  width: 62%;
+}
+
+@keyframes sweep {
+  from {
+    background-position:
+      -400px 0,
+      0 0;
+  }
+  to {
+    background-position:
+      400px 0,
+      0 0;
+  }
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.message-text {
+  margin: 0;
+}
+
+/* Footer: the same two actions every time */
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 12px 12px 16px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  font: inherit;
+  white-space: nowrap;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    background-color var(--motion) var(--ease),
+    color var(--motion) var(--ease),
+    opacity var(--motion) var(--ease);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.button.quiet {
+  border-color: var(--line);
+}
+
+.button.quiet:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.button.primary {
+  min-width: 96px;
+  justify-content: center;
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+kbd {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+}
+
+/* Last, so it beats each component's own `display`. */
+.working[hidden],
+.result[hidden],
+.message[hidden],
+.button[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0ms;
+  }
+
+  .line {
+    animation: none;
+  }
+}

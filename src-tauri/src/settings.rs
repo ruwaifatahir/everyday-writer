@@ -4,9 +4,120 @@
 //! Privacy rule: the API key lives only in the OS keyring. Never log it or
 //! write it to a settings file.
 
+mod instruction_sets;
+mod store;
+mod view;
+
 use std::collections::HashMap;
 
 use keyring_core::Entry;
+use serde::{Deserialize, Serialize};
+
+pub use instruction_sets::{
+    InstructionSet, InstructionSetError, InstructionSetId, InstructionSets, StarterTemplate,
+};
+pub use store::{SettingsError, SettingsFile};
+pub use view::{AppSettings, ChangeError, ProviderReadiness, SaveKeyError, SettingsView, Startup};
+
+/// Which provider the user picked, without its details. Keys are stored per
+/// kind, so each provider keeps its own key.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderKind {
+    /// `OpenAI`.
+    #[default]
+    OpenAi,
+    /// Anthropic (Claude).
+    Anthropic,
+    /// Google Gemini.
+    Gemini,
+    /// `OpenRouter`.
+    OpenRouter,
+    /// Ollama on this computer.
+    Ollama,
+    /// Any endpoint that speaks the `OpenAI` chat completions API.
+    Custom,
+}
+
+impl ProviderKind {
+    /// The account name of this provider's API key in the keyring.
+    pub fn key_name(self) -> &'static str {
+        match self {
+            Self::OpenAi => "openai",
+            Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
+            Self::OpenRouter => "openrouter",
+            Self::Ollama => "ollama",
+            Self::Custom => "custom",
+        }
+    }
+
+    /// Whether a rewrite needs a saved key. Ollama and Custom work without
+    /// one, so local servers work. A blank key there is sent as an empty
+    /// key, never looked up anywhere else (ADR 0001 amendment).
+    pub fn requires_key(self) -> bool {
+        !matches!(self, Self::Ollama | Self::Custom)
+    }
+}
+
+/// What the settings file holds. Never an API key: those live only in the
+/// keyring. Missing fields load as their defaults, so files written by older
+/// versions still load.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Settings {
+    /// The chosen provider.
+    pub provider: ProviderKind,
+    /// The model name exactly as the provider expects it.
+    pub model: String,
+    /// The Custom provider's base URL. Kept while another provider is
+    /// chosen, so switching back doesn't lose it.
+    pub custom_base_url: String,
+    /// The instruction sets and the active one. A file without them (first
+    /// launch, or from before instruction sets) gets the starter templates.
+    pub instruction_sets: InstructionSets,
+    /// The rewrite shortcut as the user chose it, for example
+    /// `Ctrl+Shift+Space`.
+    pub shortcut: String,
+    /// Whether the app starts when the user signs in to Windows.
+    pub start_with_windows: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            provider: ProviderKind::default(),
+            model: String::new(),
+            custom_base_url: String::new(),
+            shortcut: crate::shortcut::DEFAULT_SHORTCUT.to_owned(),
+            start_with_windows: true,
+            instruction_sets: InstructionSets::default(),
+        }
+    }
+}
+
+impl Settings {
+    /// The provider and model a rewrite uses.
+    pub fn model_settings(&self) -> ModelSettings {
+        ModelSettings {
+            provider: Provider::from_kind(self.provider, &self.custom_base_url),
+            model: self.model.trim().to_owned(),
+        }
+    }
+
+    /// Whether the saved key for `provider` may be sent to it. The fixed
+    /// endpoints always qualify. Custom qualifies only at the saved base URL,
+    /// so a URL typed but not saved never receives the saved key.
+    pub fn may_send_saved_key(&self, provider: &Provider) -> bool {
+        match provider {
+            Provider::Custom { base_url } => {
+                let saved = self.custom_base_url.trim();
+                !saved.is_empty() && base_url.trim() == saved
+            }
+            _ => true,
+        }
+    }
+}
 
 /// The LLM provider the user picked. Never inferred from the model name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +128,10 @@ pub enum Provider {
     Anthropic,
     /// Google Gemini.
     Gemini,
+    /// `OpenRouter`.
+    OpenRouter,
+    /// Ollama on this computer, at its default address.
+    Ollama,
     /// Any endpoint that speaks the `OpenAI` chat completions API.
     Custom {
         /// Base URL, for example `https://api.example.com/v1/`.
@@ -25,13 +140,40 @@ pub enum Provider {
 }
 
 impl Provider {
+    /// The provider `kind`, with `custom_base_url` (trimmed) for Custom. The
+    /// URL is ignored for every other kind.
+    pub fn from_kind(kind: ProviderKind, custom_base_url: &str) -> Self {
+        match kind {
+            ProviderKind::OpenAi => Self::OpenAi,
+            ProviderKind::Anthropic => Self::Anthropic,
+            ProviderKind::Gemini => Self::Gemini,
+            ProviderKind::OpenRouter => Self::OpenRouter,
+            ProviderKind::Ollama => Self::Ollama,
+            ProviderKind::Custom => Self::Custom {
+                base_url: custom_base_url.trim().to_owned(),
+            },
+        }
+    }
+
     /// The account name of this provider's API key in the keyring.
     pub fn key_name(&self) -> &'static str {
+        self.kind().key_name()
+    }
+
+    /// Whether a rewrite needs a saved key. See [`ProviderKind::requires_key`].
+    pub fn requires_key(&self) -> bool {
+        self.kind().requires_key()
+    }
+
+    /// Which provider this is, without its details.
+    pub fn kind(&self) -> ProviderKind {
         match self {
-            Self::OpenAi => "openai",
-            Self::Anthropic => "anthropic",
-            Self::Gemini => "gemini",
-            Self::Custom { .. } => "custom",
+            Self::OpenAi => ProviderKind::OpenAi,
+            Self::Anthropic => ProviderKind::Anthropic,
+            Self::Gemini => ProviderKind::Gemini,
+            Self::OpenRouter => ProviderKind::OpenRouter,
+            Self::Ollama => ProviderKind::Ollama,
+            Self::Custom { .. } => ProviderKind::Custom,
         }
     }
 }
@@ -120,32 +262,10 @@ impl KeyringApiKeys {
         }
     }
 
-    /// Saves `key` for `provider`, on this machine only (not roaming).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`KeyError`] if the store can't be written.
-    pub fn set_api_key(&self, provider: &Provider, key: &ApiKey) -> Result<(), KeyError> {
-        self.entry(provider)?.set_password(key.expose_secret())?;
-        Ok(())
-    }
-
-    /// Deletes the key for `provider`. Succeeds if there was none.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`KeyError`] if the store can't be written.
-    pub fn delete_api_key(&self, provider: &Provider) -> Result<(), KeyError> {
-        match self.entry(provider)?.delete_credential() {
-            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.into()),
-        }
-    }
-
     /// The one way to address `provider`'s credential, so get, set and delete
     /// always reach the same entry. `persistence = Local` keeps it on this
     /// machine (not roaming).
-    fn entry(&self, provider: &Provider) -> Result<Entry, KeyError> {
+    fn entry(&self, provider: ProviderKind) -> Result<Entry, KeyError> {
         let modifiers = HashMap::from([("persistence", "Local")]);
         Ok(Entry::new_with_modifiers(
             &self.service,
@@ -155,9 +275,57 @@ impl KeyringApiKeys {
     }
 }
 
+/// Saves, checks and removes API keys, one per provider. Lets tests use an
+/// in-memory store instead of the OS keyring.
+pub trait KeyStore: Send + Sync {
+    /// Whether `provider` has a saved key. Never returns the key itself.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyError`] if the store can't be read.
+    fn has_key(&self, provider: ProviderKind) -> Result<bool, KeyError>;
+
+    /// Saves `key` for `provider`, replacing any earlier one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyError`] if the store can't be written.
+    fn set_key(&self, provider: ProviderKind, key: &ApiKey) -> Result<(), KeyError>;
+
+    /// Deletes `provider`'s key. Succeeds if there was none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyError`] if the store can't be written.
+    fn delete_key(&self, provider: ProviderKind) -> Result<(), KeyError>;
+}
+
+impl KeyStore for KeyringApiKeys {
+    fn has_key(&self, provider: ProviderKind) -> Result<bool, KeyError> {
+        match self.entry(provider)?.get_password() {
+            Ok(_) => Ok(true),
+            Err(keyring_core::Error::NoEntry) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Saves on this machine only (not roaming).
+    fn set_key(&self, provider: ProviderKind, key: &ApiKey) -> Result<(), KeyError> {
+        self.entry(provider)?.set_password(key.expose_secret())?;
+        Ok(())
+    }
+
+    fn delete_key(&self, provider: ProviderKind) -> Result<(), KeyError> {
+        match self.entry(provider)?.delete_credential() {
+            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
 impl ApiKeySource for KeyringApiKeys {
     fn api_key(&self, provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
-        match self.entry(provider)?.get_password() {
+        match self.entry(provider.kind())?.get_password() {
             Ok(key) => Ok(Some(ApiKey::new(key))),
             Err(keyring_core::Error::NoEntry) => Ok(None),
             Err(e) => Err(e.into()),
@@ -174,7 +342,59 @@ mod tests {
     use keyring_core::api::CredentialStoreApi;
     use keyring_core::{Entry, mock};
 
-    use super::{ApiKey, ApiKeySource, KeyringApiKeys, Provider};
+    use super::{ApiKey, ApiKeySource, KeyStore, KeyringApiKeys, Provider, ProviderKind, Settings};
+
+    fn saved_custom(base_url: &str) -> Settings {
+        Settings {
+            provider: ProviderKind::Custom,
+            custom_base_url: base_url.to_owned(),
+            ..Settings::default()
+        }
+    }
+
+    #[test]
+    fn the_saved_key_may_go_to_a_fixed_provider_endpoint() {
+        let saved = saved_custom("https://saved.example/v1");
+
+        assert!(saved.may_send_saved_key(&Provider::from_kind(ProviderKind::OpenAi, "")));
+    }
+
+    #[test]
+    fn the_saved_custom_key_may_go_to_the_saved_base_url() {
+        let saved = saved_custom("https://saved.example/v1");
+
+        let target = Provider::from_kind(ProviderKind::Custom, " https://saved.example/v1 ");
+
+        assert!(saved.may_send_saved_key(&target));
+    }
+
+    #[test]
+    fn the_saved_custom_key_never_goes_to_an_unsaved_base_url() {
+        let saved = saved_custom("https://saved.example/v1");
+
+        let target = Provider::from_kind(ProviderKind::Custom, "https://attacker.example/v1");
+
+        assert!(!saved.may_send_saved_key(&target));
+    }
+
+    #[test]
+    fn the_saved_custom_key_never_goes_anywhere_without_a_saved_base_url() {
+        let saved = saved_custom("");
+
+        assert!(!saved.may_send_saved_key(&Provider::from_kind(ProviderKind::Custom, "")));
+    }
+
+    #[test]
+    fn custom_is_built_with_its_trimmed_base_url() {
+        let provider = Provider::from_kind(ProviderKind::Custom, " http://localhost:1234/v1 ");
+
+        assert_eq!(
+            provider,
+            Provider::Custom {
+                base_url: "http://localhost:1234/v1".to_owned()
+            }
+        );
+    }
 
     #[test]
     fn debug_output_hides_the_api_key() {
@@ -245,22 +465,26 @@ mod tests {
         }));
         let keys = KeyringApiKeys::new("test.service");
 
-        keys.set_api_key(&Provider::Gemini, &ApiKey::new("k-1".to_owned()))
+        keys.set_key(ProviderKind::Gemini, &ApiKey::new("k-1".to_owned()))
             .unwrap();
         let saved = keys.api_key(&Provider::Gemini).unwrap();
-        keys.delete_api_key(&Provider::Gemini).unwrap();
+        let has_key = keys.has_key(ProviderKind::Gemini).unwrap();
+        keys.delete_key(ProviderKind::Gemini).unwrap();
         let after_delete = keys.api_key(&Provider::Gemini).unwrap();
+        let has_key_after_delete = keys.has_key(ProviderKind::Gemini).unwrap();
         keyring_core::unset_default_store();
 
         assert_eq!(saved.as_ref().map(ApiKey::expose_secret), Some("k-1"));
+        assert!(has_key);
         assert!(after_delete.is_none());
+        assert!(!has_key_after_delete);
         let expected: Spec = (
             "test.service".to_owned(),
             "gemini".to_owned(),
             vec![("persistence".to_owned(), "Local".to_owned())],
         );
         let built = built.lock().unwrap();
-        assert_eq!(built.len(), 4);
+        assert_eq!(built.len(), 6);
         assert!(built.iter().all(|spec| *spec == expected));
     }
 }

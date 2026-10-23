@@ -10,6 +10,16 @@ export default defineConfig(() => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  // One HTML page per window.
+  build: {
+    rolldownOptions: {
+      input: {
+        main: "index.html",
+        settings: "settings.html",
+        popup: "popup.html",
+      },
+    },
+  },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,

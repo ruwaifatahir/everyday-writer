@@ -35,28 +35,32 @@ After:
 
 - Works in any app where you can select text.
 - One shortcut, which you can change. The default is `Ctrl+Shift+Space`.
-- The popup opens right away near your mouse and shows a small animation while the AI works.
-- The popup shows the clean result with three buttons: **Replace** (Enter), **Copy** and **✕** (Esc).
+- The popup opens right away near your mouse, fully on that screen, and shows a small animation while the AI works.
+- The popup shows the result exactly as it came back, with three buttons: **Replace** (Enter), **Copy** and **✕** (Esc). The buttons are always the same, even if nothing changed.
+- **Replace** puts the result into the original app in place of your selection. If that app was closed in the meantime, the result is copied instead and the popup says so.
 - Clicking outside the popup closes it. Closing while the AI works cancels it.
-- Where text can't be edited, like a web page, the popup offers **Copy** only.
-- Pressing the shortcut again cancels the current rewrite and starts over with the new selection.
-- If nothing is selected, nothing happens.
-- Text up to about one page. Longer text gets a short "too long" message.
-- Problems like no internet or a key that doesn't work show as a short, friendly message in the popup.
-- Your clipboard is left exactly as it was.
+- Where text can't be edited, like a web page, Replace does nothing. Use **Copy** there.
+- Pressing the shortcut while the popup is open cancels the current rewrite and tries again on the same selection.
+- If nothing is selected, nothing happens and no popup appears.
+- If no key is set up yet, the popup says so and offers **Open Settings**.
+- Text up to 5,000 characters (about one page). Longer text gets a short "too long" message.
+- Problems like no internet, a key that doesn't work or an AI that takes longer than 30 seconds show as a short, friendly message in the popup.
+- Your clipboard is put back the way it was.
 
 **Setting it up**
 
-- Bring your own AI: choose OpenAI, Anthropic (Claude), Google Gemini or a Custom provider.
-- Choose your model from a suggested list, or type any model name.
-- Add your own key for that provider.
+- Bring your own AI: choose OpenAI, Anthropic (Claude), Google Gemini, OpenRouter, Ollama or a Custom provider.
+- Custom works with any OpenAI-compatible service, like Vercel AI Gateway or LM Studio. There is one Custom provider at a time.
+- Choose your model from the provider's list, or type any model name.
+- Add your own key for that provider. Ollama and Custom work without a key, for local AI.
 - The first time you open the app, settings open on their own so you can set this up.
 - Starts with Windows. You can turn this off.
+- If another app already uses the shortcut, Settings says so and keeps the old one.
 
 **App shell**
 
 - Lives in the system tray, out of sight.
-- The tray menu shows the active instruction set, **Settings** and **Quit**.
+- The tray menu has an **Instruction set** submenu with a check by the active one, then **Settings** and **Quit**.
 - Settings hold the provider, model, key, shortcut, instruction sets and the start-with-Windows switch. Nothing more.
 
 **Getting it**
@@ -76,7 +80,8 @@ Instructions are the heart of the app. They decide what the rewrite does.
   - **Professional** (for emails and work messages)
   - **Shorter** (same message, fewer words)
 - Edit any template, delete it or write your own from scratch.
-- A **Restore default templates** button brings the starters back.
+- A **Restore default templates** button brings the starters back, after a confirm. Deleted ones return and edited ones reset to the original. Your own sets are never touched.
+- The last set can't be deleted. Deleting the active set makes the first remaining set active.
 - There are no limits on what instructions can do. Your instructions decide the style, tone, language and purpose. For example, write in Roman Urdu and get clean English back.
 - By default the result stays in the language you wrote in, unless your instructions say otherwise.
 - All instruction sets use the same provider and model.
@@ -89,6 +94,7 @@ Instructions are the heart of the app. They decide what the rewrite does.
 - The app runs fully on your computer. No server of ours is involved.
 - Your text goes only to the AI provider you chose, using your own key.
 - The app never stores your text, logs it or sends it anywhere else.
+- If you use Windows clipboard history (Win+V), the text you rewrite may appear there.
 - Your key is kept safely by Windows, never in a plain file.
 - No tracking and no analytics.
 
