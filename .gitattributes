@@ -2,3 +2,7 @@
 *.png binary
 *.ico binary
 *.icns binary
+
+# Agent skills are vendored tooling, not app code; keep them out of GitHub language stats
+.agents/** linguist-vendored
+.claude/** linguist-vendored
