@@ -37,3 +37,4 @@ Spec: `.scratch/base-project-setup/spec.md`
 - tokio isn't added because nothing is async yet. Ticket 04 adds it with only the features `genai` needs.
 - After merging ticket 02, `pnpm check` passes: fmt, clippy (pedantic + `missing_docs`), tests, cargo-deny, Biome and tsc.
 - No Rust code hardcodes the app identifier. If it's ever needed, read it from config with `app.config().identifier`.
+- Beyond scope: the tray menu has a "Quit" item. Without it, a windowless background app has no way to be exited except Task Manager.
