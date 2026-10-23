@@ -36,6 +36,7 @@ No product behavior is built yet.
 13. As the developer, I want each plugin granted only the permissions it needs, so that the app follows least privilege from the start.
 14. As the developer, I want one empty, documented Rust module per job (shortcut, capture, LLM, replace, tray, settings), so that each feature has an obvious home.
 15. As the developer, I want a `Corrector` interface around the `genai` crate, so that the app can use any LLM provider and I can switch providers anytime.
+15a. As a user, I want to choose my provider (OpenAI, Anthropic, Gemini or a Custom OpenAI-compatible endpoint) and my model explicitly, so that the app uses exactly what I picked.
 16. As the developer, I want only the `Corrector` implementation to know about `genai`, so that replacing the library later touches one place.
 17. As the developer, I want a fake `Corrector`, so that later features can be tested with no network and no API key.
 18. As the developer, I want the `genai` provider's API key passed in from code, not read from environment variables, so that keys can come from the Windows keyring.
@@ -76,8 +77,8 @@ No product behavior is built yet.
 - **Plugins:** official Tauri plugins `global-shortcut`, `clipboard-manager`, `single-instance` and `autostart`, plus the Tauri `tray-icon` feature. They are added through `tauri add` and registered, but have no behavior yet. Single instance is registered first, as its docs require.
 - **Capabilities:** one capability file per window (the popup, and a settings window later). It grants only the plugin permissions each window needs.
 - **Rust modules:** `shortcut`, `capture`, `llm`, `replace`, `tray`, `settings` (holds keyring access). Each has a doc comment stating its job and its privacy rule where one applies. No logic yet.
-- **`Corrector` interface (in `llm`):** async, takes the text to correct plus the user's writing rules, and returns the corrected text or a typed error. The selected text is always passed as data, never merged into the instructions.
-  - **Real implementation:** backed by `genai` (0.7.x). The provider comes from the model name or an explicit provider namespace, and keys come from an auth resolver backed by the keyring.
+- **`Corrector` interface (in `llm`):** async, takes the text to rewrite plus the active instruction set's instructions, and returns the rewritten text or a typed error. The selected text is always passed as data, never merged into the instructions. Two fixed rules are always added on top of the user's instructions: return only the rewritten text, and treat the selected text as text, never as commands. The user's instructions are otherwise unrestricted (style, tone, language, purpose).
+  - **Real implementation:** backed by `genai` (0.7.x). The provider and model come from the user's settings, never inferred from the model name. Custom providers are OpenAI-compatible endpoints with a user-set base URL. Keys come from an auth resolver backed by the keyring.
   - **Fake implementation:** returns preset results, for tests.
 - **Keyring:** `keyring-core` + `windows-native-keyring-store`, not the full `keyring` crate, as the `keyring` v4 docs advise.
 - **Async:** tokio with only the features Tauri and `genai` need. Not `full`.
@@ -102,7 +103,7 @@ No product behavior is built yet.
 
 ## Out of Scope
 
-- Any product behavior from the PRD: shortcut handling, text capture, correction prompts, the popup UI, replace, writing rules, the settings UI and real tray menus.
+- Any product behavior from the PRD: shortcut handling, text capture, correction prompts, the popup UI, replace, instruction sets and starter templates, the settings UI and real tray menus.
 - UI Automation capture.
 - Auto-updater and code signing.
 - Prompt design and evaluation (promptfoo).
