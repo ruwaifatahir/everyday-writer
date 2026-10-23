@@ -1,0 +1,30 @@
+[package]
+name = "everyday-writer"
+version = "0.1.0"
+description = "Fixes typos and grammar in text selected in any app"
+authors = ["Ruwaifa Tahir"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ruwaifacodes/everyday-writer"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "everyday_writer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# Size-focused release profile: https://tauri.app/concept/size/
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
