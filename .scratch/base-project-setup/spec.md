@@ -67,7 +67,7 @@ No product behavior is built yet.
 43. As a security researcher, I want a SECURITY policy, so that I know how to report a problem privately.
 44. As an open source contributor, I want a PR template, so that I know what to include.
 45. As a user or contributor, I want the code dual-licensed MIT + Apache-2.0, so that it follows the Rust ecosystem norm.
-46. As the developer, I want the public GitHub repo `ruwaifacodes/everyday-writer` created and the template pushed, so that CI and Dependabot start running.
+46. As the developer, I want the public GitHub repo `ruwaifatahir/everyday-writer` created and the template pushed, so that CI and Dependabot start running.
 47. As the developer, I want `pnpm tauri dev` to start the empty app with no errors, so that I know the template works on my machine.
 
 ## Implementation Decisions
@@ -90,7 +90,7 @@ No product behavior is built yet.
 - **CI (GitHub Actions, Windows runner):** fmt check, clippy `-D warnings`, `cargo test`, `cargo deny check`, Biome check, `tsc --noEmit`. Actions pinned to commit SHAs.
 - **Release workflow:** triggered by `v*` tags. Builds with the official `tauri-action` and creates a draft release. Updater and code signing are not set up yet.
 - **Dependabot:** weekly; ecosystems `cargo`, `npm`, `github-actions`.
-- **Repo:** public, `ruwaifacodes/everyday-writer`, created with `gh` by the agent. Branch protection on `main` requires a PR and green CI.
+- **Repo:** public, `ruwaifatahir/everyday-writer`, created with `gh` by the agent. Branch protection on `main` requires a PR and green CI.
 - **License:** `LICENSE-MIT` + `LICENSE-APACHE`; the Cargo manifest says `MIT OR Apache-2.0`.
 
 ## Testing Decisions

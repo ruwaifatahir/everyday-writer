@@ -1,6 +1,6 @@
 # 05: GitHub repo and CI
 
-**What to build:** The project is public on GitHub at `ruwaifacodes/everyday-writer`. Every pull request runs the full quality gate in CI on a Windows runner, and `main` only accepts PRs with green CI. Dependabot opens weekly update PRs. Contributors find a README, CONTRIBUTING guide, SECURITY policy and PR template. The agent creates the repo with `gh`; the user has approved creating it publicly.
+**What to build:** The project is public on GitHub at `ruwaifatahir/everyday-writer`. Every pull request runs the full quality gate in CI on a Windows runner, and `main` only accepts PRs with green CI. Dependabot opens weekly update PRs. Contributors find a README, CONTRIBUTING guide, SECURITY policy and PR template. The agent creates the repo with `gh`; the user has approved creating it publicly.
 
 Spec: `.scratch/base-project-setup/spec.md`
 
@@ -8,7 +8,7 @@ Spec: `.scratch/base-project-setup/spec.md`
 
 **Status:** ready-for-agent
 
-- [ ] Public repo `ruwaifacodes/everyday-writer` created with `gh` and the local history pushed
+- [ ] Public repo `ruwaifatahir/everyday-writer` created with `gh` and the local history pushed
 - [ ] CI workflow on pull requests and pushes to `main`: fmt check, clippy `-D warnings`, `cargo test`, `cargo deny check`, Biome check, `tsc --noEmit`
 - [ ] CI caches Rust and pnpm dependencies
 - [ ] All third-party actions pinned to commit SHAs; workflow token permissions set to minimum
