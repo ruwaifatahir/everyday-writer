@@ -4,6 +4,9 @@ use tauri::App;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 
+/// ID of the app's one tray icon.
+const TRAY_ID: &str = "main";
+
 /// Menu item ID of the "Quit" entry.
 const QUIT_ID: &str = "quit";
 
@@ -22,7 +25,7 @@ pub fn init(app: &App) -> tauri::Result<()> {
         .ok_or(tauri::Error::InvalidIcon(std::io::Error::other(
             "missing default window icon",
         )))?;
-    TrayIconBuilder::with_id("main")
+    TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .tooltip("everyday-writer")
         .menu(&menu)

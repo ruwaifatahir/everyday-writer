@@ -15,9 +15,8 @@ use tauri::RunEvent;
 
 /// Starts the background app.
 ///
-/// # Panics
-///
-/// Panics if the Tauri runtime fails to start.
+/// If the Tauri runtime fails to start, logs a content-free error and exits
+/// the process with code 1.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init();
@@ -26,7 +25,7 @@ pub fn run() {
         tracing::warn!("Windows Credential Manager is unavailable; API keys can't be read");
     }
 
-    let app = tauri::Builder::default()
+    let built = tauri::Builder::default()
         // Single instance must be registered first, as its docs require.
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
         .plugin(tauri_plugin_autostart::Builder::new().build())
@@ -37,8 +36,12 @@ pub fn run() {
             tracing::info!("background app started");
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .build(tauri::generate_context!());
+    let Ok(app) = built else {
+        // The error isn't logged: only a fixed, content-free message.
+        tracing::error!("the app could not start");
+        std::process::exit(1);
+    };
 
     app.run(|_app, event| {
         if let RunEvent::ExitRequested { api, code, .. } = event

@@ -48,7 +48,8 @@ strip = true
 # Lint levels for every target. `pnpm check` runs clippy with `-D warnings`,
 # so every "warn" here fails the check. Lint options live in clippy.toml.
 [lints.rust]
-# Win32 FFI may need unsafe later: use a local #[allow(unsafe_code)] with a SAFETY comment.
+# Win32 FFI may need unsafe later: use a local
+# #[expect(unsafe_code, reason = "...")] plus a `// SAFETY:` comment on each unsafe block.
 unsafe_code = "deny"
 missing_docs = "warn"
 
