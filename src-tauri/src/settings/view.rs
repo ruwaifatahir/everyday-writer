@@ -163,7 +163,7 @@ fn is_http_url(url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -218,8 +218,8 @@ mod tests {
         dir.join("settings.json")
     }
 
-    fn open(path: &PathBuf, keys: Arc<FakeKeys>) -> (AppSettings, Startup) {
-        AppSettings::open(SettingsFile::new(path.clone()), keys)
+    fn open(path: &Path, keys: Arc<FakeKeys>) -> (AppSettings, Startup) {
+        AppSettings::open(SettingsFile::new(path), keys)
     }
 
     fn settings(provider: ProviderKind, model: &str) -> Settings {
