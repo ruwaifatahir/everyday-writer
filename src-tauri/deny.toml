@@ -1,0 +1,43 @@
+# cargo-deny config: https://embarkstudios.github.io/cargo-deny/checks/cfg.html
+# Run with `cargo deny --manifest-path src-tauri/Cargo.toml check`.
+
+[graph]
+# Windows-only app: skip the Linux/macOS-only parts of Tauri's graph (gtk, webkit2gtk, objc...).
+targets = ["x86_64-pc-windows-msvc"]
+all-features = false
+no-default-features = false
+
+[advisories]
+# Vulnerabilities are always errors. "workspace" reports unmaintained crates only for direct deps.
+unmaintained = "workspace"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Only licenses compatible with distributing an `MIT OR Apache-2.0` app.
+# Never add GPL, LGPL or AGPL.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause", # alloc-no-stdlib, alloc-stdlib, brotli (Tauri compression)
+    "BSL-1.0",      # clipboard-win, error-code (arboard on Windows, via clipboard-manager)
+    "MPL-2.0",      # cssparser, selectors, dtoa-short (tauri-utils), option-ext (dirs); used unmodified
+    "Unicode-3.0",  # icu_*, zerovec, yoke, litemap (url/idna), unicode-ident
+    "Zlib",         # foldhash, zlib-rs
+]
+confidence-threshold = 0.93
+# Some allowed licenses only appear once later tickets add their crates.
+unused-allowed-license = "allow"
+
+[bans]
+# Tauri's tree always has duplicate versions; "deny" is unworkable.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
