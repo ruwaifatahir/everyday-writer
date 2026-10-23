@@ -11,6 +11,11 @@ fn main() {
             "is_key_saved",
             "save_api_key",
             "clear_api_key",
+            "popup_state",
+            "popup_replace",
+            "popup_copy",
+            "popup_close",
+            "popup_open_settings",
         ]),
     ))
     .expect("failed to run the Tauri build script");

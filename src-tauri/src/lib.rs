@@ -5,19 +5,29 @@
 //! exits right away.
 
 pub mod capture;
+pub mod clipboard;
+pub mod live_rewriter;
 pub mod llm;
 pub mod logging;
+pub mod popup;
 pub mod replace;
+pub mod session;
 pub mod settings;
 pub mod settings_window;
 pub mod shortcut;
+pub mod text_bridge;
 pub mod tray;
+pub mod win32;
 
 use std::sync::Arc;
 
 use tauri::{App, Manager, RunEvent};
 
+use live_rewriter::LiveRewriter;
+use popup::{AppSession, TauriPopup};
+use session::{Event, RewriteSession};
 use settings::{AppSettings, KeyringApiKeys, SettingsFile, Startup};
+use text_bridge::WindowsTextBridge;
 
 /// Starts the background app.
 ///
@@ -43,9 +53,15 @@ pub fn run() {
             settings_window::is_key_saved,
             settings_window::save_api_key,
             settings_window::clear_api_key,
+            popup::popup_state,
+            popup::popup_replace,
+            popup::popup_copy,
+            popup::popup_close,
+            popup::popup_open_settings,
         ])
         .setup(|app| {
             let startup = load_settings(app)?;
+            start_rewrite_session(app)?;
             tray::init(app)?;
             if opens_settings_at_startup(startup) && settings_window::open(app.handle()).is_err() {
                 tracing::warn!("the settings window could not open");
@@ -78,6 +94,30 @@ fn load_settings(app: &App) -> tauri::Result<Startup> {
     let (settings, startup) = AppSettings::open(SettingsFile::new(path), keys);
     app.manage(Arc::new(settings));
     Ok(startup)
+}
+
+/// Wires the rewrite session to Windows, the AI provider, the settings and
+/// the popup, creates the hidden popup and registers the shortcut.
+fn start_rewrite_session(app: &App) -> tauri::Result<()> {
+    let settings = Arc::clone(app.state::<Arc<AppSettings>>().inner());
+    let keys = KeyringApiKeys::new(app.config().identifier.clone());
+    let popup = Arc::new(TauriPopup::new(app.handle().clone()));
+    app.manage(Arc::clone(&popup));
+    let session: AppSession = RewriteSession::new(
+        WindowsTextBridge,
+        LiveRewriter::new(Arc::clone(&settings), keys),
+        settings,
+        popup,
+    );
+    app.manage(Arc::new(session));
+    popup::create(app.handle())?;
+    let registered = shortcut::register(app.handle(), shortcut::DEFAULT_SHORTCUT, |app| {
+        popup::send(app, Event::ShortcutPressed);
+    });
+    if registered.is_err() {
+        tracing::warn!("the rewrite shortcut couldn't be registered");
+    }
+    Ok(())
 }
 
 /// Settings open on their own only when there is nothing usable to start
