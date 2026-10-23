@@ -4,6 +4,7 @@
 //! Privacy rule: the selected text is data, never instructions to the model.
 //! Never log the selected text, the prompt, the model's response or the API key.
 
+#[cfg(test)]
 pub mod fake;
 mod genai_corrector;
 
@@ -14,8 +15,8 @@ pub use genai_corrector::GenaiCorrector;
 /// Rewrites selected text by following the active instruction set.
 ///
 /// Implementations send `text` as data, in its own message, never merged
-/// into `instructions`. Callers test against this trait with
-/// [`fake::FakeCorrector`]; only the real implementation talks to a provider.
+/// into `instructions`. Callers test against this trait with the test-only
+/// `fake::FakeCorrector`; only the real implementation talks to a provider.
 pub trait Corrector: Send + Sync {
     /// Rewrites `text` by following `instructions`.
     ///
