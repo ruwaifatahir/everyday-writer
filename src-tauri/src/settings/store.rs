@@ -99,6 +99,7 @@ mod tests {
             provider: ProviderKind::Custom,
             model: "local-model".to_owned(),
             custom_base_url: "http://localhost:1234/v1".to_owned(),
+            ..Settings::default()
         }
     }
 

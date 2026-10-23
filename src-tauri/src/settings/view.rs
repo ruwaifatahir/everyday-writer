@@ -7,8 +7,8 @@
 use std::sync::{Arc, PoisonError, RwLock};
 
 use super::{
-    ApiKey, FIX_AND_MAKE_READABLE, KeyError, KeyStore, ModelSettings, ProviderKind, Settings,
-    SettingsError, SettingsFile,
+    ApiKey, InstructionSetError, InstructionSets, KeyError, KeyStore, ModelSettings, ProviderKind,
+    Settings, SettingsError, SettingsFile,
 };
 
 /// What the rest of the app reads from the settings. A port: the rewrite
@@ -67,11 +67,26 @@ pub enum SaveKeyError {
     Store(#[from] KeyError),
 }
 
+/// An instruction set change wasn't made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ChangeError {
+    /// The change breaks an instruction set rule.
+    #[error(transparent)]
+    Refused(#[from] InstructionSetError),
+    /// The settings file couldn't be written.
+    #[error(transparent)]
+    Save(#[from] SettingsError),
+}
+
+/// Hears about every instruction set change.
+type Listener = Box<dyn Fn(&InstructionSets) + Send + Sync>;
+
 /// The live settings, backed by the settings file and the key store.
 pub struct AppSettings {
     file: SettingsFile,
     keys: Arc<dyn KeyStore>,
     current: RwLock<Settings>,
+    listeners: RwLock<Vec<Listener>>,
 }
 
 impl AppSettings {
@@ -97,6 +112,7 @@ impl AppSettings {
             file,
             keys,
             current: RwLock::new(current),
+            listeners: RwLock::default(),
         };
         (app, startup)
     }
@@ -109,16 +125,67 @@ impl AppSettings {
             .clone()
     }
 
-    /// Saves `settings` to the file, then makes them current.
+    /// Saves `settings` to the file, then makes them current. The
+    /// instruction sets in `settings` are ignored: they change only through
+    /// [`AppSettings::change_instruction_sets`], so saving the provider can
+    /// never undo a change made meanwhile (from the tray, say).
     ///
     /// # Errors
     ///
     /// Returns [`SettingsError`] if the file can't be written. The current
     /// settings stay unchanged then.
-    pub fn update(&self, settings: Settings) -> Result<(), SettingsError> {
+    pub fn update(&self, mut settings: Settings) -> Result<(), SettingsError> {
+        let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        settings.instruction_sets = current.instruction_sets.clone();
         self.file.save(&settings)?;
-        *self.current.write().unwrap_or_else(PoisonError::into_inner) = settings;
+        *current = settings;
         Ok(())
+    }
+
+    /// Applies `change` to the instruction sets and saves them. Every
+    /// listener added with [`AppSettings::on_instruction_sets_change`] then
+    /// hears about it. If `change` fails, nothing it did is kept.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChangeError::Refused`] if `change` breaks an instruction set
+    /// rule and [`ChangeError::Save`] if the file can't be written. The
+    /// instruction sets stay unchanged then.
+    pub fn change_instruction_sets<T>(
+        &self,
+        change: impl FnOnce(&mut InstructionSets) -> Result<T, InstructionSetError>,
+    ) -> Result<T, ChangeError> {
+        let (value, sets) = {
+            let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+            let mut changed = current.clone();
+            let value = change(&mut changed.instruction_sets)?;
+            self.file.save(&changed)?;
+            *current = changed;
+            (value, current.instruction_sets.clone())
+        };
+        // Outside the lock, so a listener can read the settings.
+        for listener in self
+            .listeners
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+        {
+            listener(&sets);
+        }
+        Ok(value)
+    }
+
+    /// Calls `listener` with the new instruction sets after every change
+    /// made through [`AppSettings::change_instruction_sets`]. The tray uses
+    /// it to rebuild its menu, and the settings window to stay in step.
+    pub fn on_instruction_sets_change(
+        &self,
+        listener: impl Fn(&InstructionSets) + Send + Sync + 'static,
+    ) {
+        self.listeners
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(Box::new(listener));
     }
 
     /// Whether `provider` has a saved key. A failing store counts as no key.
@@ -170,10 +237,14 @@ impl SettingsView for AppSettings {
         }
     }
 
-    /// Until instruction sets can be saved, every rewrite uses the built-in
-    /// "Fix & make readable" set.
     fn active_instructions(&self) -> String {
-        FIX_AND_MAKE_READABLE.to_owned()
+        self.current
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .instruction_sets
+            .active()
+            .instructions
+            .clone()
     }
 }
 
@@ -193,9 +264,10 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    use super::{AppSettings, Startup};
+    use super::{AppSettings, ChangeError, Startup};
     use crate::settings::{
-        ApiKey, KeyError, KeyStore, Provider, ProviderKind, Settings, SettingsFile, SettingsView,
+        ApiKey, InstructionSetError, InstructionSetId, InstructionSets, KeyError, KeyStore,
+        Provider, ProviderKind, Settings, SettingsFile, SettingsView, StarterTemplate,
     };
 
     /// In-memory keys. `broken` makes every call fail like a locked keyring.
@@ -278,6 +350,7 @@ mod tests {
             provider: ProviderKind::Custom,
             model: "local-model".to_owned(),
             custom_base_url: "http://localhost:1234/v1".to_owned(),
+            ..Settings::default()
         };
         let (app, _) = open(&path, Arc::default());
         app.update(saved.clone()).unwrap();
@@ -344,6 +417,7 @@ mod tests {
             provider: ProviderKind::Custom,
             model: " local-model ".to_owned(),
             custom_base_url: "http://localhost:1234/v1".to_owned(),
+            ..Settings::default()
         })
         .unwrap();
 
@@ -434,6 +508,7 @@ mod tests {
             provider: ProviderKind::Custom,
             model: "local-model".to_owned(),
             custom_base_url: "localhost:1234".to_owned(),
+            ..Settings::default()
         })
         .unwrap();
 
@@ -464,6 +539,122 @@ mod tests {
 
         assert!(result.is_err());
         assert!(!app.is_key_saved(ProviderKind::OpenAi));
+    }
+
+    fn id_of(app: &AppSettings, name: &str) -> InstructionSetId {
+        app.settings()
+            .instruction_sets
+            .sets()
+            .iter()
+            .find(|set| set.name == name)
+            .unwrap()
+            .id
+    }
+
+    #[test]
+    fn a_rewrite_follows_the_active_instruction_set() {
+        let (app, _) = open(&temp_file(), Arc::default());
+        let first = app.active_instructions();
+        let shorter = id_of(&app, "Shorter");
+
+        app.change_instruction_sets(|sets| sets.set_active(shorter))
+            .unwrap();
+
+        assert_eq!(first, StarterTemplate::FixAndMakeReadable.instructions());
+        assert_eq!(
+            app.active_instructions(),
+            StarterTemplate::Shorter.instructions()
+        );
+    }
+
+    #[test]
+    fn instruction_sets_and_the_active_set_survive_a_restart() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        let mine = app
+            .change_instruction_sets(|sets| sets.add("Mine", "My rules."))
+            .unwrap();
+        app.change_instruction_sets(|sets| sets.set_active(mine))
+            .unwrap();
+
+        let (restarted, _) = open(&path, Arc::default());
+
+        assert_eq!(
+            restarted.settings().instruction_sets,
+            app.settings().instruction_sets
+        );
+        assert_eq!(restarted.active_instructions(), "My rules.");
+    }
+
+    #[test]
+    fn a_settings_file_from_before_instruction_sets_loads_the_starter_templates() {
+        let path = temp_file();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, br#"{ "provider": "gemini", "model": "g" }"#).unwrap();
+
+        let (app, _) = open(&path, Arc::default());
+
+        assert_eq!(app.settings().instruction_sets, InstructionSets::default());
+    }
+
+    #[test]
+    fn saving_the_provider_never_changes_the_instruction_sets() {
+        let (app, _) = open(&temp_file(), Arc::default());
+        app.change_instruction_sets(|sets| sets.add("Mine", "My rules."))
+            .unwrap();
+        let before = app.settings().instruction_sets;
+
+        // The window sends what it edits, with the starter templates as
+        // the sets.
+        app.update(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+
+        assert_eq!(app.settings().instruction_sets, before);
+        assert_eq!(app.settings().provider, ProviderKind::Gemini);
+    }
+
+    #[test]
+    fn a_refused_change_leaves_the_instruction_sets_as_they_were() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        let before = app.settings().instruction_sets;
+
+        let result = app.change_instruction_sets(|sets| {
+            sets.add("Half done", "x")?;
+            sets.add(" ", "blank name")
+        });
+
+        assert_eq!(
+            result,
+            Err(ChangeError::Refused(InstructionSetError::BlankName))
+        );
+        assert_eq!(app.settings().instruction_sets, before);
+        let (restarted, _) = open(&path, Arc::default());
+        assert_eq!(restarted.settings().instruction_sets, before);
+    }
+
+    #[test]
+    fn every_instruction_set_change_is_announced_with_the_new_sets() {
+        let (app, _) = open(&temp_file(), Arc::default());
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let listener = Arc::clone(&heard);
+        app.on_instruction_sets_change(move |sets| {
+            listener.lock().unwrap().push(sets.active().name.clone());
+        });
+        let shorter = id_of(&app, "Shorter");
+
+        app.change_instruction_sets(|sets| sets.set_active(shorter))
+            .unwrap();
+        app.change_instruction_sets(|sets| {
+            sets.restore_starter_templates();
+            Ok(())
+        })
+        .unwrap();
+        let _ = app.change_instruction_sets(|sets| sets.add("", "refused"));
+        app.update(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+
+        assert_eq!(*heard.lock().unwrap(), ["Shorter", "Shorter"]);
     }
 
     #[test]
