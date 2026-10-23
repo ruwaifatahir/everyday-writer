@@ -12,10 +12,20 @@ Spec: `.scratch/v1-rewrite/spec.md`
 
 **Blocked by:** 03 (Tracer bullet: shortcut, popup, Copy)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Session tests cover too long, no key, timeout (with a controllable clock or paused tokio time), re-run while open, and every rewrite error
-- [ ] The too-long and no-key paths never call the Rewriter
+- [x] Session tests cover too long, no key, timeout (with a controllable clock or paused tokio time), re-run while open, and every rewrite error
+- [x] The too-long and no-key paths never call the Rewriter
 - [ ] Open Settings opens the settings window and closes the popup
-- [ ] Re-run uses the current active instruction set and never captures again
-- [ ] The 30-second limit and the 5,000-character limit are constants, not settings
+- [x] Re-run uses the current active instruction set and never captures again
+- [x] The 30-second limit and the 5,000-character limit are constants, not settings
+
+## Comments
+
+Merged into feat/v1-rewrite at d59f366; pnpm check passes (86 Rust tests).
+
+Manual checks still to do in the running app:
+- Open Settings button opens the settings window and closes the popup
+- Re-run via the real shortcut while the popup is open
+- Long error messages wrap properly in the popup
+- Real slow-provider timeout (30 s)

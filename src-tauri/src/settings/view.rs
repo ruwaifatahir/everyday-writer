@@ -142,6 +142,40 @@ impl AppSettings {
         Ok(())
     }
 
+    /// Applies `change` to a copy of the current settings, saves it, then
+    /// makes it current. Use it to change some settings without touching the
+    /// rest.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SettingsError`] if the file can't be written. The current
+    /// settings stay unchanged then.
+    ///
+    /// Instruction sets change only through
+    /// [`AppSettings::change_instruction_sets`], which also tells listeners.
+    pub fn modify(&self, change: impl FnOnce(&mut Settings)) -> Result<(), SettingsError> {
+        self.try_modify(|settings| {
+            change(settings);
+            Ok::<_, SettingsError>(())
+        })
+    }
+
+    /// The one save path: applies `change` to a copy of the current
+    /// settings, saves it and makes it current, all under the write lock so
+    /// concurrent changes never undo each other. If `change` fails, nothing
+    /// is saved.
+    fn try_modify<T, E: From<SettingsError>>(
+        &self,
+        change: impl FnOnce(&mut Settings) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        let mut changed = current.clone();
+        let value = change(&mut changed)?;
+        self.file.save(&changed)?;
+        *current = changed;
+        Ok(value)
+    }
+
     /// Applies `change` to the instruction sets and saves them. Every
     /// listener added with [`AppSettings::on_instruction_sets_change`] then
     /// hears about it. If `change` fails, nothing it did is kept.
@@ -155,14 +189,10 @@ impl AppSettings {
         &self,
         change: impl FnOnce(&mut InstructionSets) -> Result<T, InstructionSetError>,
     ) -> Result<T, ChangeError> {
-        let (value, sets) = {
-            let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
-            let mut changed = current.clone();
-            let value = change(&mut changed.instruction_sets)?;
-            self.file.save(&changed)?;
-            *current = changed;
-            (value, current.instruction_sets.clone())
-        };
+        let (value, sets) = self.try_modify(|settings| {
+            let value = change(&mut settings.instruction_sets)?;
+            Ok::<_, ChangeError>((value, settings.instruction_sets.clone()))
+        })?;
         // Outside the lock, so a listener can read the settings.
         for listener in self
             .listeners
@@ -359,6 +389,25 @@ mod tests {
 
         assert_eq!(startup, Startup::Loaded);
         assert_eq!(restarted.settings(), saved);
+    }
+
+    #[test]
+    fn a_change_to_one_setting_keeps_the_others_and_survives_a_restart() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        app.update(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+
+        app.modify(|s| s.shortcut = "Alt+Shift+R".to_owned())
+            .unwrap();
+        let (restarted, _) = open(&path, Arc::default());
+
+        let expected = Settings {
+            shortcut: "Alt+Shift+R".to_owned(),
+            ..settings(ProviderKind::Gemini, "gemini-test")
+        };
+        assert_eq!(app.settings(), expected);
+        assert_eq!(restarted.settings(), expected);
     }
 
     #[test]

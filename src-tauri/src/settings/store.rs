@@ -142,4 +142,31 @@ mod tests {
         assert_eq!(loaded.provider, ProviderKind::Gemini);
         assert_eq!(loaded.model, "");
     }
+
+    #[test]
+    fn a_file_without_a_shortcut_loads_the_default_shortcut_and_starts_with_windows() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, br#"{ "provider": "gemini" }"#).unwrap();
+
+        let loaded = SettingsFile::new(path).load().unwrap().unwrap();
+
+        assert_eq!(loaded.shortcut, "Ctrl+Shift+Space");
+        assert!(loaded.start_with_windows);
+    }
+
+    #[test]
+    fn the_shortcut_and_start_with_windows_survive_a_save() {
+        let file = SettingsFile::new(temp_dir().join("settings.json"));
+        let saved = Settings {
+            shortcut: "Alt+Shift+R".to_owned(),
+            start_with_windows: false,
+            ..custom_settings()
+        };
+
+        file.save(&saved).unwrap();
+
+        assert_eq!(file.load().unwrap(), Some(saved));
+    }
 }

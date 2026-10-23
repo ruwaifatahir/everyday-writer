@@ -38,11 +38,7 @@ pub fn init(app: &App) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            SETTINGS_ID => {
-                if settings_window::open(app).is_err() {
-                    tracing::warn!("the settings window could not open");
-                }
-            }
+            SETTINGS_ID => settings_window::open_later(app),
             QUIT_ID => app.exit(0),
             _ => {}
         })
