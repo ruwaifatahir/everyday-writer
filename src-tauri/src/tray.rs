@@ -1,31 +1,33 @@
 //! Tray icon: the app's only visible presence, in the Windows notification area.
+//!
+//! Its menu holds the "Instruction set" submenu, Settings and Quit. The menu
+//! is rebuilt after every instruction set change, wherever it was made.
 
-use tauri::App;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+pub mod menu;
+
+use std::sync::Arc;
+
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
+use tauri::{App, AppHandle, Manager, Wry};
 
+use crate::settings::{AppSettings, InstructionSetId, InstructionSets};
 use crate::settings_window;
+use menu::{TrayAction, TrayItem};
 
 /// ID of the app's one tray icon.
 const TRAY_ID: &str = "main";
 
-/// Menu item ID of the "Settings" entry.
-const SETTINGS_ID: &str = "settings";
-
-/// Menu item ID of the "Quit" entry.
-const QUIT_ID: &str = "quit";
-
-/// Builds the tray icon with its menu.
+/// Builds the tray icon with its menu, and keeps the menu in step with the
+/// instruction sets. Call after the settings are managed.
 ///
 /// # Errors
 ///
 /// Returns an error if the app has no default window icon or the tray menu or
 /// icon cannot be created.
 pub fn init(app: &App) -> tauri::Result<()> {
-    let settings = MenuItem::with_id(app, SETTINGS_ID, "Settings", true, None::<&str>)?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, QUIT_ID, "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&settings, &separator, &quit])?;
+    let settings = Arc::clone(app.state::<Arc<AppSettings>>().inner());
+    let menu = build_menu(app.handle(), &settings.settings().instruction_sets)?;
     let icon = app
         .default_window_icon()
         .cloned()
@@ -37,11 +39,78 @@ pub fn init(app: &App) -> tauri::Result<()> {
         .tooltip("everyday-writer")
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            SETTINGS_ID => settings_window::open_later(app),
-            QUIT_ID => app.exit(0),
-            _ => {}
+        .on_menu_event(|app, event| match menu::action(event.id.as_ref()) {
+            Some(TrayAction::Activate(id)) => activate_later(app, id),
+            Some(TrayAction::OpenSettings) => settings_window::open_later(app),
+            Some(TrayAction::Quit) => app.exit(0),
+            None => {}
         })
         .build(app)?;
+
+    let handle = app.handle().clone();
+    settings.on_instruction_sets_change(move |sets| refresh(&handle, sets));
     Ok(())
+}
+
+/// Makes the set active from a blocking task: the menu event runs inside
+/// the event loop, and the change saves the settings file and rebuilds this
+/// very menu. On success the change listener rebuilds the menu.
+fn activate_later(app: &AppHandle, id: InstructionSetId) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let settings = app.state::<Arc<AppSettings>>();
+        if settings
+            .change_instruction_sets(|sets| sets.set_active(id))
+            .is_err()
+        {
+            tracing::warn!("the instruction set picked in the tray couldn't be made active");
+            // Windows already moved the check mark; put it back.
+            refresh(&app, &settings.settings().instruction_sets);
+        }
+    });
+}
+
+/// Replaces the tray menu with one built from `sets`.
+fn refresh(app: &AppHandle, sets: &InstructionSets) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    let rebuilt = build_menu(app, sets).and_then(|menu| tray.set_menu(Some(menu)));
+    if rebuilt.is_err() {
+        tracing::warn!("the tray menu couldn't be rebuilt");
+    }
+}
+
+/// Turns the menu model from [`menu::tray_menu`] into a real menu.
+fn build_menu(app: &AppHandle, sets: &InstructionSets) -> tauri::Result<Menu<Wry>> {
+    let menu = Menu::new(app)?;
+    for item in menu::tray_menu(sets) {
+        match item {
+            TrayItem::Submenu { id, label, sets } => {
+                let items = sets
+                    .into_iter()
+                    .map(|set| {
+                        CheckMenuItem::with_id(
+                            app,
+                            set.id,
+                            set.label,
+                            true,
+                            set.checked,
+                            None::<&str>,
+                        )
+                    })
+                    .collect::<tauri::Result<Vec<_>>>()?;
+                let refs: Vec<&dyn IsMenuItem<Wry>> = items
+                    .iter()
+                    .map(|item| item as &dyn IsMenuItem<Wry>)
+                    .collect();
+                menu.append(&Submenu::with_id_and_items(app, id, label, true, &refs)?)?;
+            }
+            TrayItem::Item { id, label } => {
+                menu.append(&MenuItem::with_id(app, id, label, true, None::<&str>)?)?;
+            }
+            TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+        }
+    }
+    Ok(menu)
 }
