@@ -4,6 +4,18 @@
 //! settings window on its own on first launch and when the shortcut can't be
 //! registered. A second launch opens Settings in the running app and exits.
 
+/// Serializes a command error as its `Display` message, which the window
+/// shows as is. Defined before the modules so they can all use it.
+macro_rules! serialize_as_message {
+    ($error:ty) => {
+        impl serde::Serialize for $error {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.collect_str(self)
+            }
+        }
+    };
+}
+
 pub mod autostart;
 pub mod capture;
 pub mod clipboard;

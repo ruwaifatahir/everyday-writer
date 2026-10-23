@@ -11,7 +11,6 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::autostart::{self, TauriAutostart};
@@ -102,11 +101,7 @@ impl From<autostart::ChangeError> for CommandError {
     }
 }
 
-impl Serialize for CommandError {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_str(self)
-    }
-}
+serialize_as_message!(CommandError);
 
 impl From<SaveKeyError> for CommandError {
     fn from(error: SaveKeyError) -> Self {
@@ -264,4 +259,16 @@ pub fn set_start_with_windows(
         settings.modify(|s| s.start_with_windows = enabled)
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CommandError;
+
+    #[test]
+    fn an_error_reaches_the_window_as_its_message() {
+        let json = serde_json::to_string(&CommandError::BlankKey).unwrap();
+
+        assert_eq!(json, r#""Enter a key first.""#);
+    }
 }
