@@ -1092,6 +1092,7 @@ dependencies = [
 name = "everyday-writer"
 version = "0.1.0"
 dependencies = [
+ "clipboard-win",
  "genai",
  "keyring-core",
  "serde",
@@ -1106,6 +1107,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "windows",
  "windows-native-keyring-store",
 ]
 

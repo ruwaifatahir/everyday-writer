@@ -15,6 +15,15 @@ use serde::{Deserialize, Serialize};
 pub use store::{SettingsError, SettingsFile};
 pub use view::{AppSettings, SaveKeyError, SettingsView, Startup};
 
+/// The instructions of the "Fix & make readable" starter template, the
+/// active instruction set by default.
+pub const FIX_AND_MAKE_READABLE: &str = "\
+Fix spelling, grammar and punctuation mistakes, and make the text easy to read.
+- Split run-on sentences and smooth awkward wording, but keep the writer's meaning, tone and voice.
+- Don't add or remove information.
+- Keep the text in the language it is written in.
+- Keep the formatting, such as line breaks, lists and emoji.";
+
 /// Which provider the user picked, without its details. Keys are stored per
 /// kind, so each provider keeps its own key.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

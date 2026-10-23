@@ -7,7 +7,8 @@
 use std::sync::{Arc, PoisonError, RwLock};
 
 use super::{
-    ApiKey, KeyError, KeyStore, ModelSettings, ProviderKind, Settings, SettingsError, SettingsFile,
+    ApiKey, FIX_AND_MAKE_READABLE, KeyError, KeyStore, ModelSettings, ProviderKind, Settings,
+    SettingsError, SettingsFile,
 };
 
 /// What the rest of the app reads from the settings. A port: the rewrite
@@ -22,6 +23,24 @@ pub trait SettingsView: Send + Sync {
     /// Whether a rewrite can be sent: a model is set, the provider has a key
     /// (or doesn't need one) and a Custom provider has an `http(s)` base URL.
     fn is_provider_ready(&self) -> bool;
+
+    /// The active instruction set's instructions, which every rewrite
+    /// follows.
+    fn active_instructions(&self) -> String;
+}
+
+impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
+    fn model_settings(&self) -> ModelSettings {
+        (**self).model_settings()
+    }
+
+    fn is_provider_ready(&self) -> bool {
+        (**self).is_provider_ready()
+    }
+
+    fn active_instructions(&self) -> String {
+        (**self).active_instructions()
+    }
 }
 
 /// How the settings were found at startup.
@@ -149,6 +168,12 @@ impl SettingsView for AppSettings {
             provider if provider.requires_key() => self.is_key_saved(provider),
             _ => true,
         }
+    }
+
+    /// Until instruction sets can be saved, every rewrite uses the built-in
+    /// "Fix & make readable" set.
+    fn active_instructions(&self) -> String {
+        FIX_AND_MAKE_READABLE.to_owned()
     }
 }
 
