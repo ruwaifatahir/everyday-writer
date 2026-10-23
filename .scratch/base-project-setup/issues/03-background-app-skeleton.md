@@ -22,7 +22,7 @@ Spec: `.scratch/base-project-setup/spec.md`
 **Release sizes**, for later comparison. Built with `pnpm tauri build` on 2026-10-23 using Rust 1.99.1 and the release profile (`opt-level = "s"`, LTO, `removeUnusedCommands`):
 
 - `everyday-writer.exe`: 2,203,136 bytes (2.10 MiB)
-- `everyday-writer_0.1.0_x64-setup.exe` (NSIS): 942,460 bytes (920.4 KiB)
+- `everyday-writer_0.1.0_x64-setup.exe` (NSIS): 942,812 bytes (920.7 KiB)
 
 **Checked on the release exe:**
 
@@ -35,4 +35,5 @@ Spec: `.scratch/base-project-setup/spec.md`
 - `tauri add` put each plugin first in the builder chain, so I added single-instance last to make it end up first. It also wrote `capabilities/desktop.json`, which granted `global-shortcut:default` and `autostart:default` to a `main` window that doesn't exist; I deleted it. It installed three npm guest packages too. I removed them because all plugin calls run in Rust, which needs no capability.
 - `capabilities/popup.json` grants nothing yet. The popup ticket will add only what the popup's JS calls.
 - tokio isn't added because nothing is async yet. Ticket 04 adds it with only the features `genai` needs.
-- The scaffold's `build.rs` and `main.rs` fail `missing_docs` and pedantic clippy, because they lack crate docs and trailing semicolons. I left them for ticket 02, which owns the lint setup.
+- After merging ticket 02, `pnpm check` passes: fmt, clippy (pedantic + `missing_docs`), tests, cargo-deny, Biome and tsc.
+- No Rust code hardcodes the app identifier. If it's ever needed, read it from config with `app.config().identifier`.
