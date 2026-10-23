@@ -1,4 +1,4 @@
-//! everyday-writer: fixes typos and grammar in text selected in any app.
+//! everyday-writer: rewrites text selected in any app.
 //!
 //! The app runs in the background with only a tray icon. It opens the
 //! settings window on its own only on first launch, and a second launch
