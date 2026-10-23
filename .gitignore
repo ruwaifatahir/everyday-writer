@@ -24,3 +24,6 @@ src-tauri/gen/schemas/
 Thumbs.db
 *.suo
 *.sw?
+
+# Agent worktrees
+.claude/worktrees/
