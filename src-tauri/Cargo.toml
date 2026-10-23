@@ -35,6 +35,8 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
+# Rust-only: the toast when the saved shortcut can't be registered at startup.
+tauri-plugin-notification = "2.7.0"
 tauri-plugin-single-instance = "2"
 
 [target."cfg(windows)".dependencies]
