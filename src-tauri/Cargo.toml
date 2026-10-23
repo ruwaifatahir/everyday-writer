@@ -24,7 +24,6 @@ keyring-core = "1.0.1"
 serde = { version = "1", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
 tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-clipboard-manager = "2"
 thiserror = "2.0.21"
 # `rt` for `spawn_blocking`, `sync` for the rewrite session's cancel signal,
 # `time` for its 30-second timeout.
