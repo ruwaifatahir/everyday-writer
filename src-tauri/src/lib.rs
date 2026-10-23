@@ -45,7 +45,6 @@ pub fn run() {
         // Single instance must be registered first, as its docs require.
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
         .plugin(tauri_plugin_autostart::Builder::new().build())
-        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             settings_window::get_settings,
