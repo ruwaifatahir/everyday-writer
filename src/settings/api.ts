@@ -3,7 +3,19 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-export type ProviderKind = "openai" | "anthropic" | "gemini" | "custom";
+export type ProviderKind =
+  | "openai"
+  | "anthropic"
+  | "gemini"
+  | "openrouter"
+  | "ollama"
+  | "custom";
+
+export interface ModelList {
+  names: string[];
+  /** False when these are built-in suggestions because the list couldn't be fetched. */
+  fromProvider: boolean;
+}
 
 export interface Settings {
   provider: ProviderKind;
@@ -25,6 +37,14 @@ export function isKeySaved(provider: ProviderKind): Promise<boolean> {
 
 export function saveApiKey(provider: ProviderKind, key: string): Promise<void> {
   return invoke("save_api_key", { provider, key });
+}
+
+/** Never rejects for a provider problem: falls back to built-in suggestions. */
+export function listModels(
+  provider: ProviderKind,
+  customBaseUrl: string,
+): Promise<ModelList> {
+  return invoke<ModelList>("list_models", { provider, customBaseUrl });
 }
 
 export function clearApiKey(provider: ProviderKind): Promise<void> {

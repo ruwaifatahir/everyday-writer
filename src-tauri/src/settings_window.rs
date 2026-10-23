@@ -14,7 +14,8 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
-use crate::settings::{ApiKey, AppSettings, ProviderKind, SaveKeyError, Settings};
+use crate::llm::{self, ModelList};
+use crate::settings::{ApiKey, AppSettings, KeyringApiKeys, ProviderKind, SaveKeyError, Settings};
 
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
@@ -32,7 +33,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     }
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
         .title("everyday-writer settings")
-        .inner_size(440.0, 600.0)
+        .inner_size(440.0, 640.0)
         .min_inner_size(380.0, 560.0)
         .maximizable(false)
         .center()
@@ -111,6 +112,26 @@ pub fn save_api_key(
     key: String,
 ) -> Result<(), CommandError> {
     Ok(settings.set_key(provider, &ApiKey::new(key))?)
+}
+
+/// The models `provider` offers, for the model dropdown. Uses `provider`'s
+/// saved key and, for Custom, `custom_base_url`. Falls back to built-in
+/// suggestions when the list can't be fetched; never fails.
+#[tauri::command]
+pub async fn list_models(
+    app: AppHandle,
+    provider: ProviderKind,
+    custom_base_url: String,
+) -> ModelList {
+    let target = Settings {
+        provider,
+        custom_base_url,
+        ..Settings::default()
+    }
+    .model_settings()
+    .provider;
+    let keys = Arc::new(KeyringApiKeys::new(app.config().identifier.clone()));
+    llm::model_list(&target, keys).await
 }
 
 /// Removes `provider`'s key from the Windows Credential Manager.

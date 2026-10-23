@@ -43,6 +43,7 @@ pub fn run() {
             settings_window::is_key_saved,
             settings_window::save_api_key,
             settings_window::clear_api_key,
+            settings_window::list_models,
         ])
         .setup(|app| {
             let startup = load_settings(app)?;

@@ -10,7 +10,45 @@ mod genai_rewriter;
 
 use std::future::Future;
 
-pub use genai_rewriter::GenaiRewriter;
+use serde::Serialize;
+
+pub use genai_rewriter::{GenaiRewriter, model_list};
+
+use crate::settings::ProviderKind;
+
+/// Model names for the settings dropdown. The user can always type a name
+/// that isn't listed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelList {
+    /// Model names exactly as the provider expects them.
+    pub names: Vec<String>,
+    /// `true` if the names came from the provider, `false` if they are the
+    /// built-in suggestions because the list couldn't be fetched.
+    pub from_provider: bool,
+}
+
+/// A short built-in list of model names per provider, shown when the
+/// provider's own list can't be fetched. Custom has none: its models depend
+/// entirely on the server.
+pub fn suggested_models(provider: ProviderKind) -> &'static [&'static str] {
+    match provider {
+        ProviderKind::OpenAi => &["gpt-5-mini", "gpt-4.1-mini", "gpt-4.1"],
+        ProviderKind::Anthropic => &["claude-haiku-4-5", "claude-sonnet-4-5"],
+        ProviderKind::Gemini => &[
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-pro",
+        ],
+        ProviderKind::OpenRouter => &[
+            "openai/gpt-4.1-mini",
+            "anthropic/claude-haiku-4.5",
+            "google/gemini-2.5-flash",
+        ],
+        ProviderKind::Ollama => &["llama3.2", "qwen2.5", "gemma3"],
+        ProviderKind::Custom => &[],
+    }
+}
 
 /// Rewrites a selection by following the active instruction set.
 ///

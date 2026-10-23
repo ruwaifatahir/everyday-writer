@@ -18,3 +18,12 @@ Spec: `.scratch/v1-rewrite/spec.md`
 - [ ] The model list is fetched with the same explicit service target, never environment variables
 - [ ] Checked once against a local Ollama and LM Studio with no key; LM Studio's default port confirmed and noted
 - [ ] Offline, the dropdown falls back to the built-in list and still accepts a typed name
+
+## Comments
+
+**Implementer (ticket/09-providers):**
+- No local Ollama or LM Studio was running during implementation, so the check against real servers is still to do by hand: Ollama at `http://localhost:11434` (no key) and LM Studio as Custom at `http://localhost:1234/v1` with a blank key. Confirm that LM Studio accepts the empty `Authorization: Bearer ` header and that 1234 is its default port, then record the result here.
+- Port 1234 and auth being off by default come from LM Studio's docs (https://lmstudio.ai/docs/developer/core/authentication). They are not yet confirmed against a running server.
+- The settings window hides the key field for Ollama, because genai's Ollama adapter never sends a key. Custom shows the field as "API key (optional)".
+- The model list uses the provider's saved key. A key typed into the field but not yet saved isn't used, so the list refreshes after Save.
+- The built-in suggestions in `llm::suggested_models` are a best guess at current model names. Check them before release.

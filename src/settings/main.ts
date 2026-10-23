@@ -9,6 +9,7 @@ import {
   errorMessage,
   getSettings,
   isKeySaved,
+  listModels,
   type ProviderKind,
   type Settings,
   saveApiKey,
@@ -19,16 +20,25 @@ const PROVIDER_NAMES: Record<ProviderKind, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   gemini: "Gemini",
+  openrouter: "OpenRouter",
+  ollama: "Ollama",
   custom: "Custom",
 };
 
-// Example names only, shown as placeholders. The user always types the model.
+// Example names only, shown as placeholders.
 const MODEL_EXAMPLES: Record<ProviderKind, string> = {
   openai: "e.g. gpt-4.1-mini",
   anthropic: "e.g. claude-haiku-4-5",
   gemini: "e.g. gemini-2.5-flash",
+  openrouter: "e.g. openai/gpt-4.1-mini",
+  ollama: "e.g. llama3.2",
   custom: "e.g. llama-3.1-8b-instruct",
 };
+
+/** Providers that work without a key. Ollama never sends one at all. */
+function keyIsOptional(provider: ProviderKind): boolean {
+  return provider === "ollama" || provider === "custom";
+}
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -39,7 +49,11 @@ function element<T extends HTMLElement>(id: string): T {
 const form = element<HTMLFormElement>("settings");
 const baseUrlField = element<HTMLDivElement>("base-url-field");
 const baseUrlInput = element<HTMLInputElement>("base-url");
+const providerHint = element<HTMLParagraphElement>("provider-hint");
 const modelInput = element<HTMLInputElement>("model");
+const modelOptions = element<HTMLDataListElement>("model-options");
+const modelHint = element<HTMLParagraphElement>("model-hint");
+const keyField = element<HTMLDivElement>("key-field");
 const keyLabel = element<HTMLLabelElement>("key-label");
 const keySaved = element<HTMLDivElement>("key-saved");
 const keySavedText = element<HTMLSpanElement>("key-saved-text");
@@ -89,9 +103,58 @@ function selectedProvider(): ProviderKind {
 
 function renderProvider(): void {
   const custom = view.provider === "custom";
+  const ollama = view.provider === "ollama";
   baseUrlField.hidden = !custom;
+  providerHint.hidden = !ollama;
+  keyField.hidden = ollama;
   modelInput.placeholder = MODEL_EXAMPLES[view.provider];
-  keyLabel.textContent = custom ? "API key (optional)" : "API key";
+  keyLabel.textContent = keyIsOptional(view.provider)
+    ? "API key (optional)"
+    : "API key";
+}
+
+/** Counts list requests, so a slow answer for an old provider is dropped. */
+let modelRequest = 0;
+
+/**
+ * Fills the model dropdown from the provider's own list, or the built-in
+ * suggestions if it can't be fetched. The field always accepts a typed name.
+ */
+async function loadModels(): Promise<void> {
+  const request = ++modelRequest;
+  const provider = view.provider;
+  const name = PROVIDER_NAMES[provider];
+  const baseUrl = baseUrlInput.value.trim();
+  if (provider === "custom" && !isHttpUrl(baseUrl)) {
+    modelOptions.replaceChildren();
+    modelHint.textContent =
+      "Add the base URL to see its models, or type a model name.";
+    return;
+  }
+  modelHint.textContent = `Loading ${name} models…`;
+  let names: string[] = [];
+  let fromProvider = false;
+  try {
+    ({ names, fromProvider } = await listModels(provider, baseUrl));
+  } catch {
+    // Treated like any other failure: no list, typing still works.
+  }
+  if (request !== modelRequest) return;
+  modelOptions.replaceChildren(
+    ...names.map((model) => {
+      const option = document.createElement("option");
+      option.value = model;
+      return option;
+    }),
+  );
+  if (fromProvider) {
+    modelHint.textContent = `${names.length} ${name} models. Pick one or type any name.`;
+  } else if (names.length > 0) {
+    modelHint.textContent = `Couldn't load ${name}'s model list, so these are suggestions. You can type any name.`;
+  } else {
+    modelHint.textContent =
+      "Couldn't load the model list. Type the model name exactly as the server lists it.";
+  }
 }
 
 function renderKey(): void {
@@ -103,10 +166,9 @@ function renderKey(): void {
   keySavedText.textContent = "Key saved";
   keyClear.textContent = view.confirmingClear ? "Confirm clear" : "Clear";
   keyClear.classList.toggle("confirming", view.confirmingClear);
-  keyInput.placeholder =
-    view.provider === "custom"
-      ? "Leave empty for local servers"
-      : `Paste your ${name} key`;
+  keyInput.placeholder = keyIsOptional(view.provider)
+    ? "Leave empty for local servers"
+    : `Paste your ${name} key`;
 }
 
 async function loadKeyState(): Promise<void> {
@@ -156,7 +218,8 @@ async function save(): Promise<void> {
   clearStatus();
   const settings = readForm();
   if (!settings) return;
-  const key = keyInput.value.trim();
+  // Ollama never sends a key, so none is saved for it.
+  const key = settings.provider === "ollama" ? "" : keyInput.value.trim();
   saveButton.disabled = true;
   try {
     await saveSettings(settings);
@@ -167,6 +230,8 @@ async function save(): Promise<void> {
     resetKeyEntry();
     renderKey();
     showStatus("Saved", "ok");
+    // A new key or base URL can unlock the provider's own list.
+    void loadModels();
   } catch (error) {
     showStatus(errorMessage(error), "error");
   } finally {
@@ -199,6 +264,10 @@ async function clearKey(): Promise<void> {
 
 form.addEventListener("change", (event) => {
   const target = event.target as HTMLInputElement;
+  if (target === baseUrlInput) {
+    void loadModels();
+    return;
+  }
   if (target.name !== "provider") return;
   view.provider = selectedProvider();
   resetKeyEntry();
@@ -206,6 +275,7 @@ form.addEventListener("change", (event) => {
   renderProvider();
   renderKey();
   void loadKeyState();
+  void loadModels();
 });
 
 form.addEventListener("input", (event) => {
@@ -254,6 +324,7 @@ async function init(): Promise<void> {
   }
   renderProvider();
   renderKey();
+  void loadModels();
   await loadKeyState();
   document.body.dataset.ready = "";
 }

@@ -21,8 +21,11 @@
           <label><input type="radio" name="provider" value="openai" checked /><span>OpenAI</span></label>
           <label><input type="radio" name="provider" value="anthropic" /><span>Anthropic</span></label>
           <label><input type="radio" name="provider" value="gemini" /><span>Gemini</span></label>
+          <label><input type="radio" name="provider" value="openrouter" /><span>OpenRouter</span></label>
+          <label><input type="radio" name="provider" value="ollama" /><span>Ollama</span></label>
           <label><input type="radio" name="provider" value="custom" /><span>Custom</span></label>
         </div>
+        <p class="hint" id="provider-hint" hidden>Uses Ollama on this computer at localhost:11434. No key needed.</p>
       </fieldset>
 
       <div class="field" id="base-url-field" hidden>
@@ -36,16 +39,24 @@
           placeholder="http://localhost:1234/v1"
           aria-describedby="base-url-hint"
         />
-        <p class="hint" id="base-url-hint">Any service that speaks the OpenAI chat API.</p>
+        <p class="hint" id="base-url-hint">Any service that speaks the OpenAI chat API, such as LM Studio or Vercel AI Gateway.</p>
       </div>
 
       <div class="field">
         <label class="label" for="model">Model</label>
-        <input id="model" name="model" type="text" spellcheck="false" aria-describedby="model-hint" />
-        <p class="hint" id="model-hint">The model name exactly as your provider lists it.</p>
+        <input
+          id="model"
+          name="model"
+          type="text"
+          list="model-options"
+          spellcheck="false"
+          aria-describedby="model-hint"
+        />
+        <datalist id="model-options"></datalist>
+        <p class="hint" id="model-hint" aria-live="polite">Pick from the list or type any model name.</p>
       </div>
 
-      <div class="field">
+      <div class="field" id="key-field">
         <label class="label" for="key" id="key-label">API key</label>
 
         <div class="key-saved" id="key-saved" hidden>
