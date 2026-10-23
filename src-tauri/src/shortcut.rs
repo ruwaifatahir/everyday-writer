@@ -1,11 +1,12 @@
-//! Global shortcut: registers the rewrite shortcut and reports each press.
+//! Global shortcut: registers the rewrite shortcut, changes it, and reports
+//! each press.
 //!
 //! The `global-shortcut` plugin is registered in [`crate::run`].
 
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-/// The rewrite shortcut until it can be changed in Settings.
+/// The rewrite shortcut until the user picks another one.
 pub const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 
 /// The shortcut couldn't be registered. Holds no detail.
@@ -19,24 +20,305 @@ pub enum ShortcutError {
     Taken,
 }
 
-/// Registers `shortcut` and calls `on_press` each time it goes down.
-/// `on_press` runs on the main thread, so it must return quickly.
+/// The shortcut couldn't be changed. The previous one still works.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ChangeError {
+    /// The new shortcut was refused.
+    #[error(transparent)]
+    Shortcut(#[from] ShortcutError),
+    /// The new shortcut worked but couldn't be saved, so it was dropped.
+    #[error("the shortcut couldn't be saved")]
+    Save,
+}
+
+/// Parses `text` into a shortcut the app accepts: Ctrl, Alt or Win, any
+/// Shift, and one key. Shift alone isn't enough, as it would take over a
+/// capital letter or symbol while the user types.
 ///
 /// # Errors
 ///
-/// Returns [`ShortcutError::Invalid`] if `shortcut` can't be parsed and
-/// [`ShortcutError::Taken`] if Windows refuses it.
-pub fn register(
-    app: &AppHandle,
-    shortcut: &str,
-    on_press: impl Fn(&AppHandle) + Send + Sync + 'static,
-) -> Result<(), ShortcutError> {
-    let shortcut: Shortcut = shortcut.parse().map_err(|_| ShortcutError::Invalid)?;
-    app.global_shortcut()
-        .on_shortcut(shortcut, move |app, _shortcut, event| {
-            if event.state == ShortcutState::Pressed {
-                on_press(app);
+/// Returns [`ShortcutError::Invalid`] if `text` isn't such a shortcut.
+pub fn parse(text: &str) -> Result<Shortcut, ShortcutError> {
+    let shortcut: Shortcut = text.trim().parse().map_err(|_| ShortcutError::Invalid)?;
+    let required = tauri_plugin_global_shortcut::Modifiers::CONTROL
+        | tauri_plugin_global_shortcut::Modifiers::ALT
+        | tauri_plugin_global_shortcut::Modifiers::SUPER;
+    if shortcut.mods.intersects(required) {
+        Ok(shortcut)
+    } else {
+        Err(ShortcutError::Invalid)
+    }
+}
+
+/// The system's global shortcuts. A port, so the change rules can be tested
+/// without Windows.
+pub trait Hotkeys {
+    /// Registers `shortcut` so pressing it starts a rewrite.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ShortcutError::Taken`] if Windows refuses it.
+    fn register(&self, shortcut: Shortcut) -> Result<(), ShortcutError>;
+
+    /// Stops listening for `shortcut`. Does nothing if it isn't registered.
+    fn unregister(&self, shortcut: Shortcut);
+
+    /// Whether this app has `shortcut` registered.
+    fn is_registered(&self, shortcut: Shortcut) -> bool;
+}
+
+/// Changes the rewrite shortcut from `current` to `new`, never leaving the
+/// user without a working one: `new` is registered first, then saved with
+/// `save`, and only then is `current` released. Picking the shortcut that's
+/// already in use is a no-op, unless it isn't registered (it failed at
+/// startup), in which case it is tried again.
+///
+/// # Errors
+///
+/// Returns [`ChangeError::Shortcut`] if `new` is invalid or taken, and
+/// [`ChangeError::Save`] if saving fails. `current` stays registered then.
+pub fn change<E>(
+    hotkeys: &impl Hotkeys,
+    current: &str,
+    new: &str,
+    save: impl FnOnce(&str) -> Result<(), E>,
+) -> Result<(), ChangeError> {
+    let new_shortcut = parse(new)?;
+    let current_shortcut = parse(current).ok();
+    let unchanged = current_shortcut == Some(new_shortcut);
+    if unchanged && hotkeys.is_registered(new_shortcut) {
+        return Ok(());
+    }
+    hotkeys.register(new_shortcut)?;
+    if save(new.trim()).is_err() {
+        if !unchanged {
+            hotkeys.unregister(new_shortcut);
+        }
+        return Err(ChangeError::Save);
+    }
+    if let Some(current_shortcut) = current_shortcut.filter(|_| !unchanged) {
+        hotkeys.unregister(current_shortcut);
+    }
+    Ok(())
+}
+
+/// The real global shortcuts, through the Tauri plugin. Each press calls
+/// `on_press`, which runs on the main thread and must return quickly.
+pub struct TauriHotkeys {
+    app: AppHandle,
+    on_press: fn(&AppHandle),
+}
+
+impl TauriHotkeys {
+    /// Global shortcuts that call `on_press` when pressed.
+    pub fn new(app: AppHandle, on_press: fn(&AppHandle)) -> Self {
+        Self { app, on_press }
+    }
+}
+
+impl Hotkeys for TauriHotkeys {
+    /// Any error from a valid shortcut counts as taken: `RegisterHotKey`
+    /// failing on a valid combination almost always means another app holds
+    /// it. The plugin reports errors only as text, so they aren't inspected.
+    fn register(&self, shortcut: Shortcut) -> Result<(), ShortcutError> {
+        let on_press = self.on_press;
+        self.app
+            .global_shortcut()
+            .on_shortcut(shortcut, move |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    on_press(app);
+                }
+            })
+            .map_err(|_| ShortcutError::Taken)
+    }
+
+    fn unregister(&self, shortcut: Shortcut) {
+        if self.app.global_shortcut().unregister(shortcut).is_err() {
+            tracing::warn!("the old shortcut couldn't be released");
+        }
+    }
+
+    fn is_registered(&self, shortcut: Shortcut) -> bool {
+        self.app.global_shortcut().is_registered(shortcut)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    use super::{ChangeError, Hotkeys, ShortcutError, change, parse};
+
+    /// Global shortcuts in memory. `taken` are held by "another app".
+    #[derive(Default)]
+    struct FakeHotkeys {
+        taken: HashSet<Shortcut>,
+        registered: RefCell<HashSet<Shortcut>>,
+    }
+
+    impl FakeHotkeys {
+        fn with(registered: &str) -> Self {
+            let hotkeys = Self::default();
+            hotkeys.registered.borrow_mut().insert(shortcut(registered));
+            hotkeys
+        }
+
+        fn taken(mut self, taken: &str) -> Self {
+            self.taken.insert(shortcut(taken));
+            self
+        }
+
+        fn works(&self, text: &str) -> bool {
+            self.registered.borrow().contains(&shortcut(text))
+        }
+
+        fn count(&self) -> usize {
+            self.registered.borrow().len()
+        }
+    }
+
+    impl Hotkeys for FakeHotkeys {
+        fn register(&self, shortcut: Shortcut) -> Result<(), ShortcutError> {
+            if self.taken.contains(&shortcut) || !self.registered.borrow_mut().insert(shortcut) {
+                return Err(ShortcutError::Taken);
             }
-        })
-        .map_err(|_| ShortcutError::Taken)
+            Ok(())
+        }
+
+        fn unregister(&self, shortcut: Shortcut) {
+            self.registered.borrow_mut().remove(&shortcut);
+        }
+
+        fn is_registered(&self, shortcut: Shortcut) -> bool {
+            self.registered.borrow().contains(&shortcut)
+        }
+    }
+
+    fn shortcut(text: &str) -> Shortcut {
+        text.parse().unwrap()
+    }
+
+    /// A `save` that records what it saved.
+    fn saving(saved: &RefCell<Option<String>>) -> impl FnOnce(&str) -> Result<(), ()> + '_ {
+        |text| {
+            *saved.borrow_mut() = Some(text.to_owned());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_default_shortcut_is_valid() {
+        assert!(parse(super::DEFAULT_SHORTCUT).is_ok());
+    }
+
+    #[test]
+    fn a_shortcut_needs_ctrl_alt_or_win() {
+        assert!(parse("Alt+R").is_ok());
+        assert!(parse("Super+Shift+K").is_ok());
+        assert_eq!(parse("Shift+A"), Err(ShortcutError::Invalid));
+        assert_eq!(parse("Space"), Err(ShortcutError::Invalid));
+    }
+
+    #[test]
+    fn text_that_is_not_a_shortcut_is_invalid() {
+        assert_eq!(parse("Ctrl+Shift+"), Err(ShortcutError::Invalid));
+        assert_eq!(parse("Ctrl+Banana"), Err(ShortcutError::Invalid));
+        assert_eq!(parse(""), Err(ShortcutError::Invalid));
+    }
+
+    #[test]
+    fn a_new_shortcut_replaces_the_old_one_and_is_saved() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved = RefCell::new(None);
+
+        change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", saving(&saved)).unwrap();
+
+        assert!(hotkeys.works("Alt+Shift+R"));
+        assert!(!hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(saved.into_inner().as_deref(), Some("Alt+Shift+R"));
+    }
+
+    #[test]
+    fn a_shortcut_held_by_another_app_is_refused_and_the_old_one_keeps_working() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space").taken("Alt+Shift+R");
+        let saved = RefCell::new(None);
+
+        let result = change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", saving(&saved));
+
+        assert_eq!(result, Err(ChangeError::Shortcut(ShortcutError::Taken)));
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 1);
+        assert_eq!(saved.into_inner(), None);
+    }
+
+    #[test]
+    fn an_invalid_shortcut_is_refused_and_the_old_one_keeps_working() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved = RefCell::new(None);
+
+        let result = change(&hotkeys, "Ctrl+Shift+Space", "Shift+A", saving(&saved));
+
+        assert_eq!(result, Err(ChangeError::Shortcut(ShortcutError::Invalid)));
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(saved.into_inner(), None);
+    }
+
+    #[test]
+    fn a_shortcut_that_cannot_be_saved_is_dropped_and_the_old_one_keeps_working() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+
+        let result = change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", |_| Err(()));
+
+        assert_eq!(result, Err(ChangeError::Save));
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 1);
+    }
+
+    #[test]
+    fn picking_the_shortcut_already_in_use_changes_nothing() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved = RefCell::new(None);
+
+        change(
+            &hotkeys,
+            "Ctrl+Shift+Space",
+            "ctrl+shift+space",
+            saving(&saved),
+        )
+        .unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(saved.into_inner(), None);
+    }
+
+    #[test]
+    fn picking_a_shortcut_that_failed_at_startup_tries_it_again() {
+        let hotkeys = FakeHotkeys::default();
+        let saved = RefCell::new(None);
+
+        change(
+            &hotkeys,
+            "Ctrl+Shift+Space",
+            "Ctrl+Shift+Space",
+            saving(&saved),
+        )
+        .unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(saved.into_inner().as_deref(), Some("Ctrl+Shift+Space"));
+    }
+
+    #[test]
+    fn a_new_shortcut_works_even_if_the_saved_one_never_did() {
+        let hotkeys = FakeHotkeys::default();
+        let saved = RefCell::new(None);
+
+        change(&hotkeys, "Ctrl+Banana", "Alt+Shift+R", saving(&saved)).unwrap();
+
+        assert!(hotkeys.works("Alt+Shift+R"));
+        assert_eq!(saved.into_inner().as_deref(), Some("Alt+Shift+R"));
+    }
 }

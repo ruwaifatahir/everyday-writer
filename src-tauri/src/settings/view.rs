@@ -121,6 +121,23 @@ impl AppSettings {
         Ok(())
     }
 
+    /// Applies `change` to a copy of the current settings, saves it, then
+    /// makes it current. Use it to change some settings without touching the
+    /// rest.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SettingsError`] if the file can't be written. The current
+    /// settings stay unchanged then.
+    pub fn modify(&self, change: impl FnOnce(&mut Settings)) -> Result<(), SettingsError> {
+        let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        let mut changed = current.clone();
+        change(&mut changed);
+        self.file.save(&changed)?;
+        *current = changed;
+        Ok(())
+    }
+
     /// Whether `provider` has a saved key. A failing store counts as no key.
     pub fn is_key_saved(&self, provider: ProviderKind) -> bool {
         self.keys.has_key(provider).unwrap_or(false)
@@ -278,6 +295,7 @@ mod tests {
             provider: ProviderKind::Custom,
             model: "local-model".to_owned(),
             custom_base_url: "http://localhost:1234/v1".to_owned(),
+            ..Settings::default()
         };
         let (app, _) = open(&path, Arc::default());
         app.update(saved.clone()).unwrap();
@@ -286,6 +304,25 @@ mod tests {
 
         assert_eq!(startup, Startup::Loaded);
         assert_eq!(restarted.settings(), saved);
+    }
+
+    #[test]
+    fn a_change_to_one_setting_keeps_the_others_and_survives_a_restart() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        app.update(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+
+        app.modify(|s| s.shortcut = "Alt+Shift+R".to_owned())
+            .unwrap();
+        let (restarted, _) = open(&path, Arc::default());
+
+        let expected = Settings {
+            shortcut: "Alt+Shift+R".to_owned(),
+            ..settings(ProviderKind::Gemini, "gemini-test")
+        };
+        assert_eq!(app.settings(), expected);
+        assert_eq!(restarted.settings(), expected);
     }
 
     #[test]
@@ -344,6 +381,7 @@ mod tests {
             provider: ProviderKind::Custom,
             model: " local-model ".to_owned(),
             custom_base_url: "http://localhost:1234/v1".to_owned(),
+            ..Settings::default()
         })
         .unwrap();
 
@@ -434,6 +472,7 @@ mod tests {
             provider: ProviderKind::Custom,
             model: "local-model".to_owned(),
             custom_base_url: "localhost:1234".to_owned(),
+            ..Settings::default()
         })
         .unwrap();
 

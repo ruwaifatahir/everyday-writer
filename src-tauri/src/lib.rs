@@ -1,9 +1,10 @@
 //! everyday-writer: rewrites text selected in any app.
 //!
 //! The app runs in the background with only a tray icon. It opens the
-//! settings window on its own only on first launch, and a second launch
-//! exits right away.
+//! settings window on its own on first launch and when the shortcut can't be
+//! registered. A second launch opens Settings in the running app and exits.
 
+pub mod autostart;
 pub mod capture;
 pub mod clipboard;
 pub mod live_rewriter;
@@ -21,12 +22,15 @@ pub mod win32;
 
 use std::sync::Arc;
 
-use tauri::{App, Manager, RunEvent};
+use tauri::{App, AppHandle, Manager, RunEvent};
+use tauri_plugin_notification::NotificationExt;
 
+use autostart::{Autostart, TauriAutostart};
 use live_rewriter::LiveRewriter;
 use popup::{AppSession, TauriPopup};
 use session::{Event, RewriteSession};
 use settings::{AppSettings, KeyringApiKeys, SettingsFile, Startup};
+use shortcut::{Hotkeys, ShortcutError, TauriHotkeys};
 use text_bridge::WindowsTextBridge;
 
 /// Starts the background app.
@@ -43,10 +47,14 @@ pub fn run() {
 
     let built = tauri::Builder::default()
         // Single instance must be registered first, as its docs require.
-        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
+        // A second launch exits and opens Settings in this one.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            settings_window::open_later(app);
+        }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             settings_window::get_settings,
             settings_window::save_settings,
@@ -54,6 +62,9 @@ pub fn run() {
             settings_window::save_api_key,
             settings_window::clear_api_key,
             settings_window::list_models,
+            settings_window::set_shortcut,
+            settings_window::is_shortcut_working,
+            settings_window::set_start_with_windows,
             popup::popup_state,
             popup::popup_replace,
             popup::popup_copy,
@@ -64,7 +75,14 @@ pub fn run() {
             let startup = load_settings(app)?;
             start_rewrite_session(app)?;
             tray::init(app)?;
-            if opens_settings_at_startup(startup) && settings_window::open(app.handle()).is_err() {
+            apply_start_with_windows(app);
+            let registered = register_saved_shortcut(app);
+            if let Err(error) = registered {
+                notify_shortcut_failed(app.handle(), error);
+            }
+            if (opens_settings_at_startup(startup) || registered.is_err())
+                && settings_window::open(app.handle()).is_err()
+            {
                 tracing::warn!("the settings window could not open");
             }
             tracing::info!("background app started");
@@ -98,7 +116,7 @@ fn load_settings(app: &App) -> tauri::Result<Startup> {
 }
 
 /// Wires the rewrite session to Windows, the AI provider, the settings and
-/// the popup, creates the hidden popup and registers the shortcut.
+/// the popup, and creates the hidden popup.
 fn start_rewrite_session(app: &App) -> tauri::Result<()> {
     let settings = Arc::clone(app.state::<Arc<AppSettings>>().inner());
     let keys = KeyringApiKeys::new(app.config().identifier.clone());
@@ -112,13 +130,51 @@ fn start_rewrite_session(app: &App) -> tauri::Result<()> {
     );
     app.manage(Arc::new(session));
     popup::create(app.handle())?;
-    let registered = shortcut::register(app.handle(), shortcut::DEFAULT_SHORTCUT, |app| {
+    Ok(())
+}
+
+/// Registers the saved shortcut and hands the global shortcuts to Tauri's
+/// state for the settings window.
+fn register_saved_shortcut(app: &App) -> Result<(), ShortcutError> {
+    let saved = app.state::<Arc<AppSettings>>().settings().shortcut;
+    let hotkeys = TauriHotkeys::new(app.handle().clone(), |app| {
         popup::send(app, Event::ShortcutPressed);
     });
+    let registered = shortcut::parse(&saved).and_then(|parsed| hotkeys.register(parsed));
+    app.manage(hotkeys);
     if registered.is_err() {
         tracing::warn!("the rewrite shortcut couldn't be registered");
     }
-    Ok(())
+    registered
+}
+
+/// Tells the user, with a tray notification, that the shortcut doesn't work.
+fn notify_shortcut_failed(app: &AppHandle, error: ShortcutError) {
+    let body = match error {
+        ShortcutError::Taken => "Your shortcut is used by another app. Pick a new one in Settings.",
+        ShortcutError::Invalid => "Your saved shortcut isn't valid. Pick a new one in Settings.",
+    };
+    let shown = app
+        .notification()
+        .builder()
+        .title("everyday-writer")
+        .body(body)
+        .show();
+    if shown.is_err() {
+        tracing::warn!("the shortcut notification couldn't be shown");
+    }
+}
+
+/// Makes the Windows startup entry match the saved setting. On first launch
+/// the setting is on, so the app starts with Windows from then on.
+fn apply_start_with_windows(app: &App) {
+    let enabled = app
+        .state::<Arc<AppSettings>>()
+        .settings()
+        .start_with_windows;
+    if TauriAutostart(app.handle().clone()).set(enabled).is_err() {
+        tracing::warn!("the Windows startup entry couldn't be updated");
+    }
 }
 
 /// Settings open on their own only when there is nothing usable to start

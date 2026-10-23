@@ -68,7 +68,7 @@ impl ProviderKind {
 /// What the settings file holds. Never an API key: those live only in the
 /// keyring. Missing fields load as their defaults, so files written by older
 /// versions still load.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     /// The chosen provider.
@@ -78,6 +78,23 @@ pub struct Settings {
     /// The Custom provider's base URL. Kept while another provider is
     /// chosen, so switching back doesn't lose it.
     pub custom_base_url: String,
+    /// The rewrite shortcut as the user chose it, for example
+    /// `Ctrl+Shift+Space`.
+    pub shortcut: String,
+    /// Whether the app starts when the user signs in to Windows.
+    pub start_with_windows: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            provider: ProviderKind::default(),
+            model: String::new(),
+            custom_base_url: String::new(),
+            shortcut: crate::shortcut::DEFAULT_SHORTCUT.to_owned(),
+            start_with_windows: true,
+        }
+    }
 }
 
 impl Settings {
