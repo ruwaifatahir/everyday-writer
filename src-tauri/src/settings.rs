@@ -17,7 +17,7 @@ pub use instruction_sets::{
     InstructionSet, InstructionSetError, InstructionSetId, InstructionSets, StarterTemplate,
 };
 pub use store::{SettingsError, SettingsFile};
-pub use view::{AppSettings, ChangeError, SaveKeyError, SettingsView, Startup};
+pub use view::{AppSettings, ChangeError, ProviderReadiness, SaveKeyError, SettingsView, Startup};
 
 /// Which provider the user picked, without its details. Keys are stored per
 /// kind, so each provider keeps its own key.
