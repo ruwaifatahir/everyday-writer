@@ -77,7 +77,6 @@ body[data-ready] {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-height: 100vh;
   padding: 24px 28px 20px;
 }
 
@@ -347,6 +346,128 @@ input[aria-invalid="true"]:focus-visible {
   color: var(--danger);
 }
 
+/* Shortcut and startup: applied right away, set apart from the Save form */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.group-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.group-head p {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.shortcut-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-entry .button {
+  height: 34px;
+}
+
+#shortcut {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.field-status:empty {
+  display: none;
+}
+
+.field-status[data-kind="ok"] {
+  color: var(--ok);
+}
+
+.field-status[data-kind="error"] {
+  color: var(--danger);
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+}
+
+.switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 40px;
+  height: 20px;
+  margin: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion) var(--ease),
+    border-color var(--motion) var(--ease);
+}
+
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  background: var(--ink-muted);
+  border-radius: 999px;
+  transition:
+    transform var(--motion) var(--ease),
+    background-color var(--motion) var(--ease);
+}
+
+.switch:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch:checked::before {
+  background: var(--on-accent);
+  transform: translateX(20px);
+}
+
+.switch:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+}
+
+.switch:checked:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.switch:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 /* Scrollbar, for small window sizes */
 
 ::-webkit-scrollbar {
@@ -357,6 +478,257 @@ input[aria-invalid="true"]:focus-visible {
   background: var(--line-strong);
   border: 3px solid var(--surface);
   border-radius: 999px;
+}
+
+/* Instruction sets section */
+
+.sets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 28px 24px;
+}
+
+.sets-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sets-head p {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.set-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.set-row + .set-row {
+  border-top: 1px solid var(--line);
+}
+
+.set-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 6px 4px 12px;
+}
+
+.set-pick {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  align-self: stretch;
+  cursor: pointer;
+}
+
+.set-pick input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.set-pick input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.set-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-row[data-active] .set-name {
+  font-weight: 600;
+}
+
+.set-badge {
+  display: none;
+  flex: none;
+  padding: 1px 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.set-row[data-active] .set-badge {
+  display: inline-block;
+}
+
+.set-line .button {
+  flex: none;
+}
+
+/* Inline editor, opened under a set or at the end for a new one. */
+
+.set-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 12px 12px;
+  background: var(--surface-sunken);
+  border-top: 1px solid var(--line);
+  animation: set-editor-in calc(var(--motion) * 1.5) var(--ease);
+}
+
+.set-row.new .set-editor {
+  border-top: 0;
+}
+
+@keyframes set-editor-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.set-editor textarea {
+  width: 100%;
+  min-height: 132px;
+  padding: 8px 10px;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-bottom-color: var(--line-strong);
+  border-radius: var(--radius);
+  resize: vertical;
+  transition:
+    border-color var(--motion) var(--ease),
+    box-shadow var(--motion) var(--ease);
+}
+
+.set-editor textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+.set-editor textarea:hover {
+  border-color: var(--line-strong);
+}
+
+.set-editor textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.set-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.set-editor-actions .spacer {
+  flex: 1;
+}
+
+.set-editor-actions .button.primary {
+  height: 28px;
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.sets-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-left: -12px;
+  margin-right: -12px;
+}
+
+.button.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.sets-actions #sets-restore {
+  margin-left: auto;
+  color: var(--ink-muted);
+}
+
+.sets-actions #sets-restore:hover {
+  color: var(--ink);
+}
+
+.sets .status:empty {
+  display: none;
+}
+
+/* Restore confirmation */
+
+.confirm {
+  width: min(360px, calc(100vw - 48px));
+  padding: 20px 20px 16px;
+  color: var(--ink);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow:
+    0 8px 24px oklch(0.2 0.02 260 / 0.18),
+    0 2px 6px oklch(0.2 0.02 260 / 0.1);
+}
+
+.confirm[open] {
+  animation: set-editor-in calc(var(--motion) * 1.5) var(--ease);
+}
+
+.confirm::backdrop {
+  background: oklch(0.2 0.02 260 / 0.28);
+}
+
+.confirm h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.confirm p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.confirm-actions .button.primary {
+  min-width: 0;
+  height: 28px;
+  padding: 0 14px;
 }
 
 /* Last, so it beats each component's own `display`. */

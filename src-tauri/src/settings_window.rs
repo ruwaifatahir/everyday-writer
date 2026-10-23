@@ -9,13 +9,15 @@
     reason = "Tauri commands receive `State` by value"
 )]
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
+use crate::autostart::{self, TauriAutostart};
 use crate::llm::{self, ModelList};
 use crate::settings::{ApiKey, AppSettings, KeyringApiKeys, ProviderKind, SaveKeyError, Settings};
+use crate::shortcut::{self, Hotkeys, ShortcutError, TauriHotkeys};
 
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
@@ -33,13 +35,25 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     }
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
         .title("everyday-writer settings")
-        .inner_size(440.0, 640.0)
+        .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
         .maximizable(false)
         .center()
         .focused(true)
         .build()?;
     Ok(())
+}
+
+/// Opens the settings window from a spawned task. Use this from callbacks
+/// that run inside the event loop (the single-instance callback, menu
+/// events): building a window there deadlocks on Windows.
+pub fn open_later(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if open(&app).is_err() {
+            tracing::warn!("the settings window could not open");
+        }
+    });
 }
 
 /// A command failed. Serialized as a short message the window shows as is.
@@ -55,6 +69,34 @@ pub enum CommandError {
     /// An empty key was submitted.
     #[error("Enter a key first.")]
     BlankKey,
+    /// Windows refused the new shortcut. The previous one is kept.
+    #[error("This shortcut is used by another app")]
+    ShortcutTaken,
+    /// The new shortcut isn't a usable combination.
+    #[error("Use Ctrl, Alt or Win together with one other key.")]
+    ShortcutInvalid,
+    /// Windows refused to change its startup list.
+    #[error("Couldn't change the Windows startup setting. Try again.")]
+    Autostart,
+}
+
+impl From<shortcut::ChangeError> for CommandError {
+    fn from(error: shortcut::ChangeError) -> Self {
+        match error {
+            shortcut::ChangeError::Shortcut(ShortcutError::Taken) => Self::ShortcutTaken,
+            shortcut::ChangeError::Shortcut(ShortcutError::Invalid) => Self::ShortcutInvalid,
+            shortcut::ChangeError::Save => Self::SaveSettings,
+        }
+    }
+}
+
+impl From<autostart::ChangeError> for CommandError {
+    fn from(error: autostart::ChangeError) -> Self {
+        match error {
+            autostart::ChangeError::Autostart(_) => Self::Autostart,
+            autostart::ChangeError::Save => Self::SaveSettings,
+        }
+    }
 }
 
 impl Serialize for CommandError {
@@ -78,7 +120,9 @@ pub fn get_settings(settings: State<'_, Arc<AppSettings>>) -> Settings {
     settings.settings()
 }
 
-/// Saves the provider, model and Custom base URL.
+/// Saves the provider, model and Custom base URL. Other settings in
+/// `new_settings` are ignored: the shortcut and start-with-Windows have their
+/// own commands, because they must reach Windows first.
 ///
 /// # Errors
 ///
@@ -89,7 +133,11 @@ pub fn save_settings(
     new_settings: Settings,
 ) -> Result<(), CommandError> {
     settings
-        .update(new_settings)
+        .modify(|current| {
+            current.provider = new_settings.provider;
+            current.model = new_settings.model;
+            current.custom_base_url = new_settings.custom_base_url;
+        })
         .map_err(|_| CommandError::SaveSettings)
 }
 
@@ -147,4 +195,60 @@ pub fn clear_api_key(
     settings
         .clear_key(provider)
         .map_err(|_| CommandError::KeyStore)
+}
+
+/// Serializes shortcut changes, so two quick changes can't both read the
+/// same previous shortcut.
+static SHORTCUT_CHANGE: Mutex<()> = Mutex::new(());
+
+/// Changes the rewrite shortcut. The new one works right away and is saved;
+/// if Windows refuses it, the previous one keeps working.
+///
+/// # Errors
+///
+/// Returns [`CommandError::ShortcutTaken`] if another app holds it,
+/// [`CommandError::ShortcutInvalid`] if it isn't a usable combination and
+/// [`CommandError::SaveSettings`] if it can't be saved.
+#[tauri::command(async)]
+pub fn set_shortcut(
+    settings: State<'_, Arc<AppSettings>>,
+    hotkeys: State<'_, TauriHotkeys>,
+    shortcut: String,
+) -> Result<(), CommandError> {
+    let _changing = SHORTCUT_CHANGE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let current = settings.settings().shortcut;
+    shortcut::change(hotkeys.inner(), &current, &shortcut, |new| {
+        settings.modify(|s| new.clone_into(&mut s.shortcut))
+    })?;
+    Ok(())
+}
+
+/// Whether the saved shortcut is registered, so Settings can warn when it
+/// failed at startup.
+#[tauri::command(async)]
+pub fn is_shortcut_working(
+    settings: State<'_, Arc<AppSettings>>,
+    hotkeys: State<'_, TauriHotkeys>,
+) -> bool {
+    shortcut::parse(&settings.settings().shortcut).is_ok_and(|saved| hotkeys.is_registered(saved))
+}
+
+/// Turns start-with-Windows on or off.
+///
+/// # Errors
+///
+/// Returns [`CommandError::Autostart`] if Windows refuses and
+/// [`CommandError::SaveSettings`] if the setting can't be saved.
+#[tauri::command(async)]
+pub fn set_start_with_windows(
+    app: AppHandle,
+    settings: State<'_, Arc<AppSettings>>,
+    enabled: bool,
+) -> Result<(), CommandError> {
+    autostart::change(&TauriAutostart(app), enabled, |enabled| {
+        settings.modify(|s| s.start_with_windows = enabled)
+    })?;
+    Ok(())
 }

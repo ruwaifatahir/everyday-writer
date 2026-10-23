@@ -11,10 +11,13 @@ import {
   isKeySaved,
   listModels,
   type ProviderKind,
+  type ProviderSettings,
   type Settings,
   saveApiKey,
   saveSettings,
 } from "./api";
+import { initInstructionSets } from "./instruction-sets";
+import { initLaunch } from "./launch";
 
 const PROVIDER_NAMES: Record<ProviderKind, string> = {
   openai: "OpenAI",
@@ -193,8 +196,8 @@ function isHttpUrl(url: string): boolean {
 }
 
 /** Checks the form and marks the first problem. Returns the settings if valid. */
-function readForm(): Settings | undefined {
-  const settings: Settings = {
+function readForm(): ProviderSettings | undefined {
+  const settings: ProviderSettings = {
     provider: view.provider,
     model: modelInput.value.trim(),
     customBaseUrl: baseUrlInput.value.trim(),
@@ -310,8 +313,9 @@ keyClear.addEventListener("blur", () => {
 });
 
 async function init(): Promise<void> {
+  let settings: Settings | undefined;
   try {
-    const settings = await getSettings();
+    settings = await getSettings();
     view.provider = settings.provider;
     modelInput.value = settings.model;
     baseUrlInput.value = settings.customBaseUrl;
@@ -325,8 +329,11 @@ async function init(): Promise<void> {
   renderProvider();
   renderKey();
   void loadModels();
-  await loadKeyState();
+  await Promise.all([loadKeyState(), initLaunch(settings)]);
   document.body.dataset.ready = "";
 }
 
 void init();
+
+// The Instruction sets section runs on its own; see instruction-sets.ts.
+void initInstructionSets();

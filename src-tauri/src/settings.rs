@@ -4,6 +4,7 @@
 //! Privacy rule: the API key lives only in the OS keyring. Never log it or
 //! write it to a settings file.
 
+mod instruction_sets;
 mod store;
 mod view;
 
@@ -12,17 +13,11 @@ use std::collections::HashMap;
 use keyring_core::Entry;
 use serde::{Deserialize, Serialize};
 
+pub use instruction_sets::{
+    InstructionSet, InstructionSetError, InstructionSetId, InstructionSets, StarterTemplate,
+};
 pub use store::{SettingsError, SettingsFile};
-pub use view::{AppSettings, SaveKeyError, SettingsView, Startup};
-
-/// The instructions of the "Fix & make readable" starter template, the
-/// active instruction set by default.
-pub const FIX_AND_MAKE_READABLE: &str = "\
-Fix spelling, grammar and punctuation mistakes, and make the text easy to read.
-- Split run-on sentences and smooth awkward wording, but keep the writer's meaning, tone and voice.
-- Don't add or remove information.
-- Keep the text in the language it is written in.
-- Keep the formatting, such as line breaks, lists and emoji.";
+pub use view::{AppSettings, ChangeError, SaveKeyError, SettingsView, Startup};
 
 /// Which provider the user picked, without its details. Keys are stored per
 /// kind, so each provider keeps its own key.
@@ -68,7 +63,7 @@ impl ProviderKind {
 /// What the settings file holds. Never an API key: those live only in the
 /// keyring. Missing fields load as their defaults, so files written by older
 /// versions still load.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     /// The chosen provider.
@@ -78,6 +73,27 @@ pub struct Settings {
     /// The Custom provider's base URL. Kept while another provider is
     /// chosen, so switching back doesn't lose it.
     pub custom_base_url: String,
+    /// The instruction sets and the active one. A file without them (first
+    /// launch, or from before instruction sets) gets the starter templates.
+    pub instruction_sets: InstructionSets,
+    /// The rewrite shortcut as the user chose it, for example
+    /// `Ctrl+Shift+Space`.
+    pub shortcut: String,
+    /// Whether the app starts when the user signs in to Windows.
+    pub start_with_windows: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            provider: ProviderKind::default(),
+            model: String::new(),
+            custom_base_url: String::new(),
+            shortcut: crate::shortcut::DEFAULT_SHORTCUT.to_owned(),
+            start_with_windows: true,
+            instruction_sets: InstructionSets::default(),
+        }
+    }
 }
 
 impl Settings {

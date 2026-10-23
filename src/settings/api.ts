@@ -21,14 +21,38 @@ export interface Settings {
   provider: ProviderKind;
   model: string;
   customBaseUrl: string;
+  /** For example `Ctrl+Shift+Space`. Change it with `setShortcut`. */
+  shortcut: string;
+  /** Change it with `setStartWithWindows`. */
+  startWithWindows: boolean;
 }
+
+/** What the Save button saves. The rest has its own commands. */
+export type ProviderSettings = Pick<
+  Settings,
+  "provider" | "model" | "customBaseUrl"
+>;
 
 export function getSettings(): Promise<Settings> {
   return invoke<Settings>("get_settings");
 }
 
-export function saveSettings(newSettings: Settings): Promise<void> {
+export function saveSettings(newSettings: ProviderSettings): Promise<void> {
   return invoke("save_settings", { newSettings });
+}
+
+/** Rejects with "This shortcut is used by another app" if Windows refuses it; the old one stays. */
+export function setShortcut(shortcut: string): Promise<void> {
+  return invoke("set_shortcut", { shortcut });
+}
+
+/** False when the saved shortcut couldn't be registered at startup. */
+export function isShortcutWorking(): Promise<boolean> {
+  return invoke<boolean>("is_shortcut_working");
+}
+
+export function setStartWithWindows(enabled: boolean): Promise<void> {
+  return invoke("set_start_with_windows", { enabled });
 }
 
 export function isKeySaved(provider: ProviderKind): Promise<boolean> {
