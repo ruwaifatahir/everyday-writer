@@ -1,6 +1,6 @@
 [package]
 name = "everyday-writer"
-version = "0.1.0"
+version = "1.0.0"
 description = "Rewrites text selected in any app"
 authors = ["Ruwaifa Tahir"]
 license = "MIT OR Apache-2.0"
