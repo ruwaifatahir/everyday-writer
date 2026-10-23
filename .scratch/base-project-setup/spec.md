@@ -1,4 +1,4 @@
-Labels: ready-for-agent
+Labels: resolved
 
 # Base project setup
 
