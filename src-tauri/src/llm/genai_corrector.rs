@@ -10,6 +10,7 @@
 //! and the provider's response body. It is mapped to [`CorrectionError`]
 //! right away and never logged or formatted.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use genai::adapter::AdapterKind;
@@ -33,10 +34,10 @@ pub struct GenaiCorrector<K> {
     provider: Provider,
     endpoint: Endpoint,
     model: ModelIden,
-    keys: K,
+    keys: Arc<K>,
 }
 
-impl<K: ApiKeySource> GenaiCorrector<K> {
+impl<K: ApiKeySource + 'static> GenaiCorrector<K> {
     /// A corrector for `settings`, reading the API key from `keys` on each
     /// call.
     ///
@@ -68,14 +69,18 @@ impl<K: ApiKeySource> GenaiCorrector<K> {
             provider: settings.provider,
             endpoint,
             model: ModelIden::new(kind, model.to_owned()),
-            keys,
+            keys: Arc::new(keys),
         })
     }
 
-    fn target(&self) -> Result<ServiceTarget, CorrectionError> {
-        let key = self
-            .keys
-            .api_key(&self.provider)
+    /// Reads the key on a blocking thread: the keyring call is synchronous
+    /// and must not stall the async runtime.
+    async fn target(&self) -> Result<ServiceTarget, CorrectionError> {
+        let keys = Arc::clone(&self.keys);
+        let provider = self.provider.clone();
+        let key = tokio::task::spawn_blocking(move || keys.api_key(&provider))
+            .await
+            .map_err(|_| CorrectionError::KeyStore)?
             .map_err(|_| CorrectionError::KeyStore)?
             // Never fall back to genai's default auth: it reads env vars.
             .ok_or(CorrectionError::MissingApiKey)?;
@@ -87,9 +92,9 @@ impl<K: ApiKeySource> GenaiCorrector<K> {
     }
 }
 
-impl<K: ApiKeySource> Corrector for GenaiCorrector<K> {
+impl<K: ApiKeySource + 'static> Corrector for GenaiCorrector<K> {
     async fn correct(&self, instructions: &str, text: &str) -> Result<String, CorrectionError> {
-        let target = self.target()?;
+        let target = self.target().await?;
         let request = chat_request(&CorrectionPrompt::new(instructions, text));
         let response = self
             .client
@@ -190,6 +195,28 @@ mod tests {
         let result = corrector.correct("Fix.", "helo").await;
 
         assert_eq!(result, Err(CorrectionError::KeyStore));
+    }
+
+    /// Records the thread each key read runs on.
+    struct ThreadRecordingKeys(std::sync::Mutex<Option<std::thread::ThreadId>>);
+
+    impl ApiKeySource for ThreadRecordingKeys {
+        fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
+            *self.0.lock().unwrap() = Some(std::thread::current().id());
+            Ok(None)
+        }
+    }
+
+    #[tokio::test]
+    async fn key_is_read_off_the_async_thread() {
+        let keys = ThreadRecordingKeys(std::sync::Mutex::new(None));
+        let corrector = GenaiCorrector::new(openai("gpt-test"), keys).unwrap();
+
+        let _ = corrector.correct("Fix.", "helo").await;
+
+        let read_on = *corrector.keys.0.lock().unwrap();
+        assert!(read_on.is_some());
+        assert_ne!(read_on, Some(std::thread::current().id()));
     }
 
     #[test]

@@ -24,6 +24,8 @@ keyring-core = "1.0.1"
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-clipboard-manager = "2"
 thiserror = "2.0.21"
+# `rt` only, for `spawn_blocking`. genai and Tauri already bring the runtime.
+tokio = { version = "1.54.1", default-features = false, features = ["rt"] }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 
@@ -66,4 +68,4 @@ must_use_candidate = "allow"
 
 [dev-dependencies]
 serde_json = "1"
-tokio = { version = "1.54.1", default-features = false, features = ["macros", "rt"] }
+tokio = { version = "1.54.1", default-features = false, features = ["macros"] }
