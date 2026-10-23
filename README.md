@@ -1,14 +1,14 @@
 # everyday-writer
 
-Background Windows app: select text in any app, press a shortcut, and an LLM fixes typos and grammar. One click replaces the original.
+Background Windows app: select text in any app, press a shortcut, and an LLM rewrites it: typos, grammar, tone. One click replaces the original.
 
 [![CI](https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml/badge.svg)](https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml)
 
 ## What it does
 
-Typos and messy grammar slip into everyday writing, and fixing them usually means copying text into a chatbot, retyping the same instructions and pasting the result back. everyday-writer runs quietly in the background on Windows. Select text in any app and press one shortcut (default `Ctrl+Shift+Space`). It rewrites the text with your own instructions, using the LLM provider you choose (OpenAI, Anthropic, Gemini or any OpenAI-compatible endpoint) and your own API key. A small popup near the mouse shows the result, and one click swaps your original text for the new one. The API key lives in the Windows Credential Manager, your clipboard is restored afterwards, and nothing leaves your machine except the correction request. Full requirements: [docs/PRD.md](docs/PRD.md).
+Typos and messy grammar slip into everyday writing, and fixing them usually means copying text into a chatbot, retyping the same instructions and pasting the result back. everyday-writer runs quietly in the background on Windows. Select text in any app and press one shortcut (default `Ctrl+Shift+Space`). It rewrites the text with your own instructions, using the LLM provider you choose (OpenAI, Anthropic, Gemini, OpenRouter, a local Ollama, or any OpenAI-compatible endpoint) and your own API key. A small popup near the mouse shows the result, and one click swaps your original text for the new one. The API key lives in the Windows Credential Manager, your clipboard is restored afterwards, and nothing leaves your machine except the rewrite request. Windows clipboard history (Win+V) may still show text you rewrite, because the app you copy from adds it there. Full requirements: [docs/PRD.md](docs/PRD.md).
 
-Status: early. The project skeleton is in place; product features are not built yet.
+Download the installer from [Releases](https://github.com/ruwaifatahir/everyday-writer/releases). It isn't code-signed yet, so Windows SmartScreen may warn on first run.
 
 ## Build
 
