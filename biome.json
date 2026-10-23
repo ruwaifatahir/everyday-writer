@@ -10,6 +10,7 @@
       "!src-tauri/gen",
       "!.agents",
       "!.claude",
+      "!skills-lock.json",
       "!**/*.md",
       "!**/*.yaml",
       "!**/*.yml"
