@@ -1,14 +1,15 @@
 //! The Windows text bridge: the rewrite session's [`TextBridge`] port,
-//! built on [`crate::capture`] and [`crate::clipboard`].
+//! built on [`crate::capture`], [`crate::replace`] and [`crate::clipboard`].
 //!
 //! Clipboard and keyboard calls block, so each runs on a blocking thread.
 
 use crate::capture;
 use crate::clipboard;
+use crate::replace;
 use crate::session::{BridgeError, Captured, TextBridge};
 use crate::win32::SourceWindow;
 
-/// Captures and copies text with Win32.
+/// Captures, replaces and copies text with Win32.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WindowsTextBridge;
 
@@ -28,6 +29,18 @@ impl TextBridge for WindowsTextBridge {
     async fn copy(&self, text: &str) -> Result<(), BridgeError> {
         let text = text.to_owned();
         tokio::task::spawn_blocking(move || clipboard::write_text(&text))
+            .await
+            .map_err(|_| BridgeError)?
+    }
+
+    fn is_open(&self, window: &SourceWindow) -> bool {
+        window.is_open()
+    }
+
+    async fn replace(&self, window: &SourceWindow, text: &str) -> Result<(), BridgeError> {
+        let window = *window;
+        let text = text.to_owned();
+        tokio::task::spawn_blocking(move || replace::replace(window, &text))
             .await
             .map_err(|_| BridgeError)?
     }
