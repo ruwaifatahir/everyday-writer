@@ -146,7 +146,8 @@ impl SettingsView for AppSettings {
         }
         match settings.provider {
             ProviderKind::Custom => is_http_url(&settings.custom_base_url),
-            provider => self.is_key_saved(provider),
+            provider if provider.requires_key() => self.is_key_saved(provider),
+            _ => true,
         }
     }
 }
@@ -374,6 +375,29 @@ mod tests {
         app.update(custom).unwrap();
 
         assert!(!without_url);
+        assert!(app.is_provider_ready());
+    }
+
+    #[test]
+    fn ollama_is_ready_without_a_key() {
+        let (app, _) = open(&temp_file(), Arc::default());
+
+        app.update(settings(ProviderKind::Ollama, "llama3.2"))
+            .unwrap();
+
+        assert!(app.is_provider_ready());
+    }
+
+    #[test]
+    fn openrouter_is_not_ready_without_a_key() {
+        let (app, _) = open(&temp_file(), Arc::default());
+
+        app.update(settings(ProviderKind::OpenRouter, "openai/gpt-4.1-mini"))
+            .unwrap();
+        let without_key = app.is_provider_ready();
+        app.set_key(ProviderKind::OpenRouter, &key("k")).unwrap();
+
+        assert!(!without_key);
         assert!(app.is_provider_ready());
     }
 
