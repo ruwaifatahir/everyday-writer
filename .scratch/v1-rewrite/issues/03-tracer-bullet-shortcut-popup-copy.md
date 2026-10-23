@@ -25,7 +25,7 @@ Spec: `.scratch/v1-rewrite/spec.md`
 
 **Blocked by:** 01 (Rename Corrector to Rewriter), 02 (Minimal settings)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Selecting text in Notepad and pressing the shortcut shows the result in the popup
 - [ ] Capture works with an Urdu or Arabic keyboard layout (no literal "c" typed)
@@ -34,6 +34,18 @@ Spec: `.scratch/v1-rewrite/spec.md`
 - [ ] The popup opens near the mouse and is never cut off at a screen edge or split across monitors
 - [ ] Copy, ✕, Esc and click-outside behave as described; closing while working cancels, and a late answer never updates the popup
 - [ ] Text on the user's clipboard is the same after capture as before
-- [ ] Session tests with fake ports cover: no selection, working then result, an unchanged result still shown as a result, Copy, and close while working cancels
-- [ ] Win32 code passes the `unsafe-checker` review, with local `#[expect(unsafe_code)]` and `// SAFETY:` comments
-- [ ] Nothing private is logged
+- [x] Session tests with fake ports cover: no selection, working then result, an unchanged result still shown as a result, Copy, and close while working cancels
+- [x] Win32 code passes the `unsafe-checker` review, with local `#[expect(unsafe_code)]` and `// SAFETY:` comments
+- [x] Nothing private is logged
+
+## Comments
+
+Merged into `feat/v1-rewrite` at 8b7f414. `pnpm check` passes. Left unticked, needs manual verification on Windows:
+
+- Notepad end-to-end rewrite via the shortcut
+- Urdu or Arabic keyboard layout capture
+- Win or Alt held as part of the shortcut
+- No selection: no popup and no sound
+- Popup placement near the mouse, at screen edges and across monitors
+- Copy, ✕, Esc and click-outside in the real popup, including a late answer after cancel
+- Clipboard text unchanged after capture
