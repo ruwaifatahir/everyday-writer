@@ -83,6 +83,38 @@
         <p class="hint" id="key-hint">Stored in Windows Credential Manager, never in a file.</p>
       </div>
 
+      <section class="group" id="launch" aria-labelledby="launch-title">
+        <header class="group-head">
+          <h2 id="launch-title">Shortcut and startup</h2>
+          <p>These apply right away.</p>
+        </header>
+
+        <div class="field">
+          <label class="label" for="shortcut">Shortcut</label>
+          <div class="shortcut-entry">
+            <input
+              id="shortcut"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              aria-describedby="shortcut-hint shortcut-status"
+            />
+            <button type="button" class="button quiet" id="shortcut-apply" hidden>Use this</button>
+          </div>
+          <p class="hint" id="shortcut-hint">Press the keys, or type them like Ctrl+Alt+R. Use Ctrl, Alt or Win.</p>
+          <p class="hint field-status" id="shortcut-status" role="status" aria-live="polite"></p>
+        </div>
+
+        <label class="switch-row" for="start-with-windows">
+          <span class="switch-text">
+            <span class="label">Start with Windows</span>
+            <span class="hint">Opens in the tray when you sign in.</span>
+          </span>
+          <input type="checkbox" role="switch" aria-checked="false" class="switch" id="start-with-windows" />
+        </label>
+        <p class="hint field-status" id="startup-status" role="status" aria-live="polite"></p>
+      </section>
+
       <footer class="actions">
         <p class="status" id="status" role="status" aria-live="polite"></p>
         <button type="submit" class="button primary" id="save">Save</button>
