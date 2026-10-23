@@ -667,7 +667,7 @@ mod tests {
         let list = model_list(&Provider::OpenAi, Arc::new(TestKeys(Ok(None)))).await;
 
         assert!(!list.from_provider);
-        assert!(!list.names.is_empty());
+        assert!(list.names.iter().any(|name| name == "gpt-4.1-mini"));
         assert!(list.names.iter().all(|name| name.starts_with("gpt-")));
     }
 
