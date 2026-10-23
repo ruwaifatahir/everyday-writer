@@ -21,6 +21,10 @@ use tauri::RunEvent;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init();
+    #[cfg(windows)]
+    if settings::init_keyring().is_err() {
+        tracing::warn!("Windows Credential Manager is unavailable; API keys can't be read");
+    }
 
     let app = tauri::Builder::default()
         // Single instance must be registered first, as its docs require.

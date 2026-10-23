@@ -19,8 +19,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+genai = { version = "0.7.0", default-features = false, features = ["native-tls", "system-proxy"] }
+keyring-core = "1.0.1"
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-clipboard-manager = "2"
+thiserror = "2.0.21"
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 
@@ -28,6 +31,9 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+
+[target."cfg(windows)".dependencies]
+windows-native-keyring-store = { version = "1.1.0", default-features = false }
 
 # Size-focused release profile: https://tauri.app/concept/size/
 [profile.release]
@@ -57,3 +63,7 @@ todo = "warn"
 undocumented_unsafe_blocks = "warn"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1.54.1", default-features = false, features = ["macros", "rt"] }
