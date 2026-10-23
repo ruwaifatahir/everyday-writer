@@ -27,7 +27,7 @@ No product behavior is built yet.
 4. As the developer, I want the Rust toolchain pinned to the latest stable MSVC release, so that every machine and CI builds with the same compiler.
 5. As the developer, I want Rust 2024 edition, so that the code uses current language rules.
 6. As a Windows 10 or 11 user, I want the app to run on both versions, so that I can use it on my machine.
-7. As the developer, I want the app ID set to `com.ruwaifacodes.everydaywriter`, so that the installer, autostart entry and keyring entries are uniquely named.
+7. As the developer, I want the app ID set to `com.ruwaifatahir.everydaywriter`, so that the installer, autostart entry and keyring entries are uniquely named.
 8. As the developer, I want the global shortcut plugin added, so that the shortcut feature can be wired later without config work.
 9. As the developer, I want the clipboard plugin added, so that capture and replace can be wired later.
 10. As the developer, I want the single instance plugin added, so that launching the app twice never starts two background copies.

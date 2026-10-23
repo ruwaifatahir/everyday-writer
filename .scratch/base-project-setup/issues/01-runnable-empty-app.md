@@ -1,6 +1,6 @@
 # 01: Runnable empty app
 
-**What to build:** A developer clones the repo, runs one command and an empty everyday-writer window opens. A release build produces a small NSIS installer for Windows 10 and 11. Use the official Tauri v2 `create-tauri-app` scaffold (Vanilla + TypeScript, pnpm), with all demo code removed. Pin the Rust toolchain to latest stable MSVC with edition 2024. Set the app ID to `com.ruwaifacodes.everydaywriter`. Add the size-focused release profile (`codegen-units = 1`, `lto = true`, `opt-level = "s"`, `panic = "abort"`, `strip = true`), `.gitignore` covering Rust, Node and Tauri output, `.editorconfig` and dual MIT + Apache-2.0 licenses.
+**What to build:** A developer clones the repo, runs one command and an empty everyday-writer window opens. A release build produces a small NSIS installer for Windows 10 and 11. Use the official Tauri v2 `create-tauri-app` scaffold (Vanilla + TypeScript, pnpm), with all demo code removed. Pin the Rust toolchain to latest stable MSVC with edition 2024. Set the app ID to `com.ruwaifatahir.everydaywriter`. Add the size-focused release profile (`codegen-units = 1`, `lto = true`, `opt-level = "s"`, `panic = "abort"`, `strip = true`), `.gitignore` covering Rust, Node and Tauri output, `.editorconfig` and dual MIT + Apache-2.0 licenses.
 
 Spec: `.scratch/base-project-setup/spec.md`
 
@@ -13,7 +13,7 @@ Spec: `.scratch/base-project-setup/spec.md`
 - [x] Scaffolded with the official `create-tauri-app`, Vanilla + TypeScript template, pnpm
 - [x] Demo greet command and demo UI removed
 - [x] Rust toolchain pinned to stable MSVC in a toolchain file; Rust edition 2024
-- [x] App ID is `com.ruwaifacodes.everydaywriter`; product name is everyday-writer
+- [x] App ID is `com.ruwaifatahir.everydaywriter`; product name is everyday-writer
 - [x] Release profile matches the spec's size settings
 - [x] Bundle target is NSIS only
 - [x] `.gitignore` and `.editorconfig` present; build output is not tracked
