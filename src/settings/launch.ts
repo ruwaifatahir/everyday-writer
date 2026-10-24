@@ -8,6 +8,8 @@
 import {
   errorMessage,
   isShortcutWorking,
+  pauseShortcut,
+  resumeShortcut,
   type Settings,
   setShortcut,
   setStartWithWindows,
@@ -128,6 +130,8 @@ shortcutInput.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     event.preventDefault();
     resetShortcut();
+    // Ends recording; blur brings the saved shortcut back.
+    shortcutInput.blur();
     return;
   }
   // A combination with Ctrl, Alt or Win is recorded; plain keys type, and
@@ -140,6 +144,33 @@ shortcutInput.addEventListener("keydown", (event) => {
   shortcutInput.value = pressed;
   shortcutStatus.textContent = "";
   renderShortcut();
+});
+
+// While the field has focus the saved shortcut is paused, so pressing it
+// records it instead of starting a rewrite. Rust also resumes it when the
+// window loses focus or closes, in case a resume here never arrives.
+// Calls run one at a time: async commands can otherwise reach Rust out of
+// order, and a quick focus then blur would leave the shortcut paused.
+let pausing: Promise<void> = Promise.resolve();
+
+function inTurn(call: () => Promise<void>): void {
+  pausing = pausing.then(call).catch(() => {
+    // A failed pause keeps the shortcut working, so pressing it won't
+    // record. A failed resume is retried by Rust when the window loses
+    // focus or closes.
+  });
+}
+
+shortcutInput.addEventListener("focus", () => inTurn(pauseShortcut));
+
+function endRecording(): void {
+  inTurn(resumeShortcut);
+}
+
+shortcutInput.addEventListener("blur", endRecording);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) endRecording();
 });
 
 shortcutInput.addEventListener("input", () => {

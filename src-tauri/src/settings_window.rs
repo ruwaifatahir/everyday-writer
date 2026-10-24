@@ -13,7 +13,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::window::Color;
-use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+};
 
 use crate::autostart::{self, TauriAutostart};
 use crate::llm::{self, Connection};
@@ -89,6 +91,12 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         .center()
         .focused(true)
         .build()?;
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if resumes_shortcut(event) {
+            resume_saved_shortcut_later(&handle);
+        }
+    });
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
         crate::win32::color_title_bar(hwnd, TITLE_BAR, TITLE_TEXT);
@@ -330,9 +338,58 @@ pub fn clear_api_key(
         .map_err(|_| CommandError::KeyStore)
 }
 
-/// Serializes shortcut changes, so two quick changes can't both read the
-/// same previous shortcut.
+/// Serializes shortcut changes, pauses and resumes, so two quick changes
+/// can't both read the same previous shortcut and a resume can't bring back
+/// a shortcut that a change is replacing.
 static SHORTCUT_CHANGE: Mutex<()> = Mutex::new(());
+
+/// Pauses the saved shortcut while Settings records a new one, so pressing it
+/// reaches the field instead of starting a rewrite.
+#[tauri::command(async)]
+pub fn pause_shortcut(settings: State<'_, Arc<AppSettings>>, hotkeys: State<'_, TauriHotkeys>) {
+    let _changing = SHORTCUT_CHANGE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    shortcut::pause(hotkeys.inner(), &settings.settings().shortcut);
+}
+
+/// Brings back the saved shortcut when recording ends without a save. Does
+/// nothing if it already works.
+#[tauri::command(async)]
+pub fn resume_shortcut(app: AppHandle) {
+    resume_saved_shortcut(&app);
+}
+
+/// Whether a settings window `event` ends any recording, so the saved shortcut
+/// must come back even if the window's own resume never arrives. Hiding or
+/// minimizing the window takes its focus, so losing focus covers those too.
+/// Regaining focus focuses the field again, which pauses again.
+const fn resumes_shortcut(event: &WindowEvent) -> bool {
+    matches!(event, WindowEvent::Focused(false) | WindowEvent::Destroyed)
+}
+
+/// [`resume_saved_shortcut`] off the main thread: the plugin runs each call
+/// on the main thread and blocks until it's done, so window events, which run
+/// there, must not wait for it.
+fn resume_saved_shortcut_later(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || resume_saved_shortcut(&app));
+}
+
+/// [`resume_shortcut`] for Rust callers, such as the settings window's own
+/// events.
+fn resume_saved_shortcut(app: &AppHandle) {
+    let _changing = SHORTCUT_CHANGE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let saved = app.state::<Arc<AppSettings>>().settings().shortcut;
+    let Some(hotkeys) = app.try_state::<TauriHotkeys>() else {
+        return;
+    };
+    if shortcut::resume(hotkeys.inner(), &saved).is_err() {
+        tracing::warn!("the paused shortcut couldn't be registered again");
+    }
+}
 
 /// Changes the rewrite shortcut. The new one works right away and is saved;
 /// if Windows refuses it, the previous one keeps working.
