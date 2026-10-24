@@ -3,6 +3,7 @@
 //! here, so the rules are unit-tested; `tray` turns this into a real menu.
 
 use crate::settings::{InstructionSetId, InstructionSets};
+use crate::updates::UpdatesState;
 
 /// One entry of the tray menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +42,12 @@ pub struct SetItem {
 /// Menu id of the "Instruction set" submenu.
 const SETS_ID: &str = "sets";
 
+/// Menu id of the update item while no update is known: "Check for updates".
+const CHECK_FOR_UPDATES_ID: &str = "check-for-updates";
+
+/// Menu id of the update item once an update is known: "Update to 1.1.0".
+const SHOW_UPDATE_ID: &str = "show-update";
+
 /// Menu id of the "Settings" item.
 const SETTINGS_ID: &str = "settings";
 
@@ -50,9 +57,9 @@ const QUIT_ID: &str = "quit";
 /// Prefix of an instruction set item's menu id, followed by the set's id.
 const SET_PREFIX: &str = "set:";
 
-/// The tray menu for `sets`: the "Instruction set" submenu, then Settings,
-/// a separator and Quit.
-pub fn tray_menu(sets: &InstructionSets) -> Vec<TrayItem> {
+/// The tray menu for `sets` and `updates`: the "Instruction set" submenu,
+/// the update item, Settings, a separator and Quit.
+pub fn tray_menu(sets: &InstructionSets, updates: &UpdatesState) -> Vec<TrayItem> {
     let active = sets.active().id;
     let set_items = sets
         .sets()
@@ -70,6 +77,7 @@ pub fn tray_menu(sets: &InstructionSets) -> Vec<TrayItem> {
             label: "Instruction set".to_owned(),
             sets: set_items,
         },
+        update_item(updates),
         TrayItem::Item {
             id: SETTINGS_ID.to_owned(),
             label: "Settings".to_owned(),
@@ -82,11 +90,34 @@ pub fn tray_menu(sets: &InstructionSets) -> Vec<TrayItem> {
     ]
 }
 
+/// "Update to {version}" once an update is known, otherwise "Check for
+/// updates".
+fn update_item(updates: &UpdatesState) -> TrayItem {
+    match updates {
+        UpdatesState::Available { version } => TrayItem::Item {
+            id: SHOW_UPDATE_ID.to_owned(),
+            label: format!("Update to {version}"),
+        },
+        UpdatesState::Idle
+        | UpdatesState::Checking
+        | UpdatesState::UpToDate
+        | UpdatesState::Failed { .. } => TrayItem::Item {
+            id: CHECK_FOR_UPDATES_ID.to_owned(),
+            label: "Check for updates".to_owned(),
+        },
+    }
+}
+
 /// What a click on a tray menu item asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
     /// Make this instruction set the active one.
     Activate(InstructionSetId),
+    /// Open Settings at Updates and check for updates there.
+    CheckForUpdates,
+    /// Open Settings at Updates, where the known update is offered. Never
+    /// installs.
+    ShowUpdate,
     /// Open the settings window.
     OpenSettings,
     /// Quit the app.
@@ -97,6 +128,8 @@ pub enum TrayAction {
 /// nothing (the submenu itself, unknown ids).
 pub fn action(id: &str) -> Option<TrayAction> {
     match id {
+        CHECK_FOR_UPDATES_ID => Some(TrayAction::CheckForUpdates),
+        SHOW_UPDATE_ID => Some(TrayAction::ShowUpdate),
         SETTINGS_ID => Some(TrayAction::OpenSettings),
         QUIT_ID => Some(TrayAction::Quit),
         _ => id
@@ -111,6 +144,18 @@ pub fn action(id: &str) -> Option<TrayAction> {
 mod tests {
     use super::{TrayAction, TrayItem, action, tray_menu};
     use crate::settings::InstructionSets;
+    use crate::updates::{FailedStep, UpdatesState};
+
+    fn menu(updates: &UpdatesState) -> Vec<TrayItem> {
+        tray_menu(&InstructionSets::default(), updates)
+    }
+
+    fn update_item(updates: &UpdatesState) -> (String, Option<TrayAction>) {
+        match &menu(updates)[1] {
+            TrayItem::Item { id, label } => (label.clone(), action(id)),
+            other => panic!("second item is not the update item: {other:?}"),
+        }
+    }
 
     fn labels(items: &[TrayItem]) -> Vec<&str> {
         items
@@ -133,11 +178,49 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_reads_instruction_set_then_settings_then_quit() {
-        let menu = tray_menu(&InstructionSets::default());
+    fn the_menu_reads_instruction_set_then_updates_then_settings_then_quit() {
+        let menu = menu(&UpdatesState::Idle);
         assert_eq!(
             labels(&menu),
-            ["Instruction set", "Settings", "---", "Quit"]
+            [
+                "Instruction set",
+                "Check for updates",
+                "Settings",
+                "---",
+                "Quit"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_update_item_checks_for_updates_until_one_is_known() {
+        for updates in [
+            UpdatesState::Idle,
+            UpdatesState::Checking,
+            UpdatesState::UpToDate,
+            UpdatesState::Failed {
+                step: FailedStep::Check,
+            },
+        ] {
+            assert_eq!(
+                update_item(&updates),
+                (
+                    "Check for updates".to_owned(),
+                    Some(TrayAction::CheckForUpdates)
+                ),
+                "{updates:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_known_update_is_offered_and_only_opens_settings_at_updates() {
+        let updates = UpdatesState::Available {
+            version: "1.1.0".to_owned(),
+        };
+        assert_eq!(
+            update_item(&updates),
+            ("Update to 1.1.0".to_owned(), Some(TrayAction::ShowUpdate))
         );
     }
 
@@ -148,7 +231,7 @@ mod tests {
         sets.set_active(mine).expect("set exists");
 
         assert_eq!(
-            submenu(&tray_menu(&sets)),
+            submenu(&tray_menu(&sets, &UpdatesState::Idle)),
             [
                 ("Fix && make readable", false),
                 ("Fix mistakes only", false),
@@ -163,7 +246,7 @@ mod tests {
     fn clicking_a_set_item_activates_that_set() {
         let mut sets = InstructionSets::default();
         let mine = sets.add("Casual", "Make it casual.").expect("valid name");
-        let menu = tray_menu(&sets);
+        let menu = tray_menu(&sets, &UpdatesState::Idle);
         let Some(TrayItem::Submenu { sets: items, .. }) = menu.first() else {
             panic!("first item is not the submenu");
         };
@@ -173,8 +256,8 @@ mod tests {
     }
 
     #[test]
-    fn clicking_settings_or_quit_maps_to_that_action() {
-        let menu = tray_menu(&InstructionSets::default());
+    fn clicking_the_plain_items_maps_to_their_actions() {
+        let menu = menu(&UpdatesState::Idle);
         let actions: Vec<_> = menu
             .iter()
             .filter_map(|item| match item {
@@ -182,7 +265,14 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(actions, [TrayAction::OpenSettings, TrayAction::Quit]);
+        assert_eq!(
+            actions,
+            [
+                TrayAction::CheckForUpdates,
+                TrayAction::OpenSettings,
+                TrayAction::Quit
+            ]
+        );
     }
 
     #[test]

@@ -16,6 +16,8 @@ fn main() {
             "is_shortcut_working",
             "set_start_with_windows",
             "app_version",
+            "get_updates_state",
+            "check_for_updates",
             "get_instruction_sets",
             "add_instruction_set",
             "edit_instruction_set",

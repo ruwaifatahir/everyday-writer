@@ -81,6 +81,31 @@ export function appVersion(): Promise<string> {
   return invoke<string>("app_version");
 }
 
+/** What Settings shows about updates; mirrors `UpdatesState` in `updates.rs`. */
+export type UpdatesState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "upToDate" }
+  | { kind: "available"; version: string }
+  | { kind: "failed"; step: "check" };
+
+export function getUpdatesState(): Promise<UpdatesState> {
+  return invoke<UpdatesState>("get_updates_state");
+}
+
+/** Starts a check; the answer arrives through `onUpdatesState`. */
+export function checkForUpdates(): Promise<void> {
+  return invoke("check_for_updates");
+}
+
+export function onUpdatesState(
+  handler: (state: UpdatesState) => void,
+): Promise<UnlistenFn> {
+  return listen<UpdatesState>("updates-state", (event) =>
+    handler(event.payload),
+  );
+}
+
 /** Rust asks the open window to scroll to a section, by element id. */
 export function onScrollTo(handler: (id: string) => void): Promise<UnlistenFn> {
   return listen<string>("settings-scroll-to", (event) =>

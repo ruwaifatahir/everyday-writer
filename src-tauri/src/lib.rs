@@ -21,6 +21,7 @@ pub mod capture;
 pub mod clipboard;
 pub mod instruction_set_commands;
 pub mod live_rewriter;
+pub mod live_updates;
 pub mod llm;
 pub mod logging;
 pub mod popup;
@@ -31,6 +32,7 @@ pub mod settings_window;
 pub mod shortcut;
 pub mod text_bridge;
 pub mod tray;
+pub mod updates;
 pub mod win32;
 
 use std::sync::Arc;
@@ -81,6 +83,8 @@ pub fn run() {
             settings_window::is_shortcut_working,
             settings_window::set_start_with_windows,
             settings_window::app_version,
+            live_updates::get_updates_state,
+            live_updates::check_for_updates,
             instruction_set_commands::get_instruction_sets,
             instruction_set_commands::add_instruction_set,
             instruction_set_commands::edit_instruction_set,
@@ -97,6 +101,7 @@ pub fn run() {
             let startup = load_settings(app)?;
             instruction_set_commands::announce_changes(app);
             start_rewrite_session(app)?;
+            live_updates::start(app.handle());
             tray::init(app)?;
             apply_start_with_windows(app);
             let registered = register_saved_shortcut(app);
