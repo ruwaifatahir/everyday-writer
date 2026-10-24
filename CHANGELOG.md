@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+**Updating from 1.0.0:** version 1.0.0 can't update itself. Download this version's installer below and run it over your current copy, once. Your settings, instruction sets, key and start-with-Windows choice are kept, and from now on the app updates itself.
+
+### Features
+- The app checks GitHub for a new version about 10 seconds after it starts and then once a day. When it finds one, it shows one Windows notification per version, and the tray item **Check for updates** becomes **Update to** the new version.
+- Settings has a new **Updates** section: the installed version, a **Check for updates automatically** switch, a **Check for updates** button and **Update now**. Clicking the notification while it's on screen, or the tray item, opens it.
+- **Update now** shows the download progress, waits for a running rewrite or replace to finish, asks to save unsaved Settings changes first, then installs with a small progress window and no admin prompt. The app restarts and says "Updated to" the new version. Your settings, instruction sets, key and start-with-Windows choice are kept.
+- Updates are only accepted when signed with the project's key, and never move to an older version. If an update fails, the old version keeps working and you can try again.
+
+### Privacy
+- The update check downloads a public file from GitHub. It sends no ID, no app version and nothing about your settings or text; GitHub sees your IP address, as with any website visit. Turn off **Check for updates automatically** and the app contacts GitHub only when you click **Check for updates** or **Update now**.
+
 ## 1.0.0 - 2026-10-24
 
 First release.
