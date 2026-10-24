@@ -15,11 +15,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-use crate::settings_window;
+use crate::settings::AppSettings;
+use crate::settings_window::{self, CommandError};
 use crate::tray;
 use crate::updates::{
-    AvailableUpdate, CheckError, Notifier, UpdateController, UpdateEvent, UpdateSource,
-    UpdatesState, UpdatesView,
+    AvailableUpdate, CheckError, Notifier, Remembered, UpdateController, UpdateEvent, UpdateMemory,
+    UpdateSource, UpdatesState, UpdatesView,
 };
 
 /// The event that carries each new [`UpdatesState`] to the settings window.
@@ -29,19 +30,24 @@ const STATE_EVENT: &str = "updates-state";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The update controller as the running app wires it.
-pub type AppUpdates = UpdateController<TauriUpdateSource, TauriNotifier, Arc<TauriUpdatesView>>;
+pub type AppUpdates =
+    UpdateController<TauriUpdateSource, TauriNotifier, Arc<TauriUpdatesView>, SettingsMemory>;
 
-/// Builds the update controller and hands it, and its view, to Tauri's
-/// state. Call from `setup`, before the tray is built.
+/// Builds the update controller, hands it and its view to Tauri's state,
+/// and starts its automatic-check schedule. Call from `setup`, after the
+/// settings are loaded and before the tray is built.
 pub fn start(app: &AppHandle) {
     let view = Arc::new(TauriUpdatesView::new(app.clone()));
     app.manage(Arc::clone(&view));
+    let settings = Arc::clone(app.state::<Arc<AppSettings>>().inner());
     let controller: AppUpdates = UpdateController::new(
         TauriUpdateSource(app.clone()),
         TauriNotifier(app.clone()),
         view,
+        SettingsMemory(settings),
     );
     app.manage(Arc::new(controller));
+    send(app, UpdateEvent::Started);
 }
 
 /// Hands `event` to the update controller on the async runtime, so menu
@@ -106,6 +112,25 @@ impl Notifier for TauriNotifier {
     }
 }
 
+/// Keeps the update memory in the settings file.
+pub struct SettingsMemory(Arc<AppSettings>);
+
+impl UpdateMemory for SettingsMemory {
+    fn recall(&self) -> Remembered {
+        let settings = self.0.settings();
+        Remembered {
+            auto_check: settings.auto_check,
+            last_notified_version: settings.last_notified_version,
+        }
+    }
+
+    fn remember_notified(&self, version: &str) {
+        // Never over a damaged file: see `AppSettings::remember`.
+        self.0
+            .remember(|settings| settings.last_notified_version = Some(version.to_owned()));
+    }
+}
+
 /// Shows the updates state in the settings window and the tray item.
 pub struct TauriUpdatesView {
     app: AppHandle,
@@ -159,4 +184,28 @@ pub fn get_updates_state(view: State<'_, Arc<TauriUpdatesView>>) -> UpdatesState
 #[tauri::command]
 pub fn check_for_updates(app: AppHandle) {
     send(&app, UpdateEvent::CheckRequested);
+}
+
+/// The Settings page's "Check for updates automatically" switch. Saves the
+/// choice, then starts or stops the schedule at once. A known update stays
+/// offered either way.
+///
+/// # Errors
+///
+/// Returns [`CommandError::SaveSettings`] if the choice can't be saved; the
+/// schedule stays as it was then.
+#[tauri::command]
+pub async fn set_auto_check(
+    settings: State<'_, Arc<AppSettings>>,
+    controller: State<'_, Arc<AppUpdates>>,
+    enabled: bool,
+) -> Result<(), CommandError> {
+    settings
+        .modify(|s| s.auto_check = enabled)
+        .map_err(|_| CommandError::SaveSettings)?;
+    // Handled in place, not spawned, so quick toggles stay in order.
+    controller
+        .handle(UpdateEvent::AutoCheckChanged(enabled))
+        .await;
+    Ok(())
 }

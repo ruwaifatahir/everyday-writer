@@ -18,6 +18,7 @@ fn main() {
             "app_version",
             "get_updates_state",
             "check_for_updates",
+            "set_auto_check",
             "get_instruction_sets",
             "add_instruction_set",
             "edit_instruction_set",
