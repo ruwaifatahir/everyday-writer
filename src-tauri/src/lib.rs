@@ -67,6 +67,9 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        // Endpoint, public key and install mode come from `plugins.updater` in tauri.conf.json.
+        // Used from Rust only: no window is granted an `updater:*` permission.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             settings_window::get_settings,
             settings_window::save_settings,
@@ -241,5 +244,37 @@ mod tests {
     #[test]
     fn an_explicit_exit_quits_the_app() {
         assert!(!keeps_running_on_exit_request(Some(0)));
+    }
+
+    /// ADR 0002: what every installed copy bakes in. Changing any of this after a
+    /// release strands or weakens existing installs, so it fails loudly here.
+    #[test]
+    fn updates_come_signed_from_the_static_github_file_and_install_per_user() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let updater = &config["plugins"]["updater"];
+
+        // A plain GET of a fixed URL: no `{{current_version}}` or other template data.
+        assert_eq!(
+            updater["endpoints"],
+            serde_json::json!([
+                "https://github.com/ruwaifatahir/everyday-writer/releases/latest/download/latest.json"
+            ])
+        );
+        assert!(
+            updater["pubkey"]
+                .as_str()
+                .is_some_and(|key| !key.is_empty()),
+            "the public key is missing"
+        );
+        assert_eq!(updater["requireSignedVersion"], true);
+        assert_eq!(updater["windows"]["installMode"], "passive");
+        assert_eq!(config["bundle"]["createUpdaterArtifacts"], true);
+        // Per-user NSIS install (the default) means no admin prompt on update.
+        let install_mode = &config["bundle"]["windows"]["nsis"]["installMode"];
+        assert!(
+            install_mode.is_null() || install_mode == "currentUser",
+            "the installer must stay per-user"
+        );
     }
 }

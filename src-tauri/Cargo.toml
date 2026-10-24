@@ -38,6 +38,9 @@ tauri-plugin-global-shortcut = "2"
 # Rust-only: the toast when the saved shortcut can't be registered at startup.
 tauri-plugin-notification = "2.7.0"
 tauri-plugin-single-instance = "2"
+# Rust-only: checks for and installs signed updates (ADR 0002). `native-tls` matches the
+# reqwest genai already brings; no `zip` (the NSIS installer is served as a plain .exe).
+tauri-plugin-updater = { version = "2.14.0", default-features = false, features = ["native-tls"] }
 
 [target."cfg(windows)".dependencies]
 windows-native-keyring-store = { version = "1.1.0", default-features = false }
