@@ -2,8 +2,23 @@
 
 ## Unreleased
 
+**The app is now called Everyday Writer.** Whether you update from the app or run the installer, it installs as a new app next to your current copy. Afterwards, uninstall **everyday-writer** from Settings → Apps → Installed apps. Your settings, instruction sets, key and start-with-Windows choice are kept.
+
+### Features
+- Settings has a **Provider** picker with logos and a **Model** picker that suggests current models, fastest first. You can still type any model name.
+- **Test key** checks your key without spending tokens, and also tells you if the provider doesn't offer the model you typed.
+- New installs start on Gemini with `gemini-3.5-flash-lite`. Switching provider picks its first suggested model.
+- Settings shows **Unsaved changes** next to Save when the form differs from what you saved.
+- While rewriting, the popup shows your selection with a moving shimmer, and the result fades in where it was.
+
 ### Changes
+- New look: a cream and ink design with bundled fonts, for the popup and Settings. On Windows 11 the Settings title bar matches the page.
 - New app icon: a cream "e" on a dark tile, in the tray, title bars, taskbar, installer and Start menu.
+- The app shows its name as **Everyday Writer** in the installer, Start menu, Installed apps, tray, windows and notifications. Installed apps also shows the publisher and a short description. Settings shows the version as "Version 1.2.0".
+- Errors name the provider and the real cause, such as "Couldn't reach OpenAI". Buttons say what they act on, such as **Test key** and **Delete set**.
+- When Replace can't put the result back, the popup says "Copied" and tells you to press Ctrl+V.
+- Enter only replaces when the result or **Replace** has focus. Esc and Ctrl+W close Settings and ask about unsaved changes first.
+- Better keyboard and screen reader support, and calmer motion when Windows is set to reduce animations.
 
 ## 1.1.0 - 2026-10-24
 
