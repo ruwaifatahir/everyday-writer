@@ -253,6 +253,39 @@ mod tests {
         assert_eq!(parse("Space"), Err(ShortcutError::Invalid));
     }
 
+    /// Settings records a press by its physical key, with the key code's
+    /// name, so these must parse to the keys pressed.
+    #[test]
+    fn a_shortcut_recorded_by_physical_key_is_valid() {
+        use tauri_plugin_global_shortcut::{Code, Modifiers};
+
+        let recorded = [
+            (
+                "Ctrl+Shift+Space",
+                Modifiers::CONTROL | Modifiers::SHIFT,
+                Code::Space,
+            ),
+            (
+                "Ctrl+Alt+K",
+                Modifiers::CONTROL | Modifiers::ALT,
+                Code::KeyK,
+            ),
+            ("Alt+7", Modifiers::ALT, Code::Digit7),
+            ("Ctrl+Minus", Modifiers::CONTROL, Code::Minus),
+            ("Ctrl+BracketLeft", Modifiers::CONTROL, Code::BracketLeft),
+            ("Alt+ArrowUp", Modifiers::ALT, Code::ArrowUp),
+            ("Ctrl+Numpad1", Modifiers::CONTROL, Code::Numpad1),
+            (
+                "Ctrl+Shift+F5",
+                Modifiers::CONTROL | Modifiers::SHIFT,
+                Code::F5,
+            ),
+        ];
+        for (text, mods, key) in recorded {
+            assert_eq!(parse(text), Ok(Shortcut::new(Some(mods), key)), "{text}");
+        }
+    }
+
     #[test]
     fn text_that_is_not_a_shortcut_is_invalid() {
         assert_eq!(parse("Ctrl+Shift+"), Err(ShortcutError::Invalid));
