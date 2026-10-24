@@ -22,7 +22,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 use serde::Serialize;
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
 
 use crate::llm::{RewriteError, Rewriter};
 use crate::settings::{ProviderReadiness, SettingsView};
@@ -234,6 +234,8 @@ struct State<W> {
     phase: Phase<W>,
     /// Numbers each rewrite, so a late answer can't update a newer popup.
     next_run: u64,
+    /// An update holds the session: the shortcut starts nothing.
+    held: bool,
 }
 
 /// Runs rewrites: capture, rewrite, show, then Copy, Replace or close.
@@ -243,6 +245,8 @@ pub struct RewriteSession<B: TextBridge, R, S, P> {
     settings: S,
     popup: P,
     state: Mutex<State<B::Window>>,
+    /// Woken after each event is handled, when the session may be idle.
+    settled: Notify,
 }
 
 impl<B, R, S, P> RewriteSession<B, R, S, P>
@@ -262,7 +266,9 @@ where
             state: Mutex::new(State {
                 phase: Phase::Hidden,
                 next_run: 0,
+                held: false,
             }),
+            settled: Notify::new(),
         }
     }
 
@@ -280,6 +286,38 @@ where
             }
             Event::Replace => self.replace().await,
         }
+        self.settled.notify_waiters();
+    }
+
+    /// The busy gate for an update: waits until no capture, rewrite or
+    /// replace is running, closes a popup still showing a result or a
+    /// message, and holds the session so that the shortcut starts nothing
+    /// until [`RewriteSession::release`].
+    pub async fn hold_when_idle(&self) {
+        loop {
+            // Listen before looking, so an event settling in between wakes us.
+            let mut settled = pin!(self.settled.notified());
+            settled.as_mut().enable();
+            {
+                let mut state = self.lock();
+                if is_idle(&state.phase) {
+                    state.held = true;
+                    let was_open = matches!(state.phase, Phase::Open { .. });
+                    state.phase = Phase::Hidden;
+                    if was_open {
+                        self.popup.render(&PopupState::Hidden);
+                    }
+                    return;
+                }
+            }
+            settled.await;
+        }
+    }
+
+    /// Lets the shortcut start rewrites again after
+    /// [`RewriteSession::hold_when_idle`], such as after a failed update.
+    pub fn release(&self) {
+        self.lock().held = false;
     }
 
     fn lock(&self) -> MutexGuard<'_, State<B::Window>> {
@@ -292,6 +330,10 @@ where
     async fn shortcut_pressed(&self) {
         let rerun = {
             let mut state = self.lock();
+            if state.held {
+                // An update is about to restart the app.
+                return;
+            }
             match std::mem::replace(&mut state.phase, Phase::Capturing) {
                 Phase::Hidden => None,
                 // Already capturing: this press adds nothing.
@@ -485,6 +527,16 @@ where
         if was_open {
             self.popup.render(&PopupState::Hidden);
         }
+    }
+}
+
+/// Whether nothing is running in `phase`: no capture, rewrite or replace.
+/// A popup showing a result or a message counts as idle.
+fn is_idle<W>(phase: &Phase<W>) -> bool {
+    match phase {
+        Phase::Hidden => true,
+        Phase::Open { view, .. } => !matches!(view, View::Working { .. }),
+        Phase::Capturing | Phase::Replacing => false,
     }
 }
 

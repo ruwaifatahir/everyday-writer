@@ -19,6 +19,7 @@ fn main() {
             "get_updates_state",
             "check_for_updates",
             "set_auto_check",
+            "update_now",
             "get_instruction_sets",
             "add_instruction_set",
             "edit_instruction_set",

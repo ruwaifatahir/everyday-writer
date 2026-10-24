@@ -1,13 +1,14 @@
 //! The update controller as the running app wires it: the Tauri updater as
 //! its [`UpdateSource`], Windows notifications as its [`Notifier`], Settings
-//! and the tray as its [`UpdatesView`], and the commands the Settings page
-//! calls.
+//! and the tray as its [`UpdatesView`], the rewrite session as its
+//! [`BusyGate`], and the commands the Settings page calls.
 
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Tauri commands receive `State` by value"
 )]
 
+use std::convert::Infallible;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -15,12 +16,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
+use crate::popup::AppSession;
 use crate::settings::AppSettings;
 use crate::settings_window::{self, CommandError};
 use crate::tray;
 use crate::updates::{
-    AvailableUpdate, CheckError, Notifier, Remembered, UpdateController, UpdateEvent, UpdateMemory,
-    UpdateSource, UpdatesState, UpdatesView,
+    AvailableUpdate, BusyGate, CheckError, InstallError, Notifier, Remembered, UpdateController,
+    UpdateEvent, UpdateMemory, UpdateSource, UpdatesState, UpdatesView,
 };
 
 /// The event that carries each new [`UpdatesState`] to the settings window.
@@ -30,20 +32,28 @@ const STATE_EVENT: &str = "updates-state";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The update controller as the running app wires it.
-pub type AppUpdates =
-    UpdateController<TauriUpdateSource, TauriNotifier, Arc<TauriUpdatesView>, SettingsMemory>;
+pub type AppUpdates = UpdateController<
+    TauriUpdateSource,
+    TauriNotifier,
+    Arc<TauriUpdatesView>,
+    SessionGate,
+    SettingsMemory,
+>;
 
 /// Builds the update controller, hands it and its view to Tauri's state,
 /// and starts its automatic-check schedule. Call from `setup`, after the
-/// settings are loaded and before the tray is built.
+/// settings are loaded and the rewrite session is managed, and before the
+/// tray is built.
 pub fn start(app: &AppHandle) {
     let view = Arc::new(TauriUpdatesView::new(app.clone()));
     app.manage(Arc::clone(&view));
+    let session = Arc::clone(app.state::<Arc<AppSession>>().inner());
     let settings = Arc::clone(app.state::<Arc<AppSettings>>().inner());
     let controller: AppUpdates = UpdateController::new(
         TauriUpdateSource(app.clone()),
         TauriNotifier(app.clone()),
         view,
+        SessionGate(session),
         SettingsMemory(settings),
     );
     app.manage(Arc::new(controller));
@@ -75,6 +85,68 @@ impl UpdateSource for TauriUpdateSource {
             version: update.version.clone(),
             handle: update,
         }))
+    }
+
+    /// Downloads with no time limit (the check's timeout doesn't apply), then
+    /// the updater verifies the signature against the built-in public key,
+    /// starts the installer in passive mode and exits the app.
+    async fn install(
+        &self,
+        update: &Update,
+        progress: &(dyn Fn(u8) + Send + Sync),
+    ) -> Result<Infallible, InstallError> {
+        let mut downloaded: u64 = 0;
+        update
+            .download_and_install(
+                |chunk, total| {
+                    downloaded = downloaded.saturating_add(chunk as u64);
+                    if let Some(total) = total.filter(|total| *total > 0) {
+                        let percent = (downloaded.saturating_mul(100) / total).min(100);
+                        progress(u8::try_from(percent).unwrap_or(100));
+                    }
+                },
+                || {},
+            )
+            .await
+            .map_err(|error| install_error(&error))?;
+        // On Windows a successful install exits the process before this.
+        Err(InstallError::Other)
+    }
+}
+
+/// The kind of a failed install, the only thing logged about it.
+fn install_error(error: &tauri_plugin_updater::Error) -> InstallError {
+    use tauri_plugin_updater::Error;
+    match error {
+        Error::Reqwest(_) | Error::Network(_) => InstallError::Network,
+        Error::Minisign(_)
+        | Error::Base64(_)
+        | Error::SignatureUtf8(_)
+        | Error::SignedVersionMismatch { .. }
+        | Error::MissingSignedVersion => InstallError::Signature,
+        _ => InstallError::Other,
+    }
+}
+
+/// The rewrite session as the busy gate: an install waits for it to be
+/// idle and holds it, so the shortcut starts nothing meanwhile.
+pub struct SessionGate(Arc<AppSession>);
+
+/// Releases the rewrite session when dropped, after a failed install.
+pub struct SessionHold(Arc<AppSession>);
+
+impl Drop for SessionHold {
+    fn drop(&mut self) {
+        self.0.release();
+    }
+}
+
+impl BusyGate for SessionGate {
+    type Hold = SessionHold;
+
+    async fn hold_when_idle(&self) -> SessionHold {
+        self.0.hold_when_idle().await;
+        SessionHold(Arc::clone(&self.0))
     }
 }
 
@@ -208,4 +280,11 @@ pub async fn set_auto_check(
         .handle(UpdateEvent::AutoCheckChanged(enabled))
         .await;
     Ok(())
+}
+
+/// The Settings page's Update now button: installs the offered update and
+/// restarts. Progress and failure arrive as `updates-state` events.
+#[tauri::command]
+pub fn update_now(app: AppHandle) {
+    send(&app, UpdateEvent::UpdateNowRequested);
 }

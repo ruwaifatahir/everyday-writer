@@ -89,7 +89,9 @@ export type UpdatesState =
   | { kind: "checking" }
   | { kind: "upToDate" }
   | { kind: "available"; version: string }
-  | { kind: "failed"; step: "check" };
+  | { kind: "failed"; step: "check" }
+  | { kind: "downloading"; percent: number }
+  | { kind: "installFailed"; version: string };
 
 export function getUpdatesState(): Promise<UpdatesState> {
   return invoke<UpdatesState>("get_updates_state");
@@ -103,6 +105,11 @@ export function checkForUpdates(): Promise<void> {
 /** Saves the choice and starts or stops automatic checks at once. */
 export function setAutoCheck(enabled: boolean): Promise<void> {
   return invoke("set_auto_check", { enabled });
+}
+
+/** Installs the offered update and restarts; progress arrives through onUpdatesState. */
+export function updateNow(): Promise<void> {
+  return invoke("update_now");
 }
 
 export function onUpdatesState(

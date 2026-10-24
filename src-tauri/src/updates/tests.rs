@@ -1,15 +1,16 @@
 //! Update controller tests: fake ports, no network or Windows.
 
+use std::convert::Infallible;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
 
 use super::{
-    AvailableUpdate, CheckError, FailedStep, Notifier, Remembered, UpdateController, UpdateEvent,
-    UpdateMemory, UpdateSource, UpdatesState, UpdatesView,
+    AvailableUpdate, BusyGate, CheckError, FailedStep, InstallError, Notifier, Remembered,
+    UpdateController, UpdateEvent, UpdateMemory, UpdateSource, UpdatesState, UpdatesView,
 };
 
 /// What the fake source answers to a check.
@@ -24,40 +25,108 @@ enum Answer {
 /// test lets it.
 struct FakeSource {
     answer: Mutex<Answer>,
-    /// How many checks were made.
-    checks: AtomicUsize,
     /// If set, the check waits for this before it answers.
     gate: Mutex<Option<oneshot::Receiver<()>>>,
+    checks: AtomicUsize,
+    /// The download progress an install reports, in percent.
+    progress: Vec<u8>,
+    /// Whether an install fails after its progress, rather than restarting
+    /// the app (which never returns).
+    install_fails: bool,
+    /// If set, an install waits for this before it reports progress.
+    install_gate: Mutex<Option<oneshot::Receiver<()>>>,
+    /// The versions installs were started for.
+    installs: Mutex<Vec<String>>,
+    /// Notified when an install starts.
+    installing: Notify,
 }
 
 impl FakeSource {
     fn answering(answer: Answer) -> Self {
         Self {
             answer: Mutex::new(answer),
-            checks: AtomicUsize::new(0),
             gate: Mutex::new(None),
+            checks: AtomicUsize::new(0),
+            progress: Vec::new(),
+            install_fails: false,
+            install_gate: Mutex::new(None),
+            installs: Mutex::default(),
+            installing: Notify::new(),
         }
     }
 }
 
 impl UpdateSource for FakeSource {
-    type Handle = ();
+    type Handle = String;
 
-    async fn check(&self) -> Result<Option<AvailableUpdate<()>>, CheckError> {
+    async fn check(&self) -> Result<Option<AvailableUpdate<String>>, CheckError> {
+        self.checks.fetch_add(1, Ordering::Relaxed);
         let gate = self.gate.lock().unwrap().take();
         if let Some(gate) = gate {
             let _ = gate.await;
         }
-        self.checks.fetch_add(1, Ordering::SeqCst);
         let answer = self.answer.lock().unwrap().clone();
         match answer {
             Answer::Nothing => Ok(None),
             Answer::Update(version) => Ok(Some(AvailableUpdate {
                 version: version.to_owned(),
-                handle: (),
+                handle: version.to_owned(),
             })),
             Answer::Fails => Err(CheckError::Network),
         }
+    }
+
+    async fn install(
+        &self,
+        handle: &String,
+        progress: &(dyn Fn(u8) + Send + Sync),
+    ) -> Result<Infallible, InstallError> {
+        self.installs.lock().unwrap().push(handle.clone());
+        self.installing.notify_one();
+        let gate = self.install_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        for percent in &self.progress {
+            progress(*percent);
+        }
+        if self.install_fails {
+            Err(InstallError::Signature)
+        } else {
+            // The real install restarts the app and never returns.
+            std::future::pending().await
+        }
+    }
+}
+
+/// A busy gate that is idle, or busy until a test lets it go.
+#[derive(Default)]
+struct FakeGate {
+    /// If set, the gate is busy until this fires.
+    busy: Mutex<Option<oneshot::Receiver<()>>>,
+    holds: AtomicUsize,
+    released: Arc<AtomicUsize>,
+}
+
+/// Counts its release when dropped.
+struct FakeHold(Arc<AtomicUsize>);
+
+impl Drop for FakeHold {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl BusyGate for FakeGate {
+    type Hold = FakeHold;
+
+    async fn hold_when_idle(&self) -> FakeHold {
+        let busy = self.busy.lock().unwrap().take();
+        if let Some(busy) = busy {
+            let _ = busy.await;
+        }
+        self.holds.fetch_add(1, Ordering::Relaxed);
+        FakeHold(Arc::clone(&self.released))
     }
 }
 
@@ -107,19 +176,75 @@ impl UpdateMemory for FakeMemory {
     }
 }
 
-type Controller = UpdateController<FakeSource, FakeNotifier, FakeView, FakeMemory>;
+type Controller = UpdateController<FakeSource, FakeNotifier, FakeView, FakeGate, FakeMemory>;
 
 fn controller(answer: Answer) -> Controller {
-    controller_remembering(answer, FakeMemory::new(true, None))
+    controller_with(FakeSource::answering(answer), FakeGate::default())
+}
+
+fn controller_with(source: FakeSource, gate: FakeGate) -> Controller {
+    controller_from(source, gate, FakeMemory::new(true, None))
 }
 
 fn controller_remembering(answer: Answer, memory: FakeMemory) -> Controller {
+    controller_from(FakeSource::answering(answer), FakeGate::default(), memory)
+}
+
+fn controller_from(source: FakeSource, gate: FakeGate, memory: FakeMemory) -> Controller {
     UpdateController::new(
-        FakeSource::answering(answer),
+        source,
         FakeNotifier::default(),
         FakeView::default(),
+        gate,
         memory,
     )
+}
+
+/// A controller that already offers 1.1.0, from a source that installs it
+/// with `progress` and then fails if `fails`.
+async fn offering(progress: &[u8], fails: bool, gate: FakeGate) -> Controller {
+    let source = FakeSource {
+        progress: progress.to_vec(),
+        install_fails: fails,
+        ..FakeSource::answering(Answer::Update("1.1.0"))
+    };
+    let controller = controller_with(source, gate);
+    controller.handle(UpdateEvent::CheckRequested).await;
+    controller
+}
+
+/// Handles Update now until it settles. A successful install never
+/// returns, so under the paused clock this gives up once nothing moves.
+async fn update_now(controller: &Controller) {
+    let _ = tokio::time::timeout(
+        Duration::from_secs(60),
+        controller.handle(UpdateEvent::UpdateNowRequested),
+    )
+    .await;
+}
+
+fn installs(controller: &Controller) -> Vec<String> {
+    controller.source.installs.lock().unwrap().clone()
+}
+
+/// The states rendered after the update was offered.
+fn states_since_offered(controller: &Controller) -> Vec<UpdatesState> {
+    let states = states(controller);
+    let offered = states
+        .iter()
+        .position(|state| *state == available("1.1.0"))
+        .expect("the update was offered");
+    states[offered + 1..].to_vec()
+}
+
+fn downloading(percent: u8) -> UpdatesState {
+    UpdatesState::Downloading { percent }
+}
+
+fn install_failed(version: &str) -> UpdatesState {
+    UpdatesState::InstallFailed {
+        version: version.to_owned(),
+    }
 }
 
 /// Starts the app's controller; its schedule runs until the test ends.
@@ -136,7 +261,7 @@ async fn after(secs: u64) {
 const DAY: u64 = 24 * 60 * 60;
 
 fn checks(controller: &Controller) -> usize {
-    controller.source.checks.load(Ordering::SeqCst)
+    controller.source.checks.load(Ordering::Relaxed)
 }
 
 fn last_notified(controller: &Controller) -> Option<String> {
@@ -236,6 +361,106 @@ async fn a_check_requested_while_one_runs_waits_for_that_answer() {
     );
 }
 
+#[tokio::test(start_paused = true)]
+async fn update_now_installs_the_offered_update_showing_its_progress() {
+    let controller = offering(&[0, 12, 45, 45, 100], false, FakeGate::default()).await;
+
+    update_now(&controller).await;
+
+    assert_eq!(installs(&controller), ["1.1.0"]);
+    assert_eq!(
+        states_since_offered(&controller),
+        [
+            downloading(0),
+            downloading(12),
+            downloading(45),
+            downloading(100)
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn update_now_waits_until_no_rewrite_or_replace_is_running() {
+    let (idle, busy) = oneshot::channel();
+    let gate = FakeGate {
+        busy: Mutex::new(Some(busy)),
+        ..FakeGate::default()
+    };
+    let controller = offering(&[], false, gate).await;
+
+    tokio::join!(update_now(&controller), async {
+        tokio::task::yield_now().await;
+        assert_eq!(installs(&controller), Vec::<String>::new());
+        assert_eq!(states_since_offered(&controller), [downloading(0)]);
+        let _ = idle.send(());
+    });
+
+    assert_eq!(controller.gate.holds.load(Ordering::Relaxed), 1);
+    assert_eq!(installs(&controller), ["1.1.0"]);
+}
+
+#[tokio::test]
+async fn a_failed_install_offers_the_update_again_and_lets_rewrites_run() {
+    let controller = offering(&[30], true, FakeGate::default()).await;
+
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+
+    assert_eq!(
+        states_since_offered(&controller),
+        [downloading(0), downloading(30), install_failed("1.1.0")]
+    );
+    assert_eq!(controller.gate.released.load(Ordering::Relaxed), 1);
+    assert_eq!(notifications(&controller), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn update_now_can_be_tried_again_after_a_failed_install() {
+    let controller = offering(&[], true, FakeGate::default()).await;
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+
+    assert_eq!(installs(&controller), ["1.1.0", "1.1.0"]);
+}
+
+#[tokio::test]
+async fn nothing_starts_a_second_install_or_a_check_while_downloading() {
+    let (finish, install_gate) = oneshot::channel();
+    let source = FakeSource {
+        install_fails: true,
+        install_gate: Mutex::new(Some(install_gate)),
+        ..FakeSource::answering(Answer::Update("1.1.0"))
+    };
+    let controller = controller_with(source, FakeGate::default());
+    controller.handle(UpdateEvent::CheckRequested).await;
+
+    tokio::join!(controller.handle(UpdateEvent::UpdateNowRequested), async {
+        controller.source.installing.notified().await;
+        controller.handle(UpdateEvent::UpdateNowRequested).await;
+        controller.handle(UpdateEvent::CheckRequested).await;
+        let _ = finish.send(());
+    });
+
+    assert_eq!(installs(&controller), ["1.1.0"]);
+    assert_eq!(controller.source.checks.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        states_since_offered(&controller),
+        [downloading(0), install_failed("1.1.0")]
+    );
+}
+
+#[tokio::test]
+async fn update_now_does_nothing_until_an_update_is_known() {
+    let controller = controller(Answer::Nothing);
+    controller.handle(UpdateEvent::CheckRequested).await;
+
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+
+    assert_eq!(installs(&controller), Vec::<String>::new());
+    assert_eq!(controller.gate.holds.load(Ordering::Relaxed), 0);
+    assert_eq!(controller.state(), UpdatesState::UpToDate);
+}
+
 #[test]
 fn the_state_reaches_the_settings_page_tagged_by_kind() {
     let json = |state: &UpdatesState| serde_json::to_value(state).unwrap();
@@ -257,6 +482,14 @@ fn the_state_reaches_the_settings_page_tagged_by_kind() {
             step: FailedStep::Check
         }),
         serde_json::json!({ "kind": "failed", "step": "check" })
+    );
+    assert_eq!(
+        json(&downloading(45)),
+        serde_json::json!({ "kind": "downloading", "percent": 45 })
+    );
+    assert_eq!(
+        json(&install_failed("1.1.0")),
+        serde_json::json!({ "kind": "installFailed", "version": "1.1.0" })
     );
 }
 

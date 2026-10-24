@@ -24,6 +24,11 @@ pub enum TrayItem {
         /// Label shown.
         label: String,
     },
+    /// A greyed-out item that can't be clicked.
+    Disabled {
+        /// Label shown.
+        label: String,
+    },
     /// A separator line.
     Separator,
 }
@@ -90,14 +95,20 @@ pub fn tray_menu(sets: &InstructionSets, updates: &UpdatesState) -> Vec<TrayItem
     ]
 }
 
-/// "Update to {version}" once an update is known, otherwise "Check for
-/// updates".
+/// "Update to {version}" once an update is known (even after a failed
+/// install), a disabled "Downloading update…" while it downloads, otherwise
+/// "Check for updates".
 fn update_item(updates: &UpdatesState) -> TrayItem {
     match updates {
-        UpdatesState::Available { version } => TrayItem::Item {
-            id: SHOW_UPDATE_ID.to_owned(),
-            label: format!("Update to {version}"),
+        UpdatesState::Downloading { .. } => TrayItem::Disabled {
+            label: "Downloading update…".to_owned(),
         },
+        UpdatesState::Available { version } | UpdatesState::InstallFailed { version } => {
+            TrayItem::Item {
+                id: SHOW_UPDATE_ID.to_owned(),
+                label: format!("Update to {version}"),
+            }
+        }
         UpdatesState::Idle
         | UpdatesState::Checking
         | UpdatesState::UpToDate
@@ -161,7 +172,9 @@ mod tests {
         items
             .iter()
             .map(|item| match item {
-                TrayItem::Submenu { label, .. } | TrayItem::Item { label, .. } => label.as_str(),
+                TrayItem::Submenu { label, .. }
+                | TrayItem::Item { label, .. }
+                | TrayItem::Disabled { label } => label.as_str(),
                 TrayItem::Separator => "---",
             })
             .collect()
@@ -221,6 +234,28 @@ mod tests {
         assert_eq!(
             update_item(&updates),
             ("Update to 1.1.0".to_owned(), Some(TrayAction::ShowUpdate))
+        );
+    }
+
+    #[test]
+    fn a_failed_install_still_offers_the_update() {
+        let updates = UpdatesState::InstallFailed {
+            version: "1.1.0".to_owned(),
+        };
+        assert_eq!(
+            update_item(&updates),
+            ("Update to 1.1.0".to_owned(), Some(TrayAction::ShowUpdate))
+        );
+    }
+
+    #[test]
+    fn the_update_item_is_disabled_while_downloading() {
+        let menu = menu(&UpdatesState::Downloading { percent: 45 });
+        assert_eq!(
+            menu[1],
+            TrayItem::Disabled {
+                label: "Downloading update…".to_owned()
+            }
         );
     }
 

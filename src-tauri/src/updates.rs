@@ -7,6 +7,7 @@
 //! - [`UpdateSource`]: asks GitHub whether a newer version exists;
 //! - [`Notifier`]: the Windows notifications about updates;
 //! - [`UpdatesView`]: shows each [`UpdatesState`] in Settings and the tray;
+//! - [`BusyGate`]: lets an install wait until no rewrite or replace runs;
 //! - [`UpdateMemory`]: what is kept between runs, in the settings file.
 //!
 //! The controller owns the automatic-check schedule: the first check
@@ -16,6 +17,7 @@
 //! Privacy: a check sends nothing about the user, and failures are logged
 //! only as a fixed error kind, never with URLs or response bodies.
 
+use std::convert::Infallible;
 use std::future::{Future, poll_fn};
 use std::pin::pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -44,6 +46,8 @@ pub enum UpdateEvent {
     /// The user turned automatic checks on or off. The choice is already
     /// saved; this only starts or stops the schedule.
     AutoCheckChanged(bool),
+    /// The user clicked Update now in Settings. The only way to install.
+    UpdateNowRequested,
 }
 
 /// What Settings and the tray show about updates. Serialized for the
@@ -67,6 +71,17 @@ pub enum UpdatesState {
     Failed {
         /// What failed.
         step: FailedStep,
+    },
+    /// The update is downloading; the app restarts once it is installed.
+    Downloading {
+        /// How much is downloaded, from 0 to 100.
+        percent: u8,
+    },
+    /// Installing this version failed. It is still offered, and the old
+    /// version keeps running.
+    InstallFailed {
+        /// The version that couldn't be installed, such as `1.1.0`.
+        version: String,
     },
 }
 
@@ -104,6 +119,21 @@ pub enum CheckError {
     Other,
 }
 
+/// Why an install failed. Holds no URL or response content, so it is safe
+/// to log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum InstallError {
+    /// The download couldn't be finished.
+    #[error("network")]
+    Network,
+    /// The download wasn't signed with the project's key.
+    #[error("signature")]
+    Signature,
+    /// Anything else, such as the installer not starting.
+    #[error("other")]
+    Other,
+}
+
 /// Where updates come from.
 pub trait UpdateSource: Send + Sync {
     /// What installing a found update needs.
@@ -117,6 +147,31 @@ pub trait UpdateSource: Send + Sync {
     fn check(
         &self,
     ) -> impl Future<Output = Result<Option<AvailableUpdate<Self::Handle>>, CheckError>> + Send;
+
+    /// Downloads the update, reporting `progress` in percent, checks its
+    /// signature and starts the installer. On success the app exits for the
+    /// installer and this never returns.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`InstallError`] if the download, the signature check or
+    /// starting the installer failed. Nothing was installed then.
+    fn install(
+        &self,
+        handle: &Self::Handle,
+        progress: &(dyn Fn(u8) + Send + Sync),
+    ) -> impl Future<Output = Result<Infallible, InstallError>> + Send;
+}
+
+/// Lets an install wait until no rewrite or replace is running, so the app
+/// never quits halfway through one and leaves the clipboard unrestored.
+pub trait BusyGate: Send + Sync {
+    /// Keeps new rewrites from starting while it lives.
+    type Hold: Send;
+
+    /// Waits until nothing is running, closes the popup and holds the gate
+    /// until the returned hold is dropped.
+    fn hold_when_idle(&self) -> impl Future<Output = Self::Hold> + Send;
 }
 
 /// The Windows notifications about updates.
@@ -167,6 +222,10 @@ enum Phase<H> {
     Available(AvailableUpdate<H>),
     /// The last check failed.
     CheckFailed,
+    /// Update now is waiting to install, or downloading.
+    Downloading { percent: u8 },
+    /// Installing this update failed; it can be tried again.
+    InstallFailed(AvailableUpdate<H>),
 }
 
 impl<H> Phase<H> {
@@ -182,36 +241,43 @@ impl<H> Phase<H> {
             Self::CheckFailed => UpdatesState::Failed {
                 step: FailedStep::Check,
             },
+            Self::Downloading { percent } => UpdatesState::Downloading { percent: *percent },
+            Self::InstallFailed(update) => UpdatesState::InstallFailed {
+                version: update.version.clone(),
+            },
         }
     }
 }
 
 /// Checks for updates and shows what it finds.
-pub struct UpdateController<U: UpdateSource, N, V, M> {
+pub struct UpdateController<U: UpdateSource, N, V, G, M> {
     source: U,
     notifier: N,
     view: V,
+    gate: G,
     memory: M,
     phase: Mutex<Phase<U::Handle>>,
     /// Whether automatic checks are on. The schedule watches it.
     auto_check: watch::Sender<bool>,
 }
 
-impl<U, N, V, M> UpdateController<U, N, V, M>
+impl<U, N, V, G, M> UpdateController<U, N, V, G, M>
 where
     U: UpdateSource,
     N: Notifier,
     V: UpdatesView,
+    G: BusyGate,
     M: UpdateMemory,
 {
     /// A controller that knows of no update yet. Whether automatic checks
     /// are on comes from `memory`.
-    pub fn new(source: U, notifier: N, view: V, memory: M) -> Self {
+    pub fn new(source: U, notifier: N, view: V, gate: G, memory: M) -> Self {
         let (auto_check, _) = watch::channel(memory.recall().auto_check);
         Self {
             source,
             notifier,
             view,
+            gate,
             memory,
             phase: Mutex::new(Phase::Idle),
             auto_check,
@@ -232,7 +298,48 @@ where
             UpdateEvent::AutoCheckChanged(on) => {
                 self.auto_check.send_replace(on);
             }
+            UpdateEvent::UpdateNowRequested => self.update_now().await,
         }
+    }
+
+    /// Installs the offered update: waits until no rewrite or replace runs,
+    /// then downloads with progress and restarts on the new version. If
+    /// that fails, offers the update again and lets rewrites run.
+    async fn update_now(&self) {
+        let update = {
+            let mut phase = self.lock();
+            if !matches!(*phase, Phase::Available(_) | Phase::InstallFailed(_)) {
+                // Nothing to install, or already installing.
+                return;
+            }
+            match std::mem::replace(&mut *phase, Phase::Downloading { percent: 0 }) {
+                Phase::Available(update) | Phase::InstallFailed(update) => update,
+                _ => unreachable!("matched above"),
+            }
+        };
+        self.view.render(&UpdatesState::Downloading { percent: 0 });
+        let hold = self.gate.hold_when_idle().await;
+        let progress = |percent: u8| self.progress(percent);
+        let Err(error) = self.source.install(&update.handle, &progress).await;
+        tracing::warn!(kind = %error, "the update couldn't be installed");
+        let failed = Phase::InstallFailed(update);
+        let shown = failed.shown();
+        *self.lock() = failed;
+        self.view.render(&shown);
+        drop(hold);
+    }
+
+    /// Shows download progress, when it changed.
+    fn progress(&self, percent: u8) {
+        let percent = percent.min(100);
+        {
+            let mut phase = self.lock();
+            match &mut *phase {
+                Phase::Downloading { percent: shown } if *shown != percent => *shown = percent,
+                _ => return,
+            }
+        }
+        self.view.render(&UpdatesState::Downloading { percent });
     }
 
     /// A check the user asked for: shows checking, then what it found.
@@ -242,6 +349,10 @@ where
             let mut phase = self.lock();
             if matches!(*phase, Phase::Checking) {
                 // One check at a time; the running one will answer.
+                return;
+            }
+            if matches!(*phase, Phase::Downloading { .. }) {
+                // The update being installed is already the newest.
                 return;
             }
             *phase = Phase::Checking;
@@ -327,11 +438,13 @@ where
 
 impl<H> Phase<H> {
     /// Whether an automatic check may replace this phase with what it
-    /// found: not while a check the user asked for is answering.
+    /// found.
     fn takes_automatic_result(&self) -> bool {
         match self {
             Self::Idle | Self::UpToDate | Self::Available(_) | Self::CheckFailed => true,
-            Self::Checking => false,
+            // A check the user asked for is answering, or Update now is
+            // installing or has just failed (its message stays).
+            Self::Checking | Self::Downloading { .. } | Self::InstallFailed(_) => false,
         }
     }
 }

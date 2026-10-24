@@ -145,6 +145,9 @@ fn build_menu(
             TrayItem::Item { id, label } => {
                 menu.append(&MenuItem::with_id(app, id, label, true, None::<&str>)?)?;
             }
+            TrayItem::Disabled { label } => {
+                menu.append(&MenuItem::new(app, label, false, None::<&str>)?)?;
+            }
             TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
         }
     }

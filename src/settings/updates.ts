@@ -16,6 +16,7 @@ import {
   onUpdatesState,
   setAutoCheck,
   type UpdatesState,
+  updateNow,
 } from "./api";
 
 function element<T extends HTMLElement>(id: string): T {
@@ -27,6 +28,7 @@ function element<T extends HTMLElement>(id: string): T {
 const versionLine = element<HTMLParagraphElement>("app-version");
 const checkButton = element<HTMLButtonElement>("updates-check");
 const statusLine = element<HTMLParagraphElement>("updates-status");
+const updateNowButton = element<HTMLButtonElement>("updates-install");
 const autoCheckSwitch = element<HTMLInputElement>("auto-check");
 const autoCheckStatus = element<HTMLParagraphElement>("auto-check-status");
 
@@ -70,6 +72,10 @@ function statusFor(state: UpdatesState): {
       return { text: `Version ${state.version} is available` };
     case "failed":
       return { text: "Couldn't check for updates", kind: "error" };
+    case "downloading":
+      return { text: `Downloading… ${state.percent}%` };
+    case "installFailed":
+      return { text: "Update failed. Try again.", kind: "error" };
   }
 }
 
@@ -78,7 +84,15 @@ function render(state: UpdatesState): void {
   statusLine.textContent = text;
   if (kind) statusLine.dataset.kind = kind;
   else delete statusLine.dataset.kind;
-  checkButton.disabled = state.kind === "checking";
+  const downloading = state.kind === "downloading";
+  checkButton.disabled = state.kind === "checking" || downloading;
+  // Shown while an update is offered; disabled so it can't start twice.
+  updateNowButton.hidden = !(
+    state.kind === "available" ||
+    state.kind === "installFailed" ||
+    downloading
+  );
+  updateNowButton.disabled = downloading;
 }
 
 /** Scrolls to the section with this id, if the page has one. */
@@ -103,6 +117,12 @@ export async function initUpdates(): Promise<void> {
   }
   checkButton.addEventListener("click", () => {
     checkForUpdates().catch(() => render({ kind: "failed", step: "check" }));
+  });
+  updateNowButton.addEventListener("click", () => {
+    updateNowButton.disabled = true;
+    updateNow().catch(() => {
+      updateNowButton.disabled = false;
+    });
   });
   try {
     // Listen first, so a state sent while the getter runs isn't missed, and
