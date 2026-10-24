@@ -20,6 +20,8 @@ Background Windows app in Rust + Tauri v2: select text in any app → global sho
 | Dependencies, cargo-audit/cargo-deny | `rust-security` |
 | Threat model (clipboard, API key, data sent to LLM) | `security-threat-model` |
 | Popup/settings UI design | `impeccable` |
+| Art direction, anti-slop review of app screens | `design-taste-frontend` (self-host fonts; no Google Fonts links) |
+| Finding where the popup/settings UI should animate | `find-animation-opportunities` |
 | Commits, branches, versioning | `git-workflow-and-versioning` |
 | Cutting a release | `release-skills` |
 
