@@ -179,6 +179,14 @@ export function onScrollTo(handler: (id: string) => void): Promise<UnlistenFn> {
 }
 
 /**
+ * Says the page is fully drawn, so Rust shows the window, which it keeps
+ * hidden until then. Rust shows it anyway after a short timeout.
+ */
+export function settingsReady(): Promise<void> {
+  return invoke("settings_ready");
+}
+
+/**
  * Command errors arrive as a short, user-facing message. Anything else names
  * what failed, `action` being the attempt, as in "save your settings".
  */

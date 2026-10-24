@@ -19,6 +19,7 @@ fn main() {
             "resume_shortcut",
             "set_start_with_windows",
             "default_shortcut",
+            "settings_ready",
             "app_version",
             "get_updates_state",
             "check_for_updates",

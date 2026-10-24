@@ -9,8 +9,11 @@
     reason = "Tauri commands receive `State` by value"
 )]
 
+mod reveal;
+
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use tauri::window::Color;
 use tauri::{
@@ -24,6 +27,7 @@ use crate::settings::{
     SaveKeyError, Settings,
 };
 use crate::shortcut::{self, Hotkeys, TauriHotkeys};
+use reveal::Reveal;
 
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
@@ -73,15 +77,23 @@ fn page(section: Option<Section>) -> String {
 /// Returns an error if the window can't be created or shown.
 pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(LABEL) {
-        window.unminimize()?;
-        window.show()?;
-        window.set_focus()?;
+        // One still being drawn shows itself once ready; showing it now
+        // would show it blank.
+        if !reveal_state().is_hidden() {
+            window.unminimize()?;
+            window.show()?;
+            window.set_focus()?;
+        }
         if let Some(section) = section {
             window.emit_to(LABEL, SCROLL_EVENT, section.id())?;
         }
         return Ok(());
     }
-    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
+    // Hidden until its page is drawn (see `settings_ready`), so it never
+    // shows an empty frame. Counted as hidden before it's built, so even a
+    // page that is ready at once is shown.
+    let opening = reveal_state().open();
+    let built = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
         .title(format!("{} Settings", app.package_info().name))
         .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
@@ -89,18 +101,61 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         .background_color(BACKGROUND)
         .maximizable(false)
         .center()
+        .visible(false)
         .focused(true)
-        .build()?;
-    // Built focused. Its first focus event may be handled before the
-    // listener below is attached.
-    SHORTCUT_PAUSE.set_focused(true);
+        .build();
+    let window = built.inspect_err(|_| reveal_state().close(opening))?;
     let handle = app.clone();
-    window.on_window_event(move |event| track_focus(&handle, event));
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Destroyed) {
+            reveal_state().close(opening);
+        }
+        track_focus(&handle, event);
+    });
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
         crate::win32::color_title_bar(hwnd, TITLE_BAR, TITLE_TEXT);
     }
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(READY_TIMEOUT).await;
+        if reveal_state().time_out(opening) {
+            tracing::warn!("the settings page didn't get ready in time; showing it anyway");
+            show_window(&handle);
+        }
+    });
     Ok(())
+}
+
+/// How long a new settings window waits for its page before it shows anyway,
+/// so Settings never seems broken.
+const READY_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Whether the settings window is still hidden, waiting for its page.
+static REVEAL: Mutex<Reveal> = Mutex::new(Reveal::new());
+
+fn reveal_state() -> MutexGuard<'static, Reveal> {
+    REVEAL.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Shows the settings window in front, with keyboard focus.
+fn show_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(LABEL) else {
+        return;
+    };
+    if window.show().and_then(|()| window.set_focus()).is_err() {
+        tracing::warn!("the settings window could not be shown");
+    }
+}
+
+/// The settings page is drawn: its main form, every section, its fonts, and
+/// scrolled to the section it opened at. Shows the window, unless the
+/// timeout already did. The page can't show or focus windows itself.
+#[tauri::command]
+pub fn settings_ready(app: AppHandle) {
+    if reveal_state().ready() {
+        show_window(&app);
+    }
 }
 
 /// [`open_at`] from a spawned task. Use this from callbacks that run inside

@@ -15,6 +15,18 @@ body {
   overflow: hidden;
 }
 
+/* The popup fades in once its first state is drawn (main.ts sets
+   data-ready), so it never flashes an empty frame. Settings needs no fade:
+   Rust keeps it hidden until its page is drawn. */
+body {
+  opacity: 0;
+  transition: opacity var(--motion-normal) var(--ease);
+}
+
+body[data-ready] {
+  opacity: 1;
+}
+
 .popup {
   display: grid;
   grid-template-rows: auto 1fr auto;

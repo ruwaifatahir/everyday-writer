@@ -41,20 +41,12 @@ h2 {
   text-wrap: balance;
 }
 
-/* Each window fades in once its first state is drawn (main.ts sets
-   data-ready), so it never flashes an empty frame. Like a native window,
-   chrome text can't be selected and the pointer stays an arrow; text you
-   may want to copy opts back in. */
+/* Like a native window, chrome text can't be selected and the pointer stays
+   an arrow; text you may want to copy opts back in. */
 body {
   margin: 0;
-  opacity: 0;
-  transition: opacity var(--motion-normal) var(--ease);
   user-select: none;
   cursor: default;
-}
-
-body[data-ready] {
-  opacity: 1;
 }
 
 input,
