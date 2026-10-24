@@ -44,7 +44,16 @@ export function saveSettings(newSettings: ProviderSettings): Promise<void> {
   return invoke("save_settings", { newSettings });
 }
 
-/** Rejects with "This shortcut is used by another app. Pick a new one." if Windows refuses it; the old one stays. */
+/** Why `setShortcut` refused; mirrors `SetShortcutError` in `settings_window.rs`. */
+export type ShortcutRefusal =
+  | "notAShortcut"
+  | "noCtrlOrAlt"
+  | "win"
+  | "copyPaste"
+  | "taken"
+  | "save";
+
+/** Rejects with a `ShortcutRefusal` saying why; the old shortcut stays. */
 export function setShortcut(shortcut: string): Promise<void> {
   return invoke("set_shortcut", { shortcut });
 }

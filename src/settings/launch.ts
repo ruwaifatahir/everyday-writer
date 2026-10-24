@@ -13,6 +13,7 @@ import {
   pauseShortcut,
   resumeShortcut,
   type Settings,
+  type ShortcutRefusal,
   setShortcut,
   setStartWithWindows,
 } from "./api";
@@ -50,6 +51,31 @@ const MODIFIER_CODES = new Set([
 ]);
 
 const PROMPT = "Press a shortcut…";
+
+/** What each refusal from Rust tells the user. Rust decides; this words it. */
+const REFUSALS: Record<ShortcutRefusal, string> = {
+  notAShortcut: "That key can't be used in a shortcut. Try another.",
+  noCtrlOrAlt: "Include Ctrl or Alt, as in Ctrl + Shift + K.",
+  win: "Windows keeps the Win key for its own shortcuts. Use Ctrl or Alt.",
+  copyPaste:
+    "Everyday Writer presses Ctrl + C and Ctrl + V to copy and paste your text. Pick a new one.",
+  taken: "Another app already uses this shortcut. Pick a new one.",
+  save: "Couldn't save your settings. Check that the app data folder is writable.",
+};
+
+const REFUSAL_MESSAGES = new Map<unknown, string>(Object.entries(REFUSALS));
+
+function refusalMessage(error: unknown): string {
+  return (
+    REFUSAL_MESSAGES.get(error) ?? "Couldn't save the shortcut. Try again."
+  );
+}
+
+/** Whether `shortcut` holds Ctrl and Alt, which AltGr sends on some keyboards. */
+function usesCtrlAlt(shortcut: string): boolean {
+  const parts = shortcut.split("+").map((part) => part.trim().toLowerCase());
+  return parts.includes("ctrl") && parts.includes("alt");
+}
 
 /** `Super` is what Rust parses; people know the key as Win. */
 function toDisplay(shortcut: string): string {
@@ -146,11 +172,17 @@ async function applyShortcut(wanted: string): Promise<void> {
       savedShortcut = wanted;
       showingSaved = true;
       shortcutInput.removeAttribute("aria-invalid");
-      show(shortcutStatus, "Shortcut saved.", "ok");
+      show(
+        shortcutStatus,
+        usesCtrlAlt(wanted)
+          ? "Shortcut saved. On keyboards with AltGr, Ctrl + Alt also types special characters, so this shortcut may block one."
+          : "Shortcut saved.",
+        "ok",
+      );
       await renderReset();
     } catch (error) {
       // The previous shortcut still works and recording goes on.
-      show(shortcutStatus, errorMessage(error, "save the shortcut"), "error");
+      show(shortcutStatus, refusalMessage(error), "error");
     }
     // A save registers the new shortcut. Pause it too while the field still
     // records, so pressing it again records instead of starting a rewrite.
