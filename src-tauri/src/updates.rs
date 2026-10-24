@@ -412,9 +412,11 @@ where
 
     /// A check nobody asked for. Shows only what it finds, never
     /// "Checking…", and a failure shows nothing at all. A version newer
-    /// than any announced before gets one notification.
+    /// than any announced before gets one notification, even when what is
+    /// shown stays as it was.
     async fn check_automatically(&self) {
-        if !self.lock().takes_automatic_result() {
+        if matches!(*self.lock(), Phase::Downloading { .. }) {
+            // The update being installed is already the newest.
             return;
         }
         let found = match self.source.check().await {
@@ -429,11 +431,8 @@ where
         }
         let shown = {
             let mut phase = self.lock();
-            if !phase.takes_automatic_result() {
-                return;
-            }
             let before = phase.shown();
-            *phase = found.map_or(Phase::UpToDate, Phase::Available);
+            phase.take_automatic_result(found);
             let after = phase.shown();
             (after != before).then_some(after)
         };
@@ -474,14 +473,19 @@ where
 }
 
 impl<H> Phase<H> {
-    /// Whether an automatic check may replace this phase with what it
-    /// found.
-    fn takes_automatic_result(&self) -> bool {
-        match self {
+    /// Moves to what an automatic check `found`, unless a check the user
+    /// asked for is answering or Update now is installing. After a failed
+    /// install its message stays, unless an even newer version turned up.
+    fn take_automatic_result(&mut self, found: Option<AvailableUpdate<H>>) {
+        let replaces = match self {
+            Self::Checking | Self::Downloading { .. } => false,
+            Self::InstallFailed(failed) => found
+                .as_ref()
+                .is_some_and(|found| is_newer(&found.version, &failed.version)),
             Self::Idle | Self::UpToDate | Self::Available(_) | Self::CheckFailed => true,
-            // A check the user asked for is answering, or Update now is
-            // installing or has just failed (its message stays).
-            Self::Checking | Self::Downloading { .. } | Self::InstallFailed(_) => false,
+        };
+        if replaces {
+            *self = found.map_or(Self::UpToDate, Self::Available);
         }
     }
 }

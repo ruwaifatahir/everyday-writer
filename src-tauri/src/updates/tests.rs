@@ -717,6 +717,33 @@ async fn turning_automatic_checks_off_keeps_the_known_update() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn after_a_failed_install_an_even_newer_version_is_announced_and_offered() {
+    let controller = Arc::new(offering(&[], true, FakeGate::default()).await);
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+    *controller.source.answer.lock().unwrap() = Answer::Update("1.2.0");
+
+    let schedule = start(&controller);
+    after(11).await;
+
+    assert_eq!(notifications(&controller), ["1.2.0"]);
+    assert_eq!(controller.state(), available("1.2.0"));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn after_a_failed_install_finding_the_same_version_keeps_the_failure_shown() {
+    let controller = Arc::new(offering(&[], true, FakeGate::default()).await);
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+
+    let schedule = start(&controller);
+    after(11).await;
+
+    assert_eq!(checks(&controller), 2);
+    assert_eq!(controller.state(), install_failed("1.1.0"));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
 async fn starting_a_newer_version_says_updated_to_it_once() {
     let controller = Arc::new(controller_remembering(
         Answer::Nothing,
