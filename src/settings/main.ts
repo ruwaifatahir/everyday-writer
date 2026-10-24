@@ -18,7 +18,12 @@ import {
 } from "./api";
 import { initInstructionSets } from "./instruction-sets";
 import { initLaunch } from "./launch";
-import { initUpdates, scrollToRequestedSection } from "./updates";
+import { askToSaveBeforeUpdating, hasUnsavedChanges } from "./unsaved-changes";
+import {
+  beforeUpdateNow,
+  initUpdates,
+  scrollToRequestedSection,
+} from "./updates";
 
 const PROVIDER_NAMES: Record<ProviderKind, string> = {
   openai: "OpenAI",
@@ -76,6 +81,18 @@ const view = {
   replacingKey: false,
   confirmingClear: false,
 };
+
+/** The form as last loaded or saved; undefined if loading failed. */
+let savedForm: ProviderSettings | undefined;
+
+/** The form as it stands, unchecked. */
+function currentForm(): ProviderSettings {
+  return {
+    provider: view.provider,
+    model: modelInput.value,
+    customBaseUrl: baseUrlInput.value,
+  };
+}
 
 let statusTimer: number | undefined;
 
@@ -218,15 +235,17 @@ function readForm(): ProviderSettings | undefined {
   return settings;
 }
 
-async function save(): Promise<void> {
+/** Saves the form. Resolves false if it was invalid or couldn't be saved. */
+async function save(): Promise<boolean> {
   clearStatus();
   const settings = readForm();
-  if (!settings) return;
+  if (!settings) return false;
   // Ollama never sends a key, so none is saved for it.
   const key = settings.provider === "ollama" ? "" : keyInput.value.trim();
   saveButton.disabled = true;
   try {
     await saveSettings(settings);
+    savedForm = settings;
     if (key !== "") {
       await saveApiKey(settings.provider, key);
       view.keySaved = true;
@@ -236,8 +255,10 @@ async function save(): Promise<void> {
     showStatus("Saved", "ok");
     // A new key or base URL can unlock the provider's own list.
     void loadModels();
+    return true;
   } catch (error) {
     showStatus(errorMessage(error), "error");
+    return false;
   } finally {
     saveButton.disabled = false;
   }
@@ -313,6 +334,26 @@ keyClear.addEventListener("blur", () => {
   renderKey();
 });
 
+// Update now restarts the app, so unsaved form edits are asked about first.
+// Save only lets the update go ahead if the save worked; a failed save shows
+// its error as usual.
+beforeUpdateNow(async () => {
+  if (!hasUnsavedChanges(savedForm, currentForm(), keyInput.value)) {
+    return true;
+  }
+  switch (await askToSaveBeforeUpdating()) {
+    case "save": {
+      const saved = await save();
+      if (!saved) status.scrollIntoView({ block: "nearest" });
+      return saved;
+    }
+    case "discard":
+      return true;
+    case "cancel":
+      return false;
+  }
+});
+
 async function init(): Promise<void> {
   let settings: Settings | undefined;
   try {
@@ -320,6 +361,11 @@ async function init(): Promise<void> {
     view.provider = settings.provider;
     modelInput.value = settings.model;
     baseUrlInput.value = settings.customBaseUrl;
+    savedForm = {
+      provider: settings.provider,
+      model: settings.model,
+      customBaseUrl: settings.customBaseUrl,
+    };
     const radio = form.querySelector<HTMLInputElement>(
       `input[name="provider"][value="${settings.provider}"]`,
     );
