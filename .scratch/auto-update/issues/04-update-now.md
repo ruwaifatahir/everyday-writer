@@ -14,3 +14,15 @@
 - [ ] Verified by hand on the installed NSIS build: an older build updates to a test release, restarts, and keeps settings, instruction sets, API key and start-with-Windows
 - [ ] Verified by hand: a tampered signature is refused and the old version keeps running
 - [ ] `pnpm check` passes
+
+## Comments
+
+**Implementer (ticket/04-update-now):**
+
+- Busy gate: `RewriteSession::hold_when_idle()` waits until no capture, rewrite or replace runs (a popup showing a result or message counts as idle and is closed), then holds the session so `ShortcutPressed` does nothing; `release()` undoes it. Woken by a `Notify` fired after every `handle`. Tests in `session/tests.rs` (`holding_*`, `a_released_session_rewrites_again`).
+- Controller: new port `BusyGate { type Hold; hold_when_idle() }` (hold released on drop) as the 4th generic/`new` arg; `UpdateSource::install(&handle, &dyn Fn(u8)) -> Result<Infallible, InstallError>`; event `UpdateNowRequested`. Update now from `Available` or install-failed: shows `Downloading { percent: 0 }` at once (also while waiting for the gate, so the button is disabled), holds the gate, installs, renders each changed percent. Checks and a second Update now are ignored while downloading.
+- Deviation: the install failure is `UpdatesState::InstallFailed { version }` (`{ "kind": "installFailed", "version": "1.1.0" }`), not `Failed { step: Install }`, because the tray must keep "Update to {version}" and `Failed` carries no version. `FailedStep` still has only `Check`.
+- Wiring: `TauriUpdateSource::install` uses `download_and_install` (no timeout on the download), maps errors to `InstallError` kinds (signature errors -> `Signature`) before logging. `SessionGate`/`SessionHold` wrap `Arc<AppSession>`; `live_updates::start` must run after the session is managed (it already does). Command `update_now` (build.rs, handler list, `allow-update-now` in the settings capability).
+- Tray: new `TrayItem::Disabled { label }` -> disabled "Downloading update…"; `InstallFailed` shows "Update to {version}" (`ShowUpdate`, opens Settings only).
+- Page: `#updates-install` "Update now" (primary) shown for available / install failed / downloading, disabled while downloading; status "Downloading… 45%" and "Update failed. Try again.". It calls `update_now` directly: the unsaved-changes prompt is ticket 05.
+- Open: both "Verified by hand" items (NSIS update keeping settings/sets/key/autostart; tampered signature refused) are not done.
