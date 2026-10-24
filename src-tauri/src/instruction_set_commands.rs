@@ -150,7 +150,7 @@ pub fn set_active_instruction_set(
     change(&settings, |sets| sets.set_active(id))
 }
 
-/// Restore default templates. The window asks the user to confirm first.
+/// Restore starter templates. The window asks the user to confirm first.
 ///
 /// # Errors
 ///

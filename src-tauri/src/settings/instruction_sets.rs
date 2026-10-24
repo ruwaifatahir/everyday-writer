@@ -242,7 +242,7 @@ impl InstructionSets {
         Ok(())
     }
 
-    /// Restore default templates: every starter template still in the list
+    /// Restore starter templates: every starter template still in the list
     /// gets its original name and instructions back in place, and every
     /// missing one is re-added at the end. Sets the user wrote are never
     /// touched, and the active set stays active.

@@ -71,9 +71,9 @@ After:
 **Staying up to date**
 
 - The app checks the project's GitHub page for a new version by itself, about 10 seconds after it starts and then once a day.
-- When it finds one, it shows one quiet Windows notification, such as "everyday-writer 1.1.0 is available", once per version. The tray item **Check for updates** becomes **Update to 1.1.0**.
+- When it finds one, it shows one quiet Windows notification, such as "everyday-writer 1.1.0 is available. Click to update.", once per version. The tray item **Check for updates** becomes **Update to 1.1.0**.
 - Clicking the notification while it's on screen, or the tray item, opens Settings at **Updates**. It shows the version you have, a **Check for updates automatically** switch, a **Check for updates** button and, when there is one, **Update now**.
-- A check you start yourself shows its result only in Settings: "You're up to date", the new version, or "Couldn't check for updates". A failed automatic check stays silent.
+- A check you start yourself shows its result only in Settings: "You're up to date.", the new version, or "Couldn't check for updates. Check your connection and try again.". A failed automatic check stays silent.
 - Nothing installs until you click **Update now**. It shows the download progress, waits for any rewrite or replace to finish, asks first if Settings has unsaved changes, then installs with a small progress window, no questions and no admin prompt. The app restarts by itself and says "Updated to 1.1.0".
 - Your settings, instruction sets, key and start-with-Windows choice are kept.
 - The app only installs updates signed with the project's own key, and never moves to an older version. If an update fails, the old version keeps working and you can try again.
@@ -91,7 +91,7 @@ Instructions are the heart of the app. They decide what the rewrite does.
   - **Professional** (for emails and work messages)
   - **Shorter** (same message, fewer words)
 - Edit any template, delete it or write your own from scratch.
-- A **Restore default templates** button brings the starters back, after a confirm. Deleted ones return and edited ones reset to the original. Your own sets are never touched.
+- A **Restore starter templates** button brings the starters back, after a confirm. Deleted ones return and edited ones reset to the original. Your own sets are never touched.
 - The last set can't be deleted. Deleting the active set makes the first remaining set active.
 - There are no limits on what instructions can do. Your instructions decide the style, tone, language and purpose. For example, write in Roman Urdu and get clean English back.
 - By default the result stays in the language you wrote in, unless your instructions say otherwise.

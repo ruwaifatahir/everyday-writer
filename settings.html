@@ -23,7 +23,7 @@
     <form id="settings" class="settings" novalidate autocomplete="off">
       <header class="intro">
         <h1>Settings</h1>
-        <p>Choose the AI that rewrites your text.</p>
+        <p>Choose the provider that rewrites your text.</p>
       </header>
 
       <div class="panel">
@@ -73,8 +73,8 @@
 
             <div class="key-saved" id="key-saved" hidden>
               <span class="key-saved-text">Saved in Windows Credential Manager</span>
-              <button type="button" class="button quiet" id="key-test-saved">Test</button>
-              <button type="button" class="button quiet" id="key-change">Change</button>
+              <button type="button" class="button quiet" id="key-test-saved">Test key</button>
+              <button type="button" class="button quiet" id="key-change">Change key</button>
             </div>
 
             <div class="key-entry" id="key-entry">
@@ -86,7 +86,7 @@
                 autocomplete="off"
                 aria-describedby="key-status key-hint"
               />
-              <button type="button" class="button secondary" id="key-test">Test</button>
+              <button type="button" class="button secondary" id="key-test">Test key</button>
               <button type="button" class="button secondary" id="key-cancel" hidden>Cancel</button>
             </div>
             <p class="hint field-status" id="key-status" role="status" aria-live="polite"></p>
@@ -122,7 +122,7 @@
                 autocomplete="off"
                 aria-describedby="shortcut-hint shortcut-status"
               />
-              <button type="button" class="button secondary" id="shortcut-apply" hidden>Use this</button>
+              <button type="button" class="button secondary" id="shortcut-apply" hidden>Use shortcut</button>
             </div>
             <p class="hint" id="shortcut-hint">Press the keys, or type them like Ctrl+Alt+R. Use Ctrl, Alt or Win.</p>
             <p class="hint field-status" id="shortcut-status" role="status" aria-live="polite"></p>
@@ -159,7 +159,7 @@
             <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
             Add instruction set
           </button>
-          <button type="button" class="button quiet" id="sets-restore">Restore default templates</button>
+          <button type="button" class="button quiet" id="sets-restore">Restore starter templates</button>
         </div>
       </div>
       <p class="status" id="sets-status" role="status" aria-live="polite"></p>
@@ -224,7 +224,7 @@
           <p class="hint" id="set-instructions-hint">Say what a rewrite should do, in your own words. The app always replies with only the rewritten text.</p>
         </div>
         <div class="set-editor-actions">
-          <button type="button" class="button quiet danger" data-action="delete">Delete</button>
+          <button type="button" class="button quiet danger" data-action="delete">Delete set</button>
           <span class="spacer"></span>
           <button type="button" class="button secondary" data-action="cancel">Cancel</button>
           <button type="submit" class="button primary">Save set</button>
@@ -234,14 +234,14 @@
 
     <dialog class="confirm" id="restore-dialog" aria-labelledby="restore-title" aria-describedby="restore-body">
       <form method="dialog">
-        <h2 id="restore-title">Restore default templates?</h2>
+        <h2 id="restore-title">Restore starter templates?</h2>
         <p id="restore-body">
           Deleted starter templates come back, and edited ones go back to their original wording.
           Sets you wrote yourself stay as they are.
         </p>
         <div class="confirm-actions">
           <button type="submit" class="button secondary" value="cancel" autofocus>Cancel</button>
-          <button type="submit" class="button primary" value="restore">Restore</button>
+          <button type="submit" class="button primary" value="restore">Restore templates</button>
         </div>
       </form>
     </dialog>
@@ -256,7 +256,7 @@
         </p>
         <div class="confirm-actions">
           <button type="submit" class="button secondary" value="cancel">Cancel</button>
-          <button type="submit" class="button secondary" value="discard">Discard</button>
+          <button type="submit" class="button secondary" value="discard">Discard changes</button>
           <button type="submit" class="button primary" value="save" autofocus>Save</button>
         </div>
       </form>

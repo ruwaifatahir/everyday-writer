@@ -108,7 +108,7 @@ async function applyShortcut(): Promise<void> {
     await setShortcut(wanted);
     savedShortcut = wanted;
     resetShortcut();
-    show(shortcutStatus, "Shortcut changed", "ok");
+    show(shortcutStatus, "Shortcut changed.", "ok");
   } catch (error) {
     // The previous shortcut still works, so show it again.
     resetShortcut();

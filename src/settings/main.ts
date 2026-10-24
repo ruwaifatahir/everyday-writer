@@ -1,7 +1,7 @@
 // Settings window: provider, model, Custom base URL and the provider's key.
 //
 // The saved key is never shown: the window only learns whether one exists,
-// and offers Test and Change. A typed key is sent on Test and on Save, and
+// and offers Test key and Change key. A typed key is sent on Test key and on Save, and
 // the field is emptied right after saving.
 
 import "../shared/native-feel";
@@ -40,14 +40,24 @@ import {
   scrollToRequestedSection,
 } from "./updates";
 
+/**
+ * Each provider's name inside a sentence. Matches `display_name` in
+ * `src-tauri/src/settings.rs`, so Settings and the popup name it alike.
+ */
 const PROVIDER_NAMES: Record<ProviderKind, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   gemini: "Gemini",
   openrouter: "OpenRouter",
   ollama: "Ollama",
-  custom: "Custom",
+  custom: "your server",
 };
+
+/** The provider's name at the start of a sentence. */
+function providerSubject(provider: ProviderKind): string {
+  const name = PROVIDER_NAMES[provider];
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
 
 /** The provider list: the hosted services, then the two you run yourself. */
 const PROVIDER_OPTIONS: Option[] = [
@@ -215,27 +225,23 @@ function renderModel(): void {
 }
 
 /**
- * Saved: one line saying where the key is, with Test and Change. Entering
- * a key: the field with Test, plus Cancel and Remove key when it replaces
+ * Saved: one line saying where the key is, with Test key and Change key. Entering
+ * a key: the field with Test key, plus Cancel and Remove key when it replaces
  * a saved one.
  */
 function renderKey(): void {
-  const name = PROVIDER_NAMES[view.provider];
   const showSaved = view.keySaved && !view.replacingKey;
   keySaved.hidden = !showSaved;
   keyEntry.hidden = showSaved;
   keyCancel.hidden = !view.replacingKey;
   keyRemove.hidden = !view.replacingKey;
   keyRemove.textContent = view.confirmingRemove
-    ? "Confirm remove"
+    ? "Remove permanently"
     : "Remove key";
   keyRemove.classList.toggle("confirming", view.confirmingRemove);
   keyHint.textContent = showSaved
     ? ""
-    : `${KEY_PAGES[view.provider]} Kept in Windows Credential Manager, never in a file.`.trim();
-  keyInput.placeholder = keyIsOptional(view.provider)
-    ? "Leave empty for local servers"
-    : `Paste your ${name} key`;
+    : `${KEY_PAGES[view.provider]} Your key is kept in Windows Credential Manager, never in a file.`.trim();
 }
 
 function showKeyStatus(message: string, kind?: "error"): void {
@@ -257,7 +263,7 @@ async function testKey(button: HTMLButtonElement): Promise<void> {
   const typed = keyInput.value.trim();
   const key = keyEntry.hidden || typed === "" ? null : typed;
   if (key === null && !view.keySaved && !keyIsOptional(provider)) {
-    showKeyStatus("Paste a key to test it.", "error");
+    showKeyStatus("Enter an API key first.", "error");
     keyInput.focus();
     return;
   }
@@ -274,11 +280,11 @@ async function testKey(button: HTMLButtonElement): Promise<void> {
     if (request !== keyTestRequest) return;
     if (modelFound === false) {
       showKeyStatus(
-        `Works, but ${PROVIDER_NAMES[provider]} doesn't offer ${model}. Check the model name.`,
+        `${providerSubject(provider)} accepted the key but doesn't offer ${model}. Check the model name.`,
         "error",
       );
     } else {
-      showKeyStatus("Works.");
+      showKeyStatus(`${providerSubject(provider)} accepted the key.`);
     }
   } catch (error) {
     if (request !== keyTestRequest) return;
@@ -354,7 +360,7 @@ async function save(): Promise<boolean> {
     }
     resetKeyEntry();
     renderKey();
-    showStatus("Saved", "ok");
+    showStatus("Saved.", "ok");
     return true;
   } catch (error) {
     showStatus(errorMessage(error, "save your settings"), "error");
@@ -376,7 +382,7 @@ async function removeKey(): Promise<void> {
     view.keySaved = false;
     resetKeyEntry();
     renderKey();
-    showStatus("Key removed", "ok");
+    showStatus("Key removed.", "ok");
     keyInput.focus();
   } catch (error) {
     view.confirmingRemove = false;

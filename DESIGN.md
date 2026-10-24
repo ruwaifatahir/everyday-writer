@@ -134,7 +134,7 @@ border or a fill change:
 - **Provider logos**: monochrome `ink` marks from Simple Icons (CC0),
   inlined as an SVG sprite in `settings.html`. Never in brand colors.
 - **Saved key**: one line in a 2px stone box, "Saved in Windows Credential
-  Manager" in ink, with quiet Test and Change. No icon, no color. Test
+  Manager" in ink, with quiet Test key and Change key. No icon, no color. Test
   results are a plain caption under the field: `ink-soft` when it works,
   `ember-ink` when it doesn't.
 - **Switch**: cream track with ink border and fog knob; on is lavender with
@@ -156,9 +156,10 @@ border or a fill change:
 - Result: a plain "Rewritten" caption, the text in Figtree 15px fading in
   where the selection was, Replace focused. Long text fades into the
   footer rule and scrolls.
-- Message: a plain "Not rewritten" caption, the message in Garamond 20px, and
-  an outlined Open Settings button at the compact 30px size when there is
-  something to fix, so a two-line message still clears the footer.
+- Message: a plain "Not rewritten" caption, or "Copied" when Replace fell
+  back to copying, the message in Garamond 20px, and an outlined Open
+  Settings button at the compact 30px size when there is something to fix,
+  so a two-line message still clears the footer.
 
 ## Motion
 
@@ -200,6 +201,22 @@ just above centre. Every file in `src-tauri/icons/` is generated from the ink
 SVG, so never edit them by hand. After changing the SVG, run
 `pnpm tauri icon design/logo/everyday-writer-ink.svg -o src-tauri/icons`
 and delete the `android/`, `ios/` and `64x64.png` outputs.
+
+## Voice
+
+Plain, calm and short. The `better-writing` skill has the full rules.
+
+- **Terms**: name the provider ("OpenAI", "your server" for Custom), never
+  "the AI". Say "API key", "instruction set", "starter templates" and
+  "rewrite".
+- **Case**: sentence case for every label, heading and button.
+- **Messages** end with a period, statuses included ("Saved.").
+- **Errors** start with "Couldn't" or name the problem, then give the next
+  step: "Couldn't reach OpenAI. Check your connection and try again."
+- **Buttons** are a verb plus an object: "Test key", "Delete set".
+- **Placeholders** show an example or nothing, never an instruction.
+- **Never**: "Please", "successfully", "Oops", "Something went wrong" or
+  exclamation marks.
 
 ## Do
 

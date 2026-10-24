@@ -44,7 +44,7 @@ export function saveSettings(newSettings: ProviderSettings): Promise<void> {
   return invoke("save_settings", { newSettings });
 }
 
-/** Rejects with "This shortcut is used by another app" if Windows refuses it; the old one stays. */
+/** Rejects with "This shortcut is used by another app. Pick a new one." if Windows refuses it; the old one stays. */
 export function setShortcut(shortcut: string): Promise<void> {
   return invoke("set_shortcut", { shortcut });
 }

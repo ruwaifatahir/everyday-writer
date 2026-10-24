@@ -75,11 +75,14 @@ function statusFor(state: UpdatesState): {
     case "checking":
       return { text: "Checking…" };
     case "upToDate":
-      return { text: "You're up to date", kind: "ok" };
+      return { text: "You're up to date.", kind: "ok" };
     case "available":
-      return { text: `Version ${state.version} is available` };
+      return { text: `Version ${state.version} is available.` };
     case "checkFailed":
-      return { text: "Couldn't check for updates", kind: "error" };
+      return {
+        text: "Couldn't check for updates. Check your connection and try again.",
+        kind: "error",
+      };
     case "downloading":
       return { text: `Downloading… ${state.percent}%` };
     case "installFailed":

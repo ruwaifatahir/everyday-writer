@@ -234,7 +234,7 @@ impl Notifier for TauriNotifier {
     fn update_available(&self, version: &str) {
         self.show(
             UPDATE_AVAILABLE,
-            format!("everyday-writer {version} is available"),
+            format!("everyday-writer {version} is available. Click to update."),
         );
     }
 

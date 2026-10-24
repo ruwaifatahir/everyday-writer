@@ -88,8 +88,8 @@ function editorFor(editing: Exclude<Editing, null>): HTMLFormElement {
   deleteButton.disabled = onlySet;
   deleteButton.title = onlySet ? "Keep at least one instruction set." : "";
   deleteButton.textContent = view.confirmingDelete
-    ? "Confirm delete"
-    : "Delete";
+    ? "Delete permanently"
+    : "Delete set";
   deleteButton.classList.toggle("confirming", view.confirmingDelete);
   return form;
 }
@@ -272,7 +272,7 @@ async function saveEditor(form: HTMLFormElement): Promise<boolean> {
       editing === "new"
         ? library.sets.find((set) => !before.has(set.id))?.id
         : editing;
-    showStatus(editing === "new" ? "Instruction set added" : "Saved", "ok");
+    showStatus(editing === "new" ? "Instruction set added." : "Saved.", "ok");
     finishEditing(focusId);
     return true;
   } catch (error) {
@@ -287,23 +287,24 @@ async function deleteEditing(button: HTMLButtonElement): Promise<void> {
   if (typeof editing !== "number") return;
   if (!view.confirmingDelete) {
     view.confirmingDelete = true;
-    button.textContent = "Confirm delete";
+    button.textContent = "Delete permanently";
     button.classList.add("confirming");
     return;
   }
   button.disabled = true;
   const name =
-    view.library.sets.find((set) => set.id === editing)?.name ?? "Set";
+    view.library.sets.find((set) => set.id === editing)?.name ??
+    "the instruction set";
   try {
     const library = await deleteInstructionSet(editing);
     closeEditor();
     apply(library);
-    showStatus(`Deleted ${name}`, "ok");
+    showStatus(`Deleted ${name}.`, "ok");
     addButton.focus();
   } catch (error) {
     view.confirmingDelete = false;
     button.disabled = false;
-    button.textContent = "Delete";
+    button.textContent = "Delete set";
     button.classList.remove("confirming");
     showStatus(errorMessage(error, "delete the instruction set"), "error");
   }
@@ -316,7 +317,7 @@ list.addEventListener("change", (event) => {
   const name = view.library.sets.find((set) => set.id === id)?.name ?? "";
   void run(
     () => setActiveInstructionSet(id),
-    `${name} is now active`,
+    `${name} is now active.`,
     "make this set active",
   );
 });
@@ -355,7 +356,7 @@ list.addEventListener("focusout", (event) => {
   const target = event.target as HTMLElement;
   if (target.dataset.action !== "delete" || !view.confirmingDelete) return;
   view.confirmingDelete = false;
-  target.textContent = "Delete";
+  target.textContent = "Delete set";
   target.classList.remove("confirming");
 });
 
@@ -387,7 +388,7 @@ restoreDialog.addEventListener("close", () => {
   closeEditor();
   void run(
     restoreStarterTemplates,
-    "Default templates restored",
+    "Starter templates restored.",
     "restore the starter templates",
   ).then(() => restoreButton.focus());
 });
