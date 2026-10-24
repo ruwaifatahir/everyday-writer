@@ -368,6 +368,13 @@ pub fn is_shortcut_working(
     shortcut::parse(&settings.settings().shortcut).is_ok_and(|saved| hotkeys.is_registered(saved))
 }
 
+/// Whether the saved shortcut is the default, so Settings can offer to
+/// reset it.
+#[tauri::command(async)]
+pub fn is_default_shortcut(settings: State<'_, Arc<AppSettings>>) -> bool {
+    shortcut::is_default(&settings.settings().shortcut)
+}
+
 /// Turns start-with-Windows on or off.
 ///
 /// # Errors

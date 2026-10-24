@@ -50,6 +50,12 @@ pub fn parse(text: &str) -> Result<Shortcut, ShortcutError> {
     }
 }
 
+/// Whether `text` is [`DEFAULT_SHORTCUT`], however it's written. Compares
+/// parsed shortcuts, since the same keys can be spelled many ways.
+pub fn is_default(text: &str) -> bool {
+    parse(text).is_ok_and(|shortcut| parse(DEFAULT_SHORTCUT) == Ok(shortcut))
+}
+
 /// The system's global shortcuts. A port, so the change rules can be tested
 /// without Windows.
 pub trait Hotkeys {
@@ -150,7 +156,7 @@ mod tests {
 
     use tauri_plugin_global_shortcut::Shortcut;
 
-    use super::{ChangeError, Hotkeys, ShortcutError, change, parse};
+    use super::{ChangeError, Hotkeys, ShortcutError, change, is_default, parse};
 
     /// Global shortcuts in memory. `taken` are held by "another app".
     #[derive(Default)]
@@ -320,5 +326,49 @@ mod tests {
 
         assert!(hotkeys.works("Alt+Shift+R"));
         assert_eq!(saved.into_inner().as_deref(), Some("Alt+Shift+R"));
+    }
+
+    #[test]
+    fn resetting_to_the_default_brings_it_back_and_saves_it() {
+        let hotkeys = FakeHotkeys::with("Alt+Shift+R");
+        let saved = RefCell::new(None);
+
+        change(
+            &hotkeys,
+            "Alt+Shift+R",
+            super::DEFAULT_SHORTCUT,
+            saving(&saved),
+        )
+        .unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert!(!hotkeys.works("Alt+Shift+R"));
+        assert!(saved.into_inner().is_some_and(|text| is_default(&text)));
+    }
+
+    #[test]
+    fn resetting_to_a_default_held_by_another_app_keeps_the_current_shortcut() {
+        let hotkeys = FakeHotkeys::with("Alt+Shift+R").taken("Ctrl+Shift+Space");
+        let saved = RefCell::new(None);
+
+        let result = change(
+            &hotkeys,
+            "Alt+Shift+R",
+            super::DEFAULT_SHORTCUT,
+            saving(&saved),
+        );
+
+        assert_eq!(result, Err(ChangeError::Shortcut(ShortcutError::Taken)));
+        assert!(hotkeys.works("Alt+Shift+R"));
+        assert_eq!(hotkeys.count(), 1);
+        assert_eq!(saved.into_inner(), None);
+    }
+
+    #[test]
+    fn the_default_is_recognised_however_it_is_written() {
+        assert!(is_default("Ctrl+Shift+Space"));
+        assert!(is_default("shift+control+space"));
+        assert!(!is_default("Alt+Shift+R"));
+        assert!(!is_default("Ctrl+Banana"));
     }
 }

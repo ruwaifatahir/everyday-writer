@@ -83,6 +83,7 @@ pub fn run() {
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
             settings_window::set_start_with_windows,
+            settings_window::is_default_shortcut,
             live_updates::app_version,
             live_updates::get_updates_state,
             live_updates::check_for_updates,
