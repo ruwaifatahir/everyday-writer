@@ -775,3 +775,33 @@ async fn going_back_to_an_older_version_says_nothing() {
     assert_eq!(last_run(&controller).as_deref(), Some(RUNNING));
     schedule.abort();
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_last_run_version_that_cant_be_read_says_nothing() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Nothing,
+        FakeMemory::last_run(Some("not a version")),
+    ));
+
+    let schedule = start(&controller);
+    after(1).await;
+
+    assert_eq!(updated_notifications(&controller), Vec::<String>::new());
+    assert_eq!(last_run(&controller).as_deref(), Some(RUNNING));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_found_version_that_cant_be_read_is_not_announced() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Update("not a version"),
+        FakeMemory::new(true, Some("1.1.0")),
+    ));
+    let schedule = start(&controller);
+
+    after(11).await;
+
+    assert_eq!(notifications(&controller), Vec::<String>::new());
+    assert_eq!(last_notified(&controller).as_deref(), Some("1.1.0"));
+    schedule.abort();
+}

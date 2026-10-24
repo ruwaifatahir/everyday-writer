@@ -448,17 +448,21 @@ where
     fn greet_update(&self) {
         let running = self.running_version.as_str();
         let last = self.memory.recall().last_run_version;
-        if last.is_some_and(|last| is_newer(running, Some(&last))) {
+        if last.is_some_and(|last| is_newer(running, &last)) {
             self.notifier.updated_to(running);
         }
         self.memory.remember_run(running);
     }
 
-    /// Notifies about `version` unless it is no newer than the last version
-    /// announced, then remembers it.
+    /// Notifies about `version` if none was announced yet or it is newer than
+    /// the last one announced, then remembers it.
     fn announce(&self, version: &str) {
         let last = self.memory.recall().last_notified_version;
-        if is_newer(version, last.as_deref()) {
+        let new = match last {
+            Some(last) => is_newer(version, &last),
+            None => semver::Version::parse(version).is_ok(),
+        };
+        if new {
             self.notifier.update_available(version);
             self.memory.remember_notified(version);
         }
@@ -482,16 +486,16 @@ impl<H> Phase<H> {
     }
 }
 
-/// Whether `found` is newer than the `last` version announced. Compared as
-/// versions, so 1.10.0 is newer than 1.9.0. A version that can't be read
-/// counts as new unless it is the same text.
-fn is_newer(found: &str, last: Option<&str>) -> bool {
-    let Some(last) = last else {
-        return true;
-    };
-    match (semver::Version::parse(found), semver::Version::parse(last)) {
-        (Ok(found), Ok(last)) => found > last,
-        _ => found != last,
+/// Whether `version` is newer than `than`. Plain semver, so 1.10.0 is newer
+/// than 1.9.0. A version that can't be read is never newer, nor is anything
+/// newer than one.
+fn is_newer(version: &str, than: &str) -> bool {
+    match (
+        semver::Version::parse(version),
+        semver::Version::parse(than),
+    ) {
+        (Ok(version), Ok(than)) => version > than,
+        _ => false,
     }
 }
 
