@@ -11,7 +11,7 @@ use super::{
     BridgeError, Captured, Event, MAX_SELECTION_CHARS, MessageAction, PopupState, PopupView,
     REWRITE_TIMEOUT, RewriteSession, TextBridge,
 };
-use crate::llm::{RewriteError, Rewriter};
+use crate::llm::{InvalidSetting, RewriteError, Rewriter};
 use crate::settings::{ModelSettings, Provider, ProviderReadiness, SettingsView};
 
 /// A bridge whose capture finds `selection`, recording what it is asked
@@ -248,6 +248,7 @@ fn message(text: &str, action: Option<MessageAction>) -> PopupState {
     PopupState::Message {
         text: text.to_owned(),
         action,
+        copied: false,
     }
 }
 
@@ -409,8 +410,9 @@ async fn replace_into_a_closed_window_copies_the_result_and_shows_a_message() {
     assert_eq!(
         states(&session).last(),
         Some(&PopupState::Message {
-            text: "Original window closed, copied instead".to_owned(),
+            text: "The original window closed. Press Ctrl+V to paste the rewrite.".to_owned(),
             action: None,
+            copied: true,
         })
     );
 }
@@ -432,8 +434,9 @@ async fn a_failed_replace_copies_the_result_and_says_so() {
     assert_eq!(
         states(&session).last(),
         Some(&PopupState::Message {
-            text: "Couldn't replace your text, copied instead".to_owned(),
+            text: "Couldn't replace your text. Press Ctrl+V to paste the rewrite.".to_owned(),
             action: None,
+            copied: true,
         })
     );
 }
@@ -615,7 +618,7 @@ async fn no_key_asks_for_one_with_open_settings_and_sends_nothing() {
     assert_eq!(
         states(&session),
         [message(
-            "Add your API key to get started",
+            "Add your API key to get started.",
             Some(MessageAction::OpenSettings)
         )]
     );
@@ -635,7 +638,7 @@ async fn no_model_asks_for_one_with_open_settings_and_sends_nothing() {
     assert_eq!(
         states(&session),
         [message(
-            "Choose a model to get started",
+            "Choose a model to get started.",
             Some(MessageAction::OpenSettings)
         )]
     );
@@ -655,7 +658,7 @@ async fn no_custom_base_url_asks_for_one_with_open_settings_and_sends_nothing() 
     assert_eq!(
         states(&session),
         [message(
-            "Add your Custom base URL to get started",
+            "Add your base URL to get started.",
             Some(MessageAction::OpenSettings)
         )]
     );
@@ -693,7 +696,7 @@ async fn a_rewrite_with_no_answer_after_30_seconds_is_cancelled() {
         states(&session),
         [
             working("helo wrld"),
-            message("The AI took too long. Try again.", None)
+            message("OpenAI took too long. Try again.", None)
         ]
     );
 }
@@ -747,27 +750,27 @@ async fn each_rewrite_error_shows_its_own_message() {
     let cases = [
         (
             RewriteError::Network,
-            "Can't reach the AI. Check your internet connection.",
+            "Couldn't reach OpenAI. Check your connection and try again.",
             None,
         ),
         (
             RewriteError::Unauthorized,
-            "Your API key was rejected. Check it in Settings.",
+            "OpenAI rejected your API key. Check it in Settings.",
             open_settings,
         ),
         (
             RewriteError::RateLimited,
-            "Too many requests right now. Wait a moment and try again.",
+            "OpenAI is busy. Wait a moment and try again.",
             None,
         ),
         (
             RewriteError::Provider { status: 500 },
-            "The AI service had a problem. Try again.",
+            "OpenAI returned an error. Try again.",
             None,
         ),
         (
             RewriteError::EmptyResponse,
-            "The AI sent back nothing. Try again.",
+            "OpenAI sent back nothing. Try again.",
             None,
         ),
         (
@@ -777,17 +780,22 @@ async fn each_rewrite_error_shows_its_own_message() {
         ),
         (
             RewriteError::MissingApiKey,
-            "Add your API key to get started",
+            "Add your API key to get started.",
             open_settings,
         ),
         (
             RewriteError::KeyStore,
-            "Couldn't read your saved API key. Check it in Settings.",
+            "Couldn't read your saved API key. Enter it again in Settings.",
             open_settings,
         ),
         (
-            RewriteError::InvalidSettings("model"),
-            "Your AI settings need a look.",
+            RewriteError::InvalidSettings(InvalidSetting::Model),
+            "Choose a model to get started.",
+            open_settings,
+        ),
+        (
+            RewriteError::InvalidSettings(InvalidSetting::BaseUrl),
+            "Enter a base URL starting with http:// or https://.",
             open_settings,
         ),
     ];

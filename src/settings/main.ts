@@ -282,7 +282,7 @@ async function testKey(button: HTMLButtonElement): Promise<void> {
     }
   } catch (error) {
     if (request !== keyTestRequest) return;
-    showKeyStatus(errorMessage(error), "error");
+    showKeyStatus(errorMessage(error, "test the key"), "error");
   } finally {
     button.disabled = false;
   }
@@ -357,7 +357,7 @@ async function save(): Promise<boolean> {
     showStatus("Saved", "ok");
     return true;
   } catch (error) {
-    showStatus(errorMessage(error), "error");
+    showStatus(errorMessage(error, "save your settings"), "error");
     return false;
   } finally {
     saveButton.disabled = false;
@@ -381,7 +381,7 @@ async function removeKey(): Promise<void> {
   } catch (error) {
     view.confirmingRemove = false;
     renderKey();
-    showStatus(errorMessage(error), "error");
+    showStatus(errorMessage(error, "remove the key"), "error");
   } finally {
     keyRemove.disabled = false;
   }
@@ -530,7 +530,7 @@ async function init(): Promise<void> {
     savedForm = currentForm();
     providerPicker.set(settings.provider);
   } catch (error) {
-    showStatus(errorMessage(error), "error");
+    showStatus(errorMessage(error, "load your settings"), "error");
   }
   renderProvider();
   renderKey();

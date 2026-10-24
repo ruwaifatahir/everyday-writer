@@ -169,9 +169,9 @@ pub enum RewriteError {
     /// The Windows Credential Manager could not be read.
     #[error("the saved API key could not be read")]
     KeyStore,
-    /// The provider, model or base URL setting is not usable.
-    #[error("the AI settings are not valid: {0}")]
-    InvalidSettings(&'static str),
+    /// The model or base URL setting is not usable.
+    #[error("the settings are not valid: {0}")]
+    InvalidSettings(InvalidSetting),
     /// The provider rejected the API key (HTTP 401 or 403).
     #[error("the provider rejected the API key")]
     Unauthorized,
@@ -193,6 +193,18 @@ pub enum RewriteError {
     /// Any other failure. Details are dropped because they may hold user text.
     #[error("the rewrite failed")]
     Other,
+}
+
+/// Which setting made [`RewriteError::InvalidSettings`], so each gets its
+/// own message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum InvalidSetting {
+    /// The model name is empty.
+    #[error("the model name is empty")]
+    Model,
+    /// A Custom base URL isn't an `http(s)` URL.
+    #[error("the base URL must start with http:// or https://")]
+    BaseUrl,
 }
 
 #[cfg(test)]

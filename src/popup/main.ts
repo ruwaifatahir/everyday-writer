@@ -11,7 +11,12 @@ type PopupState =
   | { kind: "hidden" }
   | { kind: "working"; text: string }
   | { kind: "result"; text: string }
-  | { kind: "message"; text: string; action: "openSettings" | null };
+  | {
+      kind: "message";
+      text: string;
+      action: "openSettings" | null;
+      copied: boolean;
+    };
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -68,7 +73,7 @@ function show(state: PopupState): void {
       replace.focus();
       break;
     case "message":
-      statusText.textContent = "Not rewritten";
+      statusText.textContent = state.copied ? "Copied" : "Not rewritten";
       messageText.textContent = state.text;
       openSettings.hidden = state.action !== "openSettings";
       if (!openSettings.hidden) openSettings.focus();

@@ -234,13 +234,14 @@ function finishEditing(focusId?: InstructionSetId): void {
 async function run(
   action: () => Promise<InstructionSets>,
   done: string,
+  attempt: string,
 ): Promise<boolean> {
   try {
     apply(await action());
     showStatus(done, "ok");
     return true;
   } catch (error) {
-    showStatus(errorMessage(error), "error");
+    showStatus(errorMessage(error, attempt), "error");
     return false;
   }
 }
@@ -275,7 +276,7 @@ async function saveEditor(form: HTMLFormElement): Promise<boolean> {
     finishEditing(focusId);
     return true;
   } catch (error) {
-    showStatus(errorMessage(error), "error");
+    showStatus(errorMessage(error, "save the instruction set"), "error");
     if (submit) submit.disabled = false;
     return false;
   }
@@ -304,7 +305,7 @@ async function deleteEditing(button: HTMLButtonElement): Promise<void> {
     button.disabled = false;
     button.textContent = "Delete";
     button.classList.remove("confirming");
-    showStatus(errorMessage(error), "error");
+    showStatus(errorMessage(error, "delete the instruction set"), "error");
   }
 }
 
@@ -313,7 +314,11 @@ list.addEventListener("change", (event) => {
   if (target.name !== "active-set") return;
   const id = Number(target.value);
   const name = view.library.sets.find((set) => set.id === id)?.name ?? "";
-  void run(() => setActiveInstructionSet(id), `${name} is now active`);
+  void run(
+    () => setActiveInstructionSet(id),
+    `${name} is now active`,
+    "make this set active",
+  );
 });
 
 list.addEventListener("input", (event) => {
@@ -380,9 +385,11 @@ restoreDialog.addEventListener("close", () => {
     return;
   }
   closeEditor();
-  void run(restoreStarterTemplates, "Default templates restored").then(() =>
-    restoreButton.focus(),
-  );
+  void run(
+    restoreStarterTemplates,
+    "Default templates restored",
+    "restore the starter templates",
+  ).then(() => restoreButton.focus());
 });
 
 /** Whether the editor is open. It handles Esc itself. */
@@ -423,7 +430,7 @@ export async function initInstructionSets(): Promise<void> {
   try {
     apply(await getInstructionSets());
   } catch (error) {
-    showStatus(errorMessage(error), "error");
+    showStatus(errorMessage(error, "load your instruction sets"), "error");
   }
   try {
     await onInstructionSetsChanged(apply);

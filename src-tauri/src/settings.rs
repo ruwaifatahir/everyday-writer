@@ -65,6 +65,29 @@ impl ProviderKind {
         }
     }
 
+    /// The provider's name inside a sentence, as in "Couldn't reach Gemini".
+    /// Matches `PROVIDER_NAMES` in `src/settings/main.ts`, except Custom,
+    /// which reads as "your server".
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::OpenAi => "OpenAI",
+            Self::Anthropic => "Anthropic",
+            Self::Gemini => "Gemini",
+            Self::OpenRouter => "OpenRouter",
+            Self::Ollama => "Ollama",
+            Self::Custom => "your server",
+        }
+    }
+
+    /// The provider's name at the start of a sentence, as in "Gemini is
+    /// busy" or "Your server is busy".
+    pub fn display_subject(self) -> &'static str {
+        match self {
+            Self::Custom => "Your server",
+            other => other.display_name(),
+        }
+    }
+
     /// Whether a rewrite needs a saved key. Ollama and Custom work without
     /// one, so local servers work. A blank key there is sent as an empty
     /// key, never looked up anywhere else (ADR 0001 amendment).
@@ -373,6 +396,22 @@ mod tests {
             custom_base_url: base_url.to_owned(),
             ..Settings::default()
         }
+    }
+
+    #[test]
+    fn custom_is_named_your_server_in_messages() {
+        let name = ProviderKind::Custom.display_name();
+        let subject = ProviderKind::Custom.display_subject();
+
+        assert_eq!((name, subject), ("your server", "Your server"));
+    }
+
+    #[test]
+    fn a_named_provider_reads_the_same_anywhere_in_a_sentence() {
+        let name = ProviderKind::OpenAi.display_name();
+        let subject = ProviderKind::OpenAi.display_subject();
+
+        assert_eq!((name, subject), ("OpenAI", "OpenAI"));
     }
 
     #[test]

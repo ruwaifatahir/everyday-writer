@@ -111,10 +111,10 @@ pub enum CommandError {
     #[error("Couldn't reach Windows Credential Manager. Try again.")]
     KeyStore,
     /// An empty key was submitted.
-    #[error("Enter a key first.")]
+    #[error("Enter an API key first.")]
     BlankKey,
     /// Windows refused the new shortcut. The previous one is kept.
-    #[error("This shortcut is used by another app")]
+    #[error("This shortcut is used by another app. Pick a new one.")]
     ShortcutTaken,
     /// The new shortcut isn't a usable combination.
     #[error("Use Ctrl, Alt or Win together with one other key.")]
@@ -123,37 +123,42 @@ pub enum CommandError {
     #[error("Couldn't change the Windows startup setting. Try again.")]
     Autostart,
     /// A key test found no key to send.
-    #[error("Enter a key to test.")]
+    #[error("Enter an API key first.")]
     NoKeyToTest,
+    /// A key test had no model to check.
+    #[error("Choose a model first.")]
+    NoModel,
     /// A key test had no usable Custom base URL.
     #[error("Enter a base URL starting with http:// or https://.")]
     InvalidBaseUrl,
     /// The provider rejected the key.
-    #[error("The provider rejected this key. Check it and try again.")]
-    KeyRejected,
+    #[error("{} rejected this API key. Check it and try again.", .0.display_subject())]
+    KeyRejected(ProviderKind),
     /// The provider is rate limiting; the key itself may be fine.
-    #[error("The provider is busy right now. Try again shortly.")]
-    RateLimited,
+    #[error("{} is busy. Wait a moment and try again.", .0.display_subject())]
+    RateLimited(ProviderKind),
     /// The provider couldn't be reached.
-    #[error("Couldn't reach the provider. Check your connection.")]
-    Unreachable,
+    #[error("Couldn't reach {}. Check your connection and try again.", .0.display_name())]
+    Unreachable(ProviderKind),
     /// The provider answered with another error.
-    #[error("The provider returned an error. Try again later.")]
-    ProviderFailed,
+    #[error("{} returned an error. Try again.", .0.display_subject())]
+    ProviderFailed(ProviderKind),
 }
 
-impl From<llm::RewriteError> for CommandError {
-    fn from(error: llm::RewriteError) -> Self {
-        use llm::RewriteError;
+impl CommandError {
+    /// The key test's error for `error`, naming `provider` as the popup does.
+    fn from_rewrite(error: llm::RewriteError, provider: ProviderKind) -> Self {
+        use llm::{InvalidSetting, RewriteError};
         match error {
             RewriteError::MissingApiKey => Self::NoKeyToTest,
             RewriteError::KeyStore => Self::KeyStore,
-            RewriteError::InvalidSettings(_) => Self::InvalidBaseUrl,
-            RewriteError::Unauthorized => Self::KeyRejected,
-            RewriteError::RateLimited => Self::RateLimited,
-            RewriteError::Network => Self::Unreachable,
+            RewriteError::InvalidSettings(InvalidSetting::Model) => Self::NoModel,
+            RewriteError::InvalidSettings(InvalidSetting::BaseUrl) => Self::InvalidBaseUrl,
+            RewriteError::Unauthorized => Self::KeyRejected(provider),
+            RewriteError::RateLimited => Self::RateLimited(provider),
+            RewriteError::Network => Self::Unreachable(provider),
             RewriteError::Provider { .. } | RewriteError::EmptyResponse | RewriteError::Other => {
-                Self::ProviderFailed
+                Self::ProviderFailed(provider)
             }
         }
     }
@@ -281,7 +286,7 @@ pub async fn test_connection(
         }
         None => llm::check_connection(&target, Arc::new(NoKey), model).await,
     };
-    checked.map_err(CommandError::from)
+    checked.map_err(|error| CommandError::from_rewrite(error, provider))
 }
 
 /// A key source with no keys, for endpoints the saved key must not reach.
@@ -376,6 +381,8 @@ pub fn set_start_with_windows(
 #[cfg(test)]
 mod tests {
     use super::{CommandError, Section, page};
+    use crate::llm::RewriteError;
+    use crate::settings::ProviderKind;
 
     #[test]
     fn the_window_opens_at_the_top_by_default() {
@@ -391,6 +398,16 @@ mod tests {
     fn an_error_reaches_the_window_as_its_message() {
         let json = serde_json::to_string(&CommandError::BlankKey).unwrap();
 
-        assert_eq!(json, r#""Enter a key first.""#);
+        assert_eq!(json, r#""Enter an API key first.""#);
+    }
+
+    #[test]
+    fn a_key_test_error_names_the_provider() {
+        let error = CommandError::from_rewrite(RewriteError::Network, ProviderKind::Custom);
+
+        assert_eq!(
+            error.to_string(),
+            "Couldn't reach your server. Check your connection and try again."
+        );
     }
 }

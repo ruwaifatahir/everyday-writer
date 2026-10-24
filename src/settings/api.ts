@@ -143,7 +143,10 @@ export function onScrollTo(handler: (id: string) => void): Promise<UnlistenFn> {
   );
 }
 
-/** Command errors arrive as a short, user-facing message. */
-export function errorMessage(error: unknown): string {
-  return typeof error === "string" ? error : "Something went wrong. Try again.";
+/**
+ * Command errors arrive as a short, user-facing message. Anything else names
+ * what failed, `action` being the attempt, as in "save your settings".
+ */
+export function errorMessage(error: unknown, action: string): string {
+  return typeof error === "string" ? error : `Couldn't ${action}. Try again.`;
 }

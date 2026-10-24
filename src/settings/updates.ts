@@ -43,7 +43,10 @@ autoCheckSwitch.addEventListener("change", async () => {
     await setAutoCheck(enabled);
   } catch (error) {
     autoCheckSwitch.checked = !enabled;
-    autoCheckStatus.textContent = errorMessage(error);
+    autoCheckStatus.textContent = errorMessage(
+      error,
+      "change automatic update checks",
+    );
     autoCheckStatus.dataset.kind = "error";
   } finally {
     autoCheckSwitch.disabled = false;

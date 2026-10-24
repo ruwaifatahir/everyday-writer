@@ -20,7 +20,7 @@ use genai::resolver::{AuthData, Endpoint};
 use genai::{Client, ModelIden, ServiceTarget, WebConfig};
 use serde::Serialize;
 
-use super::{RewriteError, RewritePrompt, Rewriter, Thinking, thinking_for};
+use super::{InvalidSetting, RewriteError, RewritePrompt, Rewriter, Thinking, thinking_for};
 use crate::settings::{ApiKeySource, ModelSettings, Provider};
 
 const OPENAI_URL: &str = "https://api.openai.com/v1/";
@@ -61,7 +61,7 @@ impl<K: ApiKeySource + 'static> GenaiRewriter<K> {
     pub fn new(settings: ModelSettings, keys: K) -> Result<Self, RewriteError> {
         let model = settings.model.trim();
         if model.is_empty() {
-            return Err(RewriteError::InvalidSettings("the model name is empty"));
+            return Err(RewriteError::InvalidSettings(InvalidSetting::Model));
         }
         let (kind, endpoint) = adapter_and_endpoint(&settings.provider)?;
         let client = client(REQUEST_TIMEOUT, CONNECT_TIMEOUT)?;
@@ -302,9 +302,7 @@ fn custom_endpoint(base_url: &str) -> Result<Endpoint, RewriteError> {
             .is_some_and(|rest| !rest.is_empty())
     });
     if !has_host {
-        return Err(RewriteError::InvalidSettings(
-            "the base URL must start with http:// or https://",
-        ));
+        return Err(RewriteError::InvalidSettings(InvalidSetting::BaseUrl));
     }
     let base_url = if base_url.ends_with('/') {
         base_url.to_owned()
@@ -347,7 +345,7 @@ mod tests {
         Connection, GenaiRewriter, adapter_and_endpoint, check_connection, check_openrouter_key,
         model_names_at,
     };
-    use crate::llm::{RewriteError, Rewriter};
+    use crate::llm::{InvalidSetting, RewriteError, Rewriter};
     use crate::settings::{ApiKey, ApiKeySource, KeyError, ModelSettings, Provider};
 
     /// Keys from memory, so tests never touch the OS keyring.
@@ -410,7 +408,10 @@ mod tests {
     fn empty_model_is_rejected() {
         let result = GenaiRewriter::new(openai("  "), TestKeys(Ok(None)));
 
-        assert!(matches!(result, Err(RewriteError::InvalidSettings(_))));
+        assert!(matches!(
+            result,
+            Err(RewriteError::InvalidSettings(InvalidSetting::Model))
+        ));
     }
 
     /// What the local endpoint received.
@@ -894,6 +895,9 @@ mod tests {
 
         let result = GenaiRewriter::new(settings, TestKeys(Ok(None)));
 
-        assert!(matches!(result, Err(RewriteError::InvalidSettings(_))));
+        assert!(matches!(
+            result,
+            Err(RewriteError::InvalidSettings(InvalidSetting::BaseUrl))
+        ));
     }
 }

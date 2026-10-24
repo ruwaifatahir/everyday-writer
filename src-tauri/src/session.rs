@@ -24,8 +24,8 @@ use std::time::Duration;
 use serde::Serialize;
 use tokio::sync::{Notify, oneshot};
 
-use crate::llm::{RewriteError, Rewriter};
-use crate::settings::{ProviderReadiness, SettingsView};
+use crate::llm::{InvalidSetting, RewriteError, Rewriter};
+use crate::settings::{ProviderKind, ProviderReadiness, SettingsView};
 
 /// Something the user did that the session reacts to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +66,8 @@ pub enum PopupState {
         text: String,
         /// A button offered with the message, if any.
         action: Option<MessageAction>,
+        /// Replace couldn't go ahead and the result was copied instead.
+        copied: bool,
     },
 }
 
@@ -76,10 +78,15 @@ impl std::fmt::Debug for PopupState {
             Self::Hidden => f.write_str("Hidden"),
             Self::Working { .. } => f.write_str("Working { .. }"),
             Self::Result { .. } => f.write_str("Result { .. }"),
-            Self::Message { text, action } => f
+            Self::Message {
+                text,
+                action,
+                copied,
+            } => f
                 .debug_struct("Message")
                 .field("text", text)
                 .field("action", action)
+                .field("copied", copied)
                 .finish(),
         }
     }
@@ -170,24 +177,18 @@ pub const REWRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 // The popup's messages. None carries request or response content.
 const TOO_LONG: &str = "This text is too long. Select up to 5,000 characters.";
-const NO_KEY: &str = "Add your API key to get started";
-const NO_MODEL: &str = "Choose a model to get started";
-const NO_CUSTOM_URL: &str = "Add your Custom base URL to get started";
-const TIMED_OUT: &str = "The AI took too long. Try again.";
-const NO_INTERNET: &str = "Can't reach the AI. Check your internet connection.";
-const KEY_REJECTED: &str = "Your API key was rejected. Check it in Settings.";
-const KEY_UNREADABLE: &str = "Couldn't read your saved API key. Check it in Settings.";
-const BAD_SETTINGS: &str = "Your AI settings need a look.";
-const RATE_LIMITED: &str = "Too many requests right now. Wait a moment and try again.";
-const PROVIDER_FAILED: &str = "The AI service had a problem. Try again.";
-const EMPTY_RESPONSE: &str = "The AI sent back nothing. Try again.";
+const NO_KEY: &str = "Add your API key to get started.";
+const NO_MODEL: &str = "Choose a model to get started.";
+const NO_CUSTOM_URL: &str = "Add your base URL to get started.";
+const BAD_BASE_URL: &str = "Enter a base URL starting with http:// or https://.";
+const KEY_UNREADABLE: &str = "Couldn't read your saved API key. Enter it again in Settings.";
 const REWRITE_FAILED: &str = "Couldn't rewrite your text. Try again.";
 
 /// Replace found the original window closed and copied the result.
-const WINDOW_CLOSED: &str = "Original window closed, copied instead";
+const WINDOW_CLOSED: &str = "The original window closed. Press Ctrl+V to paste the rewrite.";
 
 /// Replace couldn't reach the original window and copied the result.
-const REPLACE_FAILED: &str = "Couldn't replace your text, copied instead";
+const REPLACE_FAILED: &str = "Couldn't replace your text. Press Ctrl+V to paste the rewrite.";
 
 /// The session's own state, richer than the popup state it shows.
 enum Phase<W> {
@@ -233,6 +234,8 @@ impl View {
 /// A rewrite that is ready to send.
 struct Working {
     run: u64,
+    /// Named in the message if the rewrite fails.
+    provider: ProviderKind,
     instructions: String,
     selection: String,
     cancelled: oneshot::Receiver<()>,
@@ -407,6 +410,7 @@ where
             let (cancel, cancelled) = oneshot::channel();
             let working = Working {
                 run,
+                provider: self.settings.model_settings().provider.kind(),
                 instructions: self.settings.active_instructions(),
                 selection: captured.selection.clone(),
                 cancelled,
@@ -431,6 +435,7 @@ where
     async fn rewrite(&self, working: Working) {
         let Working {
             run,
+            provider,
             instructions,
             selection,
             cancelled,
@@ -444,8 +449,8 @@ where
         };
         let view = match outcome {
             Ok(Ok(text)) => View::Result(text),
-            Ok(Err(error)) => View::Message(message_for(&error)),
-            Err(_elapsed) => View::Message(message(TIMED_OUT, None)),
+            Ok(Err(error)) => View::Message(message_for(&error, provider)),
+            Err(_elapsed) => View::Message(message(&timed_out(provider), None)),
         };
         self.finish(run, view);
     }
@@ -518,7 +523,11 @@ where
     async fn copy_instead(&self, captured: Captured<B::Window>, result: String, note: &str) {
         let copied = self.bridge.copy(&result).await;
         let view = if copied.is_ok() {
-            View::Message(message(note, None))
+            View::Message(PopupState::Message {
+                text: note.to_owned(),
+                action: None,
+                copied: true,
+            })
         } else {
             tracing::warn!("the result couldn't be copied");
             View::Result(result)
@@ -565,21 +574,44 @@ fn not_ready_message(readiness: ProviderReadiness) -> Option<PopupState> {
     Some(message(text, Some(MessageAction::OpenSettings)))
 }
 
-/// The message shown for a failed rewrite. Never includes request or
-/// response content.
-fn message_for(error: &RewriteError) -> PopupState {
+/// The message shown for a failed rewrite, naming `provider`. Never
+/// includes request or response content.
+fn message_for(error: &RewriteError, provider: ProviderKind) -> PopupState {
     let open_settings = Some(MessageAction::OpenSettings);
+    let name = provider.display_name();
+    let subject = provider.display_subject();
     match error {
         RewriteError::MissingApiKey => message(NO_KEY, open_settings),
         RewriteError::KeyStore => message(KEY_UNREADABLE, open_settings),
-        RewriteError::InvalidSettings(_) => message(BAD_SETTINGS, open_settings),
-        RewriteError::Unauthorized => message(KEY_REJECTED, open_settings),
-        RewriteError::RateLimited => message(RATE_LIMITED, None),
-        RewriteError::Network => message(NO_INTERNET, None),
-        RewriteError::Provider { .. } => message(PROVIDER_FAILED, None),
-        RewriteError::EmptyResponse => message(EMPTY_RESPONSE, None),
+        RewriteError::InvalidSettings(InvalidSetting::Model) => message(NO_MODEL, open_settings),
+        RewriteError::InvalidSettings(InvalidSetting::BaseUrl) => {
+            message(BAD_BASE_URL, open_settings)
+        }
+        RewriteError::Unauthorized => message(
+            &format!("{subject} rejected your API key. Check it in Settings."),
+            open_settings,
+        ),
+        RewriteError::RateLimited => message(
+            &format!("{subject} is busy. Wait a moment and try again."),
+            None,
+        ),
+        RewriteError::Network => message(
+            &format!("Couldn't reach {name}. Check your connection and try again."),
+            None,
+        ),
+        RewriteError::Provider { .. } => {
+            message(&format!("{subject} returned an error. Try again."), None)
+        }
+        RewriteError::EmptyResponse => {
+            message(&format!("{subject} sent back nothing. Try again."), None)
+        }
         RewriteError::Other => message(REWRITE_FAILED, None),
     }
+}
+
+/// The message shown when `provider` didn't answer in time.
+fn timed_out(provider: ProviderKind) -> String {
+    format!("{} took too long. Try again.", provider.display_subject())
 }
 
 /// A message state showing `text`, with an optional button.
@@ -587,6 +619,7 @@ fn message(text: &str, action: Option<MessageAction>) -> PopupState {
     PopupState::Message {
         text: text.to_owned(),
         action,
+        copied: false,
     }
 }
 

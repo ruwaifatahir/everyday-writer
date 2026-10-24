@@ -112,7 +112,7 @@ async function applyShortcut(): Promise<void> {
   } catch (error) {
     // The previous shortcut still works, so show it again.
     resetShortcut();
-    show(shortcutStatus, errorMessage(error), "error");
+    show(shortcutStatus, errorMessage(error, "change the shortcut"), "error");
   } finally {
     shortcutApply.disabled = false;
   }
@@ -159,7 +159,11 @@ startSwitch.addEventListener("change", async () => {
     await setStartWithWindows(enabled);
   } catch (error) {
     startSwitch.checked = !enabled;
-    show(startStatus, errorMessage(error), "error");
+    show(
+      startStatus,
+      errorMessage(error, "change start with Windows"),
+      "error",
+    );
   } finally {
     startSwitch.disabled = false;
   }
