@@ -21,6 +21,7 @@ pub mod capture;
 pub mod clipboard;
 pub mod instruction_set_commands;
 pub mod live_rewriter;
+pub mod live_updates;
 pub mod llm;
 pub mod logging;
 pub mod popup;
@@ -31,6 +32,7 @@ pub mod settings_window;
 pub mod shortcut;
 pub mod text_bridge;
 pub mod tray;
+pub mod updates;
 pub mod win32;
 
 use std::sync::Arc;
@@ -62,11 +64,14 @@ pub fn run() {
         // Single instance must be registered first, as its docs require.
         // A second launch exits and opens Settings in this one.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            settings_window::open_later(app);
+            settings_window::open_at_later(app, None);
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        // Endpoint, public key and install mode come from `plugins.updater` in tauri.conf.json.
+        // Used from Rust only: no window is granted an `updater:*` permission.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             settings_window::get_settings,
             settings_window::save_settings,
@@ -77,6 +82,11 @@ pub fn run() {
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
             settings_window::set_start_with_windows,
+            live_updates::app_version,
+            live_updates::get_updates_state,
+            live_updates::check_for_updates,
+            live_updates::set_auto_check,
+            live_updates::update_now,
             instruction_set_commands::get_instruction_sets,
             instruction_set_commands::add_instruction_set,
             instruction_set_commands::edit_instruction_set,
@@ -93,6 +103,7 @@ pub fn run() {
             let startup = load_settings(app)?;
             instruction_set_commands::announce_changes(app);
             start_rewrite_session(app)?;
+            live_updates::start(app.handle());
             tray::init(app)?;
             apply_start_with_windows(app);
             let registered = register_saved_shortcut(app);
@@ -100,7 +111,7 @@ pub fn run() {
                 notify_shortcut_failed(app.handle(), error);
             }
             if (opens_settings_at_startup(startup) || registered.is_err())
-                && settings_window::open(app.handle()).is_err()
+                && settings_window::open_at(app.handle(), None).is_err()
             {
                 tracing::warn!("the settings window could not open");
             }
@@ -240,5 +251,37 @@ mod tests {
     #[test]
     fn an_explicit_exit_quits_the_app() {
         assert!(!keeps_running_on_exit_request(Some(0)));
+    }
+
+    /// ADR 0002: what every installed copy bakes in. Changing any of this after a
+    /// release strands or weakens existing installs, so it fails loudly here.
+    #[test]
+    fn updates_come_signed_from_the_static_github_file_and_install_per_user() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let updater = &config["plugins"]["updater"];
+
+        // A plain GET of a fixed URL: no `{{current_version}}` or other template data.
+        assert_eq!(
+            updater["endpoints"],
+            serde_json::json!([
+                "https://github.com/ruwaifatahir/everyday-writer/releases/latest/download/latest.json"
+            ])
+        );
+        assert!(
+            updater["pubkey"]
+                .as_str()
+                .is_some_and(|key| !key.is_empty()),
+            "the public key is missing"
+        );
+        assert_eq!(updater["requireSignedVersion"], true);
+        assert_eq!(updater["windows"]["installMode"], "passive");
+        assert_eq!(config["bundle"]["createUpdaterArtifacts"], true);
+        // Per-user NSIS install (the default) means no admin prompt on update.
+        let install_mode = &config["bundle"]["windows"]["nsis"]["installMode"];
+        assert!(
+            install_mode.is_null() || install_mode == "currentUser",
+            "the installer must stay per-user"
+        );
     }
 }

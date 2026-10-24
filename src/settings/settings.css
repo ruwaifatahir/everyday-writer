@@ -684,6 +684,30 @@ input[aria-invalid="true"]:focus-visible {
   display: none;
 }
 
+/* Updates section */
+
+.updates {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 28px;
+  padding: 18px 0 24px;
+  border-top: 1px solid var(--line);
+}
+
+.app-version {
+  margin: 0;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.updates-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
 /* Restore confirmation */
 
 .confirm {

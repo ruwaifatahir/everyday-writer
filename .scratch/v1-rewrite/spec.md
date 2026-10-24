@@ -254,12 +254,12 @@ The user sets up the app in a small settings window. There they pick a provider 
 - Detecting read-only targets or failed pastes.
 - Capturing through UI Automation.
 - Streaming the result as it's written.
-- In-app update notices.
 - A signed installer.
 - Mac, Linux and mobile.
 
 ## Further Notes
 
+- In-app update notices were out of scope for v1 (1.0.0 has no updater). They shipped later; see `.scratch/auto-update/spec.md`.
 - Decisions come from the grilling session on `docs/PRD.md`. The PRD, `GLOSSARY.md` and ADR 0001 (with its amendment) were updated to match.
 - The capture and Replace approach follows research on Microsoft PowerToys Advanced Paste, WritingTools, Espanso and AutoHotkey. None of them detects read-only targets. Most save only the text on the clipboard, so a full multi-format snapshot goes further than they do.
 - The empty-key behaviour for Custom against LM Studio, and LM Studio's default port, haven't been verified against a running server. Check them during implementation.

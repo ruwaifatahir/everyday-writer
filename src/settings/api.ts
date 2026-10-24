@@ -2,6 +2,7 @@
 // A key only ever travels from here to Rust; no command sends one back.
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type ProviderKind =
   | "openai"
@@ -25,6 +26,8 @@ export interface Settings {
   shortcut: string;
   /** Change it with `setStartWithWindows`. */
   startWithWindows: boolean;
+  /** Change it with `setAutoCheck`. */
+  autoCheck: boolean;
 }
 
 /** What the Save button saves. The rest has its own commands. */
@@ -73,6 +76,55 @@ export function listModels(
 
 export function clearApiKey(provider: ProviderKind): Promise<void> {
   return invoke("clear_api_key", { provider });
+}
+
+/** The running app's version, such as `1.0.0`. */
+export function appVersion(): Promise<string> {
+  return invoke<string>("app_version");
+}
+
+/** What Settings shows about updates; mirrors `UpdatesState` in `updates.rs`. */
+export type UpdatesState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "upToDate" }
+  | { kind: "available"; version: string }
+  | { kind: "checkFailed"; version?: string }
+  | { kind: "downloading"; percent: number }
+  | { kind: "installFailed"; version: string };
+
+export function getUpdatesState(): Promise<UpdatesState> {
+  return invoke<UpdatesState>("get_updates_state");
+}
+
+/** Starts a check; the answer arrives through `onUpdatesState`. */
+export function checkForUpdates(): Promise<void> {
+  return invoke("check_for_updates");
+}
+
+/** Saves the choice and starts or stops automatic checks at once. */
+export function setAutoCheck(enabled: boolean): Promise<void> {
+  return invoke("set_auto_check", { enabled });
+}
+
+/** Installs the offered update and restarts; progress arrives through onUpdatesState. */
+export function updateNow(): Promise<void> {
+  return invoke("update_now");
+}
+
+export function onUpdatesState(
+  handler: (state: UpdatesState) => void,
+): Promise<UnlistenFn> {
+  return listen<UpdatesState>("updates-state", (event) =>
+    handler(event.payload),
+  );
+}
+
+/** Rust asks the open window to scroll to a section, by element id. */
+export function onScrollTo(handler: (id: string) => void): Promise<UnlistenFn> {
+  return listen<string>("settings-scroll-to", (event) =>
+    handler(event.payload),
+  );
 }
 
 /** Command errors arrive as a short, user-facing message. */

@@ -200,7 +200,7 @@ impl PopupView for TauriPopup {
     }
 
     fn open_settings(&self) {
-        if settings_window::open(&self.app).is_err() {
+        if settings_window::open_at(&self.app, None).is_err() {
             tracing::warn!("the settings window could not open");
         }
     }
