@@ -13,12 +13,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_notification::{ActionPerformed, NotificationExt};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::popup::AppSession;
 use crate::settings::AppSettings;
-use crate::settings_window::{self, CommandError};
+use crate::settings_window::{self, CommandError, Section};
 use crate::tray;
 use crate::updates::{
     AvailableUpdate, BusyGate, CheckError, InstallError, Notifier, Remembered, UpdateController,
@@ -43,8 +43,9 @@ pub type AppUpdates = UpdateController<
 /// Builds the update controller, hands it and its view to Tauri's state,
 /// and starts its automatic-check schedule. Call from `setup`, after the
 /// settings are loaded and the rewrite session is managed, and before the
-/// tray is built.
+/// tray is built or any notification is shown.
 pub fn start(app: &AppHandle) {
+    open_updates_on_click(app);
     let view = Arc::new(TauriUpdatesView::new(app.clone()));
     app.manage(Arc::clone(&view));
     let session = Arc::clone(app.state::<Arc<AppSession>>().inner());
@@ -58,6 +59,24 @@ pub fn start(app: &AppHandle) {
     );
     app.manage(Arc::new(controller));
     send(app, UpdateEvent::Started);
+}
+
+/// Makes a click on the update-available toast open Settings at Updates.
+/// A click is reported only while the toast is on screen, and only for
+/// toasts shown after this, so it runs before anything can show one.
+///
+/// The handler runs on the plugin's own thread, so it only decides and
+/// hands the opening to the async runtime. It never installs anything.
+fn open_updates_on_click(app: &AppHandle) {
+    let handle = app.clone();
+    let registered = app.notification().on_action(move |performed| {
+        if click_opens_updates(performed) {
+            settings_window::open_at_later(&handle, Some(Section::Updates));
+        }
+    });
+    if registered.is_err() {
+        tracing::warn!("update notification clicks can't be received");
+    }
 }
 
 /// Hands `event` to the update controller on the async runtime, so menu
@@ -166,6 +185,27 @@ fn check_error(error: &tauri_plugin_updater::Error) -> CheckError {
     }
 }
 
+/// The key, in a toast's extra data, that says which toast it is.
+const TOAST_KIND: &str = "kind";
+
+/// The [`TOAST_KIND`] of the "update is available" toast.
+const UPDATE_AVAILABLE: &str = "update-available";
+
+/// The action id the notification plugin reports for a click on a toast's body.
+const TAP: &str = "tap";
+
+/// Whether a reported toast click should open Settings at Updates: only a
+/// click on the update-available toast. Once any click handler is
+/// registered every toast reports its clicks, so all others are ignored.
+fn click_opens_updates(performed: &ActionPerformed) -> bool {
+    performed.action_id() == TAP
+        && performed
+            .notification()
+            .and_then(|toast| toast.extra().get(TOAST_KIND))
+            .and_then(serde_json::Value::as_str)
+            == Some(UPDATE_AVAILABLE)
+}
+
 /// Shows update notifications as Windows toasts.
 pub struct TauriNotifier(AppHandle);
 
@@ -177,6 +217,7 @@ impl Notifier for TauriNotifier {
             .builder()
             .title("everyday-writer")
             .body(format!("everyday-writer {version} is available"))
+            .extra(TOAST_KIND, UPDATE_AVAILABLE)
             .show();
         if shown.is_err() {
             tracing::warn!("the update notification couldn't be shown");
@@ -287,4 +328,52 @@ pub async fn set_auto_check(
 #[tauri::command]
 pub fn update_now(app: AppHandle) {
     send(&app, UpdateEvent::UpdateNowRequested);
+}
+
+#[cfg(test)]
+mod tests {
+    use tauri_plugin_notification::ActionPerformed;
+
+    use super::click_opens_updates;
+
+    fn click(json: serde_json::Value) -> ActionPerformed {
+        serde_json::from_value(json).unwrap()
+    }
+
+    #[test]
+    fn a_click_on_the_update_toast_opens_updates() {
+        let performed = click(serde_json::json!({
+            "actionId": "tap",
+            "notification": { "id": 7, "extra": { "kind": "update-available" } }
+        }));
+        assert!(click_opens_updates(&performed));
+    }
+
+    #[test]
+    fn a_click_on_the_shortcut_failed_toast_does_nothing() {
+        let performed = click(serde_json::json!({
+            "actionId": "tap",
+            "notification": {
+                "id": 3,
+                "title": "everyday-writer",
+                "body": "Your shortcut is used by another app. Pick a new one in Settings."
+            }
+        }));
+        assert!(!click_opens_updates(&performed));
+    }
+
+    #[test]
+    fn a_click_whose_toast_cant_be_read_does_nothing() {
+        let performed = click(serde_json::json!({ "actionId": "tap" }));
+        assert!(!click_opens_updates(&performed));
+    }
+
+    #[test]
+    fn an_action_button_on_the_update_toast_does_nothing() {
+        let performed = click(serde_json::json!({
+            "actionId": "install",
+            "notification": { "id": 7, "extra": { "kind": "update-available" } }
+        }));
+        assert!(!click_opens_updates(&performed));
+    }
 }
