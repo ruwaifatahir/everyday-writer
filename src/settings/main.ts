@@ -535,7 +535,7 @@ async function closeWindow(): Promise<void> {
 }
 
 // Bubble phase, so fields that use these keys themselves (the shortcut
-// field records combinations, Esc resets it) get them first and cancel them.
+// field records every key but Tab, and Esc ends recording) get them first and cancel them.
 // Dialogs and the set editor handle Esc on their own.
 document.addEventListener("keydown", (event) => {
   if (event.defaultPrevented || event.repeat || isDialogOpen()) return;
