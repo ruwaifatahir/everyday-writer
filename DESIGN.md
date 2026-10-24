@@ -126,10 +126,11 @@ border or a fill change:
   `ink-soft` chevron. Its list is a cream card with the ink border and 12px
   radius, in the top layer, at most 320px tall. Rows are 36px; the
   keyboard's active row is `stone`, hover is the hover fill, the chosen
-  one carries a check. Group headings are 12px/500 `ink-soft`; a stone
-  rule divides blocks. The provider picker is select-only, with logos; the
-  model picker is a text field that filters its list, lists Recommended
-  first, and offers `Use "name"` when nothing matches.
+  one carries a check. A stone rule divides blocks. The provider picker is
+  select-only, with logos; the model picker is a text field that lists the
+  provider's few Suggested Models, filters them as you type and closes
+  when none match. For Ollama and Custom it is a plain field with no
+  arrow.
 - **Provider logos**: monochrome `ink` marks from Simple Icons (CC0),
   inlined as an SVG sprite in `settings.html`. Never in brand colors.
 - **Saved key**: one line in a 2px stone box, "Saved in Windows Credential

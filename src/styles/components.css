@@ -377,13 +377,18 @@ input[aria-invalid="true"] {
   transform: rotate(180deg);
 }
 
-/* The model field keeps room on the right for its arrow button. */
+/* The model field keeps room on the right for its arrow button, when it
+   has one: with nothing to suggest it is a plain field. */
 .combo-input {
   position: relative;
 }
 
-.combo-input input {
+.combo-input:has(.combo-toggle:not([hidden])) input {
   padding-right: 40px;
+}
+
+.combo-toggle[hidden] {
+  display: none;
 }
 
 .combo-toggle {
@@ -468,23 +473,10 @@ input[aria-invalid="true"] {
   color: var(--ink-soft);
 }
 
-.combo-group {
-  padding: var(--space-8) var(--space-8) var(--space-4);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
-  color: var(--ink-soft);
-}
-
 .combo-divider {
   height: var(--border);
   margin: var(--space-4) var(--space-4);
   background: var(--stone);
-}
-
-.combo-note {
-  padding: var(--space-8);
-  font-size: var(--text-caption);
-  color: var(--ink-soft);
 }
 /* Switch: a cream track with an ink border; on fills lavender. */
 

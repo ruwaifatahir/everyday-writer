@@ -11,7 +11,7 @@ fn main() {
             "is_key_saved",
             "save_api_key",
             "clear_api_key",
-            "list_models",
+            "suggested_models",
             "test_connection",
             "set_shortcut",
             "is_shortcut_working",

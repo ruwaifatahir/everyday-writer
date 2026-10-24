@@ -14,8 +14,6 @@ export interface Option {
   detail?: string;
   /** Id of a `<symbol>` in the page's logo sprite. */
   icon?: string;
-  /** Heading of the group the option is listed under. */
-  group?: string;
   /** Starts a new block after a divider. */
   divided?: boolean;
 }
@@ -121,30 +119,18 @@ class Popup {
     return this.options[this.active];
   }
 
-  /**
-   * Lists `options`, checking the one whose value is `chosen`. `more` is a
-   * closing note, such as how many were left out.
-   */
-  render(options: Option[], chosen: string, more = ""): void {
+  /** Lists `options`, checking the one whose value is `chosen`. */
+  render(options: Option[], chosen: string): void {
     this.options = options;
     this.active = -1;
     const children: HTMLElement[] = [];
     this.rows = [];
-    let group: string | undefined;
     options.forEach((option, index) => {
       if (option.divided && index > 0) {
         const divider = document.createElement("div");
         divider.className = "combo-divider";
         divider.setAttribute("role", "separator");
         children.push(divider);
-      }
-      if (option.group !== undefined && option.group !== group) {
-        group = option.group;
-        const heading = document.createElement("div");
-        heading.className = "combo-group";
-        heading.setAttribute("role", "presentation");
-        heading.textContent = group;
-        children.push(heading);
       }
       const row = document.createElement("div");
       row.id = `${this.id}-${index}`;
@@ -167,13 +153,6 @@ class Popup {
       this.rows.push(row);
       children.push(row);
     });
-    if (more) {
-      const note = document.createElement("div");
-      note.className = "combo-note";
-      note.setAttribute("role", "presentation");
-      note.textContent = more;
-      children.push(note);
-    }
     this.element.replaceChildren(...children);
     this.field.removeAttribute("aria-activedescendant");
   }
@@ -409,18 +388,14 @@ export class Select {
   }
 }
 
-/** How many model rows are drawn at most; typing narrows the rest. */
-const MAX_ROWS = 200;
-
 /**
- * An editable combobox on a text field: suggests from a long list, filtered
+ * An editable combobox on a text field: suggests from a short list, filtered
  * as you type, and the typed text always counts as the value. Nothing is
- * picked on blur.
+ * picked on blur. With no names it is a plain text field.
  */
 export class Suggest {
   private readonly popup: Popup;
   private names: string[] = [];
-  private recommended: string[] = [];
   /** True once the user has typed since the list opened. */
   private filtering = false;
   /** True while a pick sets the field, so its `input` event is ignored. */
@@ -428,20 +403,21 @@ export class Suggest {
 
   constructor(
     private readonly input: HTMLInputElement,
-    toggle: HTMLButtonElement,
+    private readonly toggle: HTMLButtonElement,
     label: string,
   ) {
-    input.setAttribute("role", "combobox");
-    input.setAttribute("aria-autocomplete", "list");
     const anchor = input.parentElement ?? input;
     this.popup = new Popup(anchor, input, label, (value) => this.pick(value));
+    this.setNames([]);
     input.addEventListener("input", () => {
       if (this.picking) return;
       this.filtering = true;
       this.show();
     });
     input.addEventListener("keydown", (event) => this.onKey(event));
-    input.addEventListener("blur", () => this.popup.close());
+    input.addEventListener("blur", () => {
+      if (this.popup.isOpen) this.popup.close();
+    });
     input.addEventListener("click", () => {
       if (!this.popup.isOpen) this.openAll();
     });
@@ -457,11 +433,31 @@ export class Suggest {
     });
   }
 
-  /** Lists `names`, with `recommended` first under their own heading. */
-  setNames(names: string[], recommended: string[]): void {
+  /**
+   * Suggests `names`, in order. With none, the field is announced and
+   * drawn as a plain text field, without the arrow.
+   */
+  setNames(names: string[]): void {
+    this.popup.close();
     this.names = names;
-    this.recommended = recommended.filter((name) => names.includes(name));
-    if (this.popup.isOpen) this.show();
+    const listed = names.length > 0;
+    this.toggle.hidden = !listed;
+    if (listed) {
+      this.input.setAttribute("role", "combobox");
+      this.input.setAttribute("aria-autocomplete", "list");
+      this.input.setAttribute("aria-expanded", "false");
+      this.input.setAttribute("aria-controls", this.popup.element.id);
+    } else {
+      for (const name of [
+        "role",
+        "aria-autocomplete",
+        "aria-expanded",
+        "aria-controls",
+        "aria-activedescendant",
+      ]) {
+        this.input.removeAttribute(name);
+      }
+    }
   }
 
   private openAll(): void {
@@ -471,37 +467,13 @@ export class Suggest {
 
   /** Renders the names that match the typed text, and opens or closes. */
   private show(): void {
+    if (this.names.length === 0) return;
     const typed = this.input.value.trim();
     const query = this.filtering ? typed.toLowerCase() : "";
-    const matches = (name: string) => name.toLowerCase().includes(query);
-    const top = this.recommended.filter(matches);
-    const rest = this.names.filter(
-      (name) => matches(name) && !this.recommended.includes(name),
-    );
-    const grouped = top.length > 0;
-    const options: Option[] = [
-      ...top.map((name) => ({
-        value: name,
-        label: name,
-        group: "Recommended",
-      })),
-      ...rest.slice(0, MAX_ROWS).map((name) => ({
-        value: name,
-        label: name,
-        group: grouped ? "All models" : undefined,
-      })),
-    ];
-    const listed = options.length > 0;
-    if (!listed && typed !== "") {
-      options.push({
-        value: typed,
-        label: `Use "${typed}"`,
-        detail: "Not in the list",
-      });
-    }
-    const hidden = rest.length - MAX_ROWS;
-    const more = hidden > 0 ? `${hidden} more. Type to narrow the list.` : "";
-    this.popup.render(options, listed ? typed : "", more);
+    const options: Option[] = this.names
+      .filter((name) => name.toLowerCase().includes(query))
+      .map((name) => ({ value: name, label: name }));
+    this.popup.render(options, typed);
     if (options.length === 0) {
       this.popup.close();
       return;
@@ -524,6 +496,7 @@ export class Suggest {
     const open = this.popup.isOpen;
     switch (event.key) {
       case "ArrowDown":
+        if (this.names.length === 0) return;
         if (!open) {
           this.openAll();
           if (!event.altKey && !this.popup.activeOption) this.popup.first();

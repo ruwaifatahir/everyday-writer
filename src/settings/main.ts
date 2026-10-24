@@ -11,12 +11,12 @@ import {
   errorMessage,
   getSettings,
   isKeySaved,
-  listModels,
   type ProviderKind,
   type ProviderSettings,
   type Settings,
   saveApiKey,
   saveSettings,
+  suggestedModels,
   testConnection,
 } from "./api";
 import { type Option, Select, Suggest } from "./combobox";
@@ -82,11 +82,11 @@ const KEY_PAGES: Record<ProviderKind, string> = {
 
 // Example names only, shown as placeholders.
 const MODEL_EXAMPLES: Record<ProviderKind, string> = {
-  openai: "e.g. gpt-4.1-mini",
-  anthropic: "e.g. claude-haiku-4-5",
-  gemini: "e.g. gemini-2.5-flash",
-  openrouter: "e.g. openai/gpt-4.1-mini",
-  ollama: "e.g. llama3.2",
+  openai: "e.g. gpt-6-luna",
+  anthropic: "e.g. claude-haiku-5-5",
+  gemini: "e.g. gemini-3.5-flash-lite",
+  openrouter: "e.g. openai/gpt-6-luna",
+  ollama: "e.g. gemma4",
   custom: "e.g. llama-3.1-8b-instruct",
 };
 
@@ -128,7 +128,7 @@ const providerPicker = new Select(
   () => changeProvider(),
 );
 providerPicker.setOptions(PROVIDER_OPTIONS);
-providerPicker.set("openai");
+providerPicker.set("gemini");
 
 const modelPicker = new Suggest(
   modelInput,
@@ -138,7 +138,7 @@ const modelPicker = new Suggest(
 
 /** What the window shows, apart from the plain text fields. */
 const view = {
-  provider: "openai" as ProviderKind,
+  provider: "gemini" as ProviderKind,
   keySaved: false,
   replacingKey: false,
   confirmingRemove: false,
@@ -188,45 +188,29 @@ function renderProvider(): void {
     : "API key";
 }
 
-/** Counts list requests, so a slow answer for an old provider is dropped. */
-let modelRequest = 0;
+/** The built-in Suggested Models per provider, loaded once from Rust. */
+let suggested: Partial<Record<ProviderKind, string[]>> = {};
+
+function suggestedFor(provider: ProviderKind): string[] {
+  return suggested[provider] ?? [];
+}
 
 /**
- * Fills the model dropdown from the provider's own list, or the built-in
- * suggestions if it can't be fetched. The field always accepts a typed name.
+ * Lists the provider's Suggested Models under the model field. Ollama and
+ * Custom have none, so theirs is a plain field with a hint on where to find
+ * the name.
  */
-async function loadModels(): Promise<void> {
-  const request = ++modelRequest;
+function renderModel(): void {
   const provider = view.provider;
-  const name = PROVIDER_NAMES[provider];
-  const baseUrl = baseUrlInput.value.trim();
-  if (provider === "custom" && !isHttpUrl(baseUrl)) {
-    modelPicker.setNames([], []);
+  modelPicker.setNames(suggestedFor(provider));
+  if (provider === "ollama") {
     modelHint.textContent =
-      "Add the base URL to see its models, or type a model name.";
-    return;
-  }
-  modelHint.textContent = `Loading ${name} models…`;
-  let names: string[] = [];
-  let recommended: string[] = [];
-  let fromProvider = false;
-  try {
-    ({ names, recommended, fromProvider } = await listModels(
-      provider,
-      baseUrl,
-    ));
-  } catch {
-    // Treated like any other failure: no list, typing still works.
-  }
-  if (request !== modelRequest) return;
-  modelPicker.setNames(names, fromProvider ? recommended : []);
-  if (fromProvider) {
-    modelHint.textContent = `${names.length} ${name} models. Pick one or type any name.`;
-  } else if (names.length > 0) {
-    modelHint.textContent = `Couldn't load ${name}'s model list, so these are suggestions. You can type any name.`;
+      "Type an installed model, like gemma4. Run ollama list to see yours.";
+  } else if (provider === "custom") {
+    modelHint.textContent =
+      "Type the model name exactly as your server lists it.";
   } else {
-    modelHint.textContent =
-      "Couldn't load the model list. Type the model name exactly as the server lists it.";
+    modelHint.textContent = `Pick one or type any ${PROVIDER_NAMES[provider]} model.`;
   }
 }
 
@@ -280,14 +264,22 @@ async function testKey(button: HTMLButtonElement): Promise<void> {
   button.disabled = true;
   showKeyStatus(`Testing with ${PROVIDER_NAMES[provider]}…`);
   try {
-    const count = await testConnection(
+    const model = modelInput.value.trim();
+    const { modelFound } = await testConnection(
       provider,
       baseUrlInput.value.trim(),
       key,
+      model,
     );
     if (request !== keyTestRequest) return;
-    const models = count === 1 ? "1 model" : `${count} models`;
-    showKeyStatus(`Works. ${models} available.`);
+    if (modelFound === false) {
+      showKeyStatus(
+        `Works, but ${PROVIDER_NAMES[provider]} doesn't offer ${model}. Check the model name.`,
+        "error",
+      );
+    } else {
+      showKeyStatus("Works.");
+    }
   } catch (error) {
     if (request !== keyTestRequest) return;
     showKeyStatus(errorMessage(error), "error");
@@ -363,8 +355,6 @@ async function save(): Promise<boolean> {
     resetKeyEntry();
     renderKey();
     showStatus("Saved", "ok");
-    // A new key or base URL can unlock the provider's own list.
-    void loadModels();
     return true;
   } catch (error) {
     showStatus(errorMessage(error), "error");
@@ -403,13 +393,11 @@ function changeProvider(): void {
   clearStatus();
   renderProvider();
   renderKey();
+  // A name from the old provider won't work on the new one.
+  modelInput.value = suggestedFor(view.provider)[0] ?? "";
+  renderModel();
   void loadKeyState();
-  void loadModels();
 }
-
-form.addEventListener("change", (event) => {
-  if (event.target === baseUrlInput) void loadModels();
-});
 
 form.addEventListener("input", (event) => {
   if (event.target instanceof HTMLInputElement) clearFieldError(event.target);
@@ -530,6 +518,11 @@ document.addEventListener("keydown", (event) => {
 async function init(): Promise<void> {
   let settings: Settings | undefined;
   try {
+    suggested = await suggestedModels();
+  } catch {
+    // Without the list the model field still takes any typed name.
+  }
+  try {
     settings = await getSettings();
     view.provider = settings.provider;
     modelInput.value = settings.model;
@@ -541,7 +534,7 @@ async function init(): Promise<void> {
   }
   renderProvider();
   renderKey();
-  void loadModels();
+  renderModel();
   await Promise.all([loadKeyState(), initLaunch(settings)]);
   document.body.dataset.ready = "";
 }

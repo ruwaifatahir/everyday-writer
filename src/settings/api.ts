@@ -12,12 +12,10 @@ export type ProviderKind =
   | "ollama"
   | "custom";
 
-export interface ModelList {
-  names: string[];
-  /** Names to list first, under Recommended. */
-  recommended: string[];
-  /** False when these are built-in suggestions because the list couldn't be fetched. */
-  fromProvider: boolean;
+/** What a connection test found; mirrors `Connection` in `genai_rewriter.rs`. */
+export interface Connection {
+  /** Whether the provider lists the model; null when none was given. */
+  modelFound: boolean | null;
 }
 
 export interface Settings {
@@ -68,26 +66,30 @@ export function saveApiKey(provider: ProviderKind, key: string): Promise<void> {
   return invoke("save_api_key", { provider, key });
 }
 
-/** Never rejects for a provider problem: falls back to built-in suggestions. */
-export function listModels(
-  provider: ProviderKind,
-  customBaseUrl: string,
-): Promise<ModelList> {
-  return invoke<ModelList>("list_models", { provider, customBaseUrl });
+/** The built-in Suggested Model names per provider, fastest first. */
+export function suggestedModels(): Promise<Record<ProviderKind, string[]>> {
+  return invoke<Record<ProviderKind, string[]>>("suggested_models");
 }
 
 /**
  * Checks that `provider` accepts a key without spending tokens: `key` if
- * one was typed, otherwise the saved one. Resolves to how many models it
- * offers; rejects with a message to show as is.
+ * one was typed, otherwise the saved one. Also says whether it offers
+ * `model`. Rejects with a message to show as is.
  */
 export function testConnection(
   provider: ProviderKind,
   customBaseUrl: string,
   key: string | null,
-): Promise<number> {
-  return invoke<number>("test_connection", { provider, customBaseUrl, key });
+  model: string,
+): Promise<Connection> {
+  return invoke<Connection>("test_connection", {
+    provider,
+    customBaseUrl,
+    key,
+    model,
+  });
 }
+
 export function clearApiKey(provider: ProviderKind): Promise<void> {
   return invoke("clear_api_key", { provider });
 }

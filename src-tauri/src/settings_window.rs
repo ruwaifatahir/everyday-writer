@@ -9,13 +9,14 @@
     reason = "Tauri commands receive `State` by value"
 )]
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::window::Color;
 use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder};
 
 use crate::autostart::{self, TauriAutostart};
-use crate::llm::{self, ModelList};
+use crate::llm::{self, Connection};
 use crate::settings::{
     ApiKey, ApiKeySource, AppSettings, KeyError, KeyringApiKeys, Provider, ProviderKind,
     SaveKeyError, Settings,
@@ -232,32 +233,26 @@ pub fn save_api_key(
     Ok(settings.set_key(provider, &ApiKey::new(key))?)
 }
 
-/// The models `provider` offers, for the model dropdown, at
-/// `custom_base_url` for Custom. The saved key goes along only where
-/// [`Settings::may_send_saved_key`] allows: a Custom URL typed but not saved
-/// is asked without a key. Falls back to built-in suggestions when the list
-/// can't be fetched; never fails.
+/// The Suggested Model names for every provider, fastest first, for the
+/// model picker. Built in, so this never touches the network.
 #[tauri::command]
-pub async fn list_models(
-    app: AppHandle,
-    provider: ProviderKind,
-    custom_base_url: String,
-) -> ModelList {
-    let target = Provider::from_kind(provider, &custom_base_url);
-    let saved = app.state::<Arc<AppSettings>>().settings();
-    if saved.may_send_saved_key(&target) {
-        let keys = app.state::<KeyringApiKeys>().inner().clone();
-        llm::model_list(&target, Arc::new(keys)).await
-    } else {
-        llm::model_list(&target, Arc::new(NoKey)).await
-    }
+pub fn suggested_models() -> HashMap<ProviderKind, Vec<&'static str>> {
+    ProviderKind::ALL
+        .into_iter()
+        .map(|provider| {
+            let names = llm::suggested_models(provider)
+                .iter()
+                .map(|model| model.name)
+                .collect();
+            (provider, names)
+        })
+        .collect()
 }
 
 /// Checks that `provider` accepts a key, at `custom_base_url` for Custom,
-/// without spending tokens (see [`llm::check_connection`]). Uses `key` if
-/// one was typed, otherwise the saved key where
-/// [`Settings::may_send_saved_key`] allows. Returns how many models the
-/// provider offers.
+/// without spending tokens (see [`llm::check_connection`]), and whether it
+/// offers `model`. Uses `key` if one was typed, otherwise the saved key
+/// where [`Settings::may_send_saved_key`] allows.
 ///
 /// # Errors
 ///
@@ -268,19 +263,23 @@ pub async fn test_connection(
     provider: ProviderKind,
     custom_base_url: String,
     key: Option<String>,
-) -> Result<usize, CommandError> {
+    model: String,
+) -> Result<Connection, CommandError> {
     let target = Provider::from_kind(provider, &custom_base_url);
+    let model = Some(model.as_str());
     let checked = match key.filter(|key| !key.trim().is_empty()) {
-        Some(key) => llm::check_connection(&target, Arc::new(TypedKey(ApiKey::new(key)))).await,
+        Some(key) => {
+            llm::check_connection(&target, Arc::new(TypedKey(ApiKey::new(key))), model).await
+        }
         None if app
             .state::<Arc<AppSettings>>()
             .settings()
             .may_send_saved_key(&target) =>
         {
             let keys = app.state::<KeyringApiKeys>().inner().clone();
-            llm::check_connection(&target, Arc::new(keys)).await
+            llm::check_connection(&target, Arc::new(keys), model).await
         }
-        None => llm::check_connection(&target, Arc::new(NoKey)).await,
+        None => llm::check_connection(&target, Arc::new(NoKey), model).await,
     };
     checked.map_err(CommandError::from)
 }

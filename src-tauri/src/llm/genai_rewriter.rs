@@ -4,8 +4,8 @@
 //! Every call goes to a fully resolved `ServiceTarget`: the adapter, endpoint
 //! and key are set here from the user's settings. That skips genai's
 //! model-name inference (unknown names would silently go to a local Ollama)
-//! and its auth fallback to environment variables. The model list uses the
-//! same explicit endpoint and key.
+//! and its auth fallback to environment variables. The connection check
+//! uses the same explicit endpoint and key.
 //!
 //! Privacy: a `genai::Error` can hold the request payload (the selection)
 //! and the provider's response body. It is mapped to [`RewriteError`]
@@ -15,11 +15,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use genai::adapter::AdapterKind;
-use genai::chat::{ChatMessage, ChatRequest};
+use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ReasoningEffort};
 use genai::resolver::{AuthData, Endpoint};
 use genai::{Client, ModelIden, ServiceTarget, WebConfig};
+use serde::Serialize;
 
-use super::{ModelList, RewriteError, RewritePrompt, Rewriter, suggested_models};
+use super::{RewriteError, RewritePrompt, Rewriter, Thinking, thinking_for};
 use crate::settings::{ApiKeySource, ModelSettings, Provider};
 
 const OPENAI_URL: &str = "https://api.openai.com/v1/";
@@ -33,7 +34,7 @@ const OLLAMA_URL: &str = "http://localhost:11434/";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// The model list is a convenience: give up quickly and show suggestions.
+/// The connection check waits on the user: give up quickly.
 const LIST_TIMEOUT: Duration = Duration::from_secs(8);
 const LIST_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 
@@ -43,6 +44,8 @@ pub struct GenaiRewriter<K> {
     provider: Provider,
     endpoint: Endpoint,
     model: ModelIden,
+    /// The thinking level for a Suggested Model; `None` for a typed name.
+    options: Option<ChatOptions>,
     keys: Arc<K>,
 }
 
@@ -62,11 +65,14 @@ impl<K: ApiKeySource + 'static> GenaiRewriter<K> {
         }
         let (kind, endpoint) = adapter_and_endpoint(&settings.provider)?;
         let client = client(REQUEST_TIMEOUT, CONNECT_TIMEOUT)?;
+        let options = thinking_for(settings.provider.kind(), model)
+            .map(|thinking| thinking_options(&settings.provider, thinking));
         Ok(Self {
             client,
             provider: settings.provider,
             endpoint,
             model: ModelIden::new(kind, model.to_owned()),
+            options,
             keys: Arc::new(keys),
         })
     }
@@ -96,7 +102,7 @@ impl<K: ApiKeySource + 'static> Rewriter for GenaiRewriter<K> {
         let request = chat_request(&RewritePrompt::new(instructions, text));
         let response = self
             .client
-            .exec_chat(target, request, None)
+            .exec_chat(target, request, self.options.as_ref())
             .await
             .map_err(|e| map_error(&e))?;
         response
@@ -106,41 +112,40 @@ impl<K: ApiKeySource + 'static> Rewriter for GenaiRewriter<K> {
     }
 }
 
-/// The models `provider` offers, for the settings dropdown, read with the
-/// saved key from `keys`. Falls back to [`suggested_models`] when the list
-/// can't be fetched, for any reason, or is empty.
-pub async fn model_list<K: ApiKeySource + 'static>(provider: &Provider, keys: Arc<K>) -> ModelList {
-    let suggested = suggested_models(provider.kind());
-    match model_names(provider, keys).await {
-        Ok(names) if !names.is_empty() => ModelList {
-            recommended: listed_suggestions(suggested, &names),
-            names,
-            from_provider: true,
-        },
-        _ => {
-            let names: Vec<String> = suggested.iter().map(|&name| name.to_owned()).collect();
-            ModelList {
-                recommended: names.clone(),
-                names,
-                from_provider: false,
-            }
-        }
+/// The request options that ask for `thinking`. genai sends them in each
+/// provider's own shape, except through `OpenRouter`, which wants a
+/// `reasoning` object rather than `OpenAI`'s `reasoning_effort`.
+fn thinking_options(provider: &Provider, thinking: Thinking) -> ChatOptions {
+    if matches!(provider, Provider::OpenRouter) {
+        let effort = match thinking {
+            Thinking::Off => "none",
+            Thinking::Minimal => "minimal",
+            Thinking::Low => "low",
+        };
+        return ChatOptions::default()
+            .with_extra_body(serde_json::json!({ "reasoning": { "effort": effort } }));
     }
+    let effort = match thinking {
+        Thinking::Off => ReasoningEffort::Zero,
+        Thinking::Minimal => ReasoningEffort::Minimal,
+        Thinking::Low => ReasoningEffort::Low,
+    };
+    ChatOptions::default().with_reasoning_effort(effort)
 }
 
-/// The `suggested` names the provider actually lists, in suggestion order.
-fn listed_suggestions(suggested: &[&str], names: &[String]) -> Vec<String> {
-    suggested
-        .iter()
-        .filter(|&&name| names.iter().any(|listed| listed == name))
-        .map(|&name| name.to_owned())
-        .collect()
+/// What a connection check found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Connection {
+    /// Whether the provider lists the model asked about; `None` when no
+    /// model was given.
+    pub model_found: Option<bool>,
 }
 
 /// Checks that `provider` answers and accepts the key from `keys`, without
 /// spending tokens: it lists the models, and for `OpenRouter`, whose list is
-/// public, first asks about the key itself. Returns how many models the
-/// provider offers.
+/// public, first asks about the key itself. If `model` is given, also says
+/// whether the provider lists it.
 ///
 /// # Errors
 ///
@@ -149,12 +154,29 @@ fn listed_suggestions(suggested: &[&str], names: &[String]) -> Vec<String> {
 pub async fn check_connection<K: ApiKeySource + 'static>(
     provider: &Provider,
     keys: Arc<K>,
-) -> Result<usize, RewriteError> {
+    model: Option<&str>,
+) -> Result<Connection, RewriteError> {
     if matches!(provider, Provider::OpenRouter) {
         let auth = read_auth(provider, Arc::clone(&keys)).await?;
         check_openrouter_key(OPENROUTER_KEY_URL, &auth).await?;
     }
-    Ok(model_names(provider, keys).await?.len())
+    let names = model_names(provider, keys).await?;
+    let model_found = model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(|model| is_listed(model, &names));
+    Ok(Connection { model_found })
+}
+
+/// Whether `model` is in `names`. Ollama lists `gemma4` as
+/// `gemma4:latest` and accepts either.
+fn is_listed(model: &str, names: &[String]) -> bool {
+    names.iter().any(|name| {
+        name == model
+            || name
+                .strip_suffix(":latest")
+                .is_some_and(|name| name == model)
+    })
 }
 
 /// The model names `provider` lists, read with the key from `keys`.
@@ -322,8 +344,8 @@ mod tests {
     use genai::resolver::{AuthData, Endpoint};
 
     use super::{
-        GenaiRewriter, adapter_and_endpoint, check_connection, check_openrouter_key,
-        listed_suggestions, model_list, model_names_at,
+        Connection, GenaiRewriter, adapter_and_endpoint, check_connection, check_openrouter_key,
+        model_names_at,
     };
     use crate::llm::{RewriteError, Rewriter};
     use crate::settings::{ApiKey, ApiKeySource, KeyError, ModelSettings, Provider};
@@ -663,41 +685,114 @@ mod tests {
         assert_eq!(received.body["model"], "openai/gpt-4.1-mini");
     }
 
-    #[test]
-    fn recommended_models_are_the_suggestions_the_provider_lists() {
-        let names = [
-            "gpt-4.1".to_owned(),
-            "gpt-5-mini".to_owned(),
-            "o3".to_owned(),
-        ];
+    #[tokio::test]
+    async fn a_suggested_model_is_asked_not_to_think() {
+        let (base_url, server) = serve_once(200, REPLY);
+        let rewriter = GenaiRewriter::new(openai("gpt-6-luna"), key())
+            .unwrap()
+            .at(format!("{base_url}/"));
 
-        let recommended = listed_suggestions(&["gpt-5-mini", "gpt-4.1-mini", "gpt-4.1"], &names);
+        let result = rewriter.rewrite("Fix mistakes only.", "helo").await;
 
+        let received = server.join().unwrap();
+        assert_eq!(result.as_deref(), Ok("Hello, world."));
+        assert_eq!(received.body["reasoning_effort"], "none");
+    }
+
+    #[tokio::test]
+    async fn a_typed_model_gets_the_providers_default_thinking() {
+        let (base_url, server) = serve_once(200, REPLY);
+        let rewriter = GenaiRewriter::new(openai("my-fine-tune"), key())
+            .unwrap()
+            .at(format!("{base_url}/"));
+
+        let _ = rewriter.rewrite("Fix mistakes only.", "helo").await;
+
+        let received = server.join().unwrap();
+        assert!(received.body.get("reasoning_effort").is_none());
+        assert!(received.body.get("reasoning").is_none());
+    }
+
+    #[tokio::test]
+    async fn openrouter_gets_the_thinking_level_as_a_reasoning_object() {
+        let (base_url, server) = serve_once(200, REPLY);
+        let settings = ModelSettings {
+            provider: Provider::OpenRouter,
+            model: "google/gemini-3.8-flash".to_owned(),
+        };
+        let rewriter = GenaiRewriter::new(settings, key())
+            .unwrap()
+            .at(format!("{base_url}/"));
+
+        let _ = rewriter.rewrite("Fix mistakes only.", "helo").await;
+
+        let received = server.join().unwrap();
+        assert_eq!(received.body["reasoning"]["effort"], "low");
+        assert!(received.body.get("reasoning_effort").is_none());
+    }
+
+    const MODELS: &str =
+        r#"{"object":"list","data":[{"id":"a","object":"model"},{"id":"b","object":"model"}]}"#;
+
+    #[tokio::test]
+    async fn the_connection_check_finds_the_model_with_the_key() {
+        let (base_url, server) = serve_once(200, MODELS);
+
+        let result =
+            check_connection(&Provider::Custom { base_url }, Arc::new(key()), Some(" b ")).await;
+
+        let received = server.join().unwrap();
         assert_eq!(
-            recommended,
-            vec!["gpt-5-mini".to_owned(), "gpt-4.1".to_owned()]
+            result,
+            Ok(Connection {
+                model_found: Some(true)
+            })
+        );
+        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
+    }
+
+    #[tokio::test]
+    async fn the_connection_check_reports_a_model_the_provider_doesnt_list() {
+        let (base_url, server) = serve_once(200, MODELS);
+
+        let result =
+            check_connection(&Provider::Custom { base_url }, Arc::new(key()), Some("c")).await;
+
+        server.join().unwrap();
+        assert_eq!(
+            result,
+            Ok(Connection {
+                model_found: Some(false)
+            })
         );
     }
 
     #[tokio::test]
-    async fn the_connection_check_counts_the_models_listed_with_the_key() {
-        let (base_url, server) = serve_once(
-            200,
-            r#"{"object":"list","data":[{"id":"a","object":"model"},{"id":"b","object":"model"}]}"#,
-        );
+    async fn without_a_model_the_connection_check_only_checks_the_key() {
+        let (base_url, server) = serve_once(200, MODELS);
 
-        let count = check_connection(&Provider::Custom { base_url }, Arc::new(key())).await;
+        let result =
+            check_connection(&Provider::Custom { base_url }, Arc::new(key()), Some("")).await;
 
-        let received = server.join().unwrap();
-        assert_eq!(count, Ok(2));
-        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
+        server.join().unwrap();
+        assert_eq!(result, Ok(Connection { model_found: None }));
+    }
+
+    #[test]
+    fn an_ollama_model_is_found_without_its_latest_tag() {
+        let names = ["gemma4:latest".to_owned(), "qwen3.5:4b".to_owned()];
+
+        assert!(super::is_listed("gemma4", &names));
+        assert!(super::is_listed("gemma4:latest", &names));
+        assert!(super::is_listed("qwen3.5:4b", &names));
+        assert!(!super::is_listed("qwen3.5", &names));
     }
 
     #[tokio::test]
     async fn the_connection_check_reports_a_rejected_key() {
         let (base_url, server) = serve_once(401, r#"{"error":"bad key"}"#);
 
-        let result = check_connection(&Provider::Custom { base_url }, Arc::new(key())).await;
+        let result = check_connection(&Provider::Custom { base_url }, Arc::new(key()), None).await;
 
         server.join().unwrap();
         assert_eq!(result, Err(RewriteError::Unauthorized));
@@ -705,7 +800,8 @@ mod tests {
 
     #[tokio::test]
     async fn the_connection_check_needs_a_key_where_one_is_required() {
-        let result = check_connection(&Provider::Anthropic, Arc::new(TestKeys(Ok(None)))).await;
+        let result =
+            check_connection(&Provider::Anthropic, Arc::new(TestKeys(Ok(None))), None).await;
 
         assert_eq!(result, Err(RewriteError::MissingApiKey));
     }
@@ -785,44 +881,6 @@ mod tests {
             Ok(vec!["llama3.2:latest".to_owned(), "qwen2.5:7b".to_owned()])
         );
         assert_eq!(received.request_line, "GET /api/tags HTTP/1.1");
-    }
-
-    #[tokio::test]
-    async fn the_model_list_reads_the_saved_key_for_the_chosen_provider() {
-        let (base_url, server) = serve_once(
-            200,
-            r#"{"object":"list","data":[{"id":"local-model","object":"model"}]}"#,
-        );
-        let provider = Provider::Custom { base_url };
-
-        let list = model_list(&provider, Arc::new(key())).await;
-
-        let received = server.join().unwrap();
-        assert_eq!(list.names, vec!["local-model".to_owned()]);
-        assert!(list.from_provider);
-        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
-    }
-
-    #[tokio::test]
-    async fn without_a_key_the_model_list_falls_back_to_suggestions() {
-        let list = model_list(&Provider::OpenAi, Arc::new(TestKeys(Ok(None)))).await;
-
-        assert!(!list.from_provider);
-        assert!(list.names.iter().any(|name| name == "gpt-4.1-mini"));
-        assert!(list.names.iter().all(|name| name.starts_with("gpt-")));
-        assert_eq!(list.recommended, list.names);
-    }
-
-    #[tokio::test]
-    async fn offline_the_model_list_falls_back_to_suggestions() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
-        drop(listener);
-
-        let list = model_list(&Provider::Custom { base_url }, Arc::new(key())).await;
-
-        assert!(!list.from_provider);
-        assert_eq!(list.names, Vec::<String>::new());
     }
 
     #[test]

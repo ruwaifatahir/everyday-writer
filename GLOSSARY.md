@@ -32,6 +32,10 @@ _Avoid_: Current set, selected set, default set
 One of the built-in original instruction sets that ship with the app. Once installed it is an ordinary instruction set; "template" only ever refers to the shipped original.
 _Avoid_: Default set, preset
 
+**Suggested Model**:
+A model the app lists for a provider, fastest first. The user can still type any other model name the provider accepts.
+_Avoid_: Default model, recommended model
+
 **Update**:
 A newer published version of the app that an installed copy can move to.
 _Avoid_: Upgrade, new release, patch
