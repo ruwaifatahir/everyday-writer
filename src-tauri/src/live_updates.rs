@@ -3,11 +3,6 @@
 //! and the tray as its [`UpdatesView`], the rewrite session as its
 //! [`BusyGate`], and the commands the Settings page calls.
 
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Tauri commands receive `State` by value"
-)]
-
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -134,11 +129,17 @@ impl UpdateSource for TauriUpdateSource {
     }
 }
 
+/// Whether the updater couldn't reach GitHub or finish a download.
+fn is_network(error: &tauri_plugin_updater::Error) -> bool {
+    use tauri_plugin_updater::Error;
+    matches!(error, Error::Reqwest(_) | Error::Network(_))
+}
+
 /// The kind of a failed install, the only thing logged about it.
 fn install_error(error: &tauri_plugin_updater::Error) -> InstallError {
     use tauri_plugin_updater::Error;
     match error {
-        Error::Reqwest(_) | Error::Network(_) => InstallError::Network,
+        error if is_network(error) => InstallError::Network,
         Error::Minisign(_)
         | Error::Base64(_)
         | Error::SignatureUtf8(_)
@@ -175,7 +176,7 @@ impl BusyGate for SessionGate {
 fn check_error(error: &tauri_plugin_updater::Error) -> CheckError {
     use tauri_plugin_updater::Error;
     match error {
-        Error::Reqwest(_) | Error::Network(_) => CheckError::Network,
+        error if is_network(error) => CheckError::Network,
         Error::Serialization(_)
         | Error::ReleaseNotFound
         | Error::TargetNotFound(_)
@@ -191,6 +192,9 @@ const TOAST_KIND: &str = "kind";
 
 /// The [`TOAST_KIND`] of the "update is available" toast.
 const UPDATE_AVAILABLE: &str = "update-available";
+
+/// The [`TOAST_KIND`] of the "Updated to" toast. A click on it does nothing.
+const UPDATED: &str = "updated";
 
 /// The action id the notification plugin reports for a click on a toast's body.
 const TAP: &str = "tap";
@@ -210,32 +214,33 @@ fn click_opens_updates(performed: &ActionPerformed) -> bool {
 /// Shows update notifications as Windows toasts.
 pub struct TauriNotifier(AppHandle);
 
-impl Notifier for TauriNotifier {
-    fn update_available(&self, version: &str) {
+impl TauriNotifier {
+    /// Shows a toast saying `body`, tagged with its [`TOAST_KIND`] `kind`.
+    fn show(&self, kind: &str, body: String) {
         let shown = self
             .0
             .notification()
             .builder()
             .title("everyday-writer")
-            .body(format!("everyday-writer {version} is available"))
-            .extra(TOAST_KIND, UPDATE_AVAILABLE)
+            .body(body)
+            .extra(TOAST_KIND, kind)
             .show();
         if shown.is_err() {
-            tracing::warn!("the update notification couldn't be shown");
+            tracing::warn!(kind, "an update notification couldn't be shown");
         }
+    }
+}
+
+impl Notifier for TauriNotifier {
+    fn update_available(&self, version: &str) {
+        self.show(
+            UPDATE_AVAILABLE,
+            format!("everyday-writer {version} is available"),
+        );
     }
 
     fn updated_to(&self, version: &str) {
-        let shown = self
-            .0
-            .notification()
-            .builder()
-            .title("everyday-writer")
-            .body(format!("Updated to {version}"))
-            .show();
-        if shown.is_err() {
-            tracing::warn!("the updated notification couldn't be shown");
-        }
+        self.show(UPDATED, format!("Updated to {version}"));
     }
 }
 
@@ -295,8 +300,22 @@ impl UpdatesView for TauriUpdatesView {
     }
 }
 
+/// The running app's version, such as `1.0.0`.
+#[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri passes command arguments by value"
+)]
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 /// The updates state, for a Settings page that loads after it was sent.
 #[tauri::command(async)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri passes command arguments by value"
+)]
 pub fn get_updates_state(view: State<'_, Arc<TauriUpdatesView>>) -> UpdatesState {
     view.state()
 }
@@ -304,6 +323,10 @@ pub fn get_updates_state(view: State<'_, Arc<TauriUpdatesView>>) -> UpdatesState
 /// The Settings page's Check for updates button. The answer arrives as
 /// `updates-state` events.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri passes command arguments by value"
+)]
 pub fn check_for_updates(app: AppHandle) {
     send(&app, UpdateEvent::CheckRequested);
 }
@@ -335,6 +358,10 @@ pub async fn set_auto_check(
 /// The Settings page's Update now button: installs the offered update and
 /// restarts. Progress and failure arrive as `updates-state` events.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri passes command arguments by value"
+)]
 pub fn update_now(app: AppHandle) {
     send(&app, UpdateEvent::UpdateNowRequested);
 }

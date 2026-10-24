@@ -107,12 +107,6 @@ pub fn open_at_later(app: &AppHandle, section: Option<Section>) {
     });
 }
 
-/// The running app's version, such as `1.0.0`.
-#[tauri::command]
-pub fn app_version(app: AppHandle) -> String {
-    app.package_info().version.to_string()
-}
-
 /// A command failed. Serialized as a short message the window shows as is.
 /// Never carries a key or the settings file's contents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
