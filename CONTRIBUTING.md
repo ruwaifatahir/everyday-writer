@@ -1,6 +1,18 @@
 # Contributing
 
-Thanks for helping. Setup and build commands are in the [README](README.md).
+Thanks for helping.
+
+## Setup
+
+Prerequisites: Rust via rustup (stable MSVC), Microsoft C++ Build Tools ("Desktop development with C++"), WebView2, Node 24 and pnpm.
+
+```sh
+pnpm install
+pnpm tauri dev     # run the app
+pnpm tauri build   # build the NSIS installer
+```
+
+The installer build signs the installer for the updater, so it needs a signing key. See [Building the installer locally](#building-the-installer-locally).
 
 ## Branch workflow
 
@@ -32,7 +44,11 @@ pnpm check   # everything CI runs
 pnpm fix     # apply rustfmt and Biome fixes
 ```
 
-`pnpm check` runs rustfmt, clippy with warnings as errors, `cargo test`, cargo-deny, Biome and `tsc --noEmit`. CI (`.github/workflows/ci.yml`) runs the same commands on Windows. The lefthook pre-commit hook checks staged files with rustfmt and Biome.
+`pnpm check` runs rustfmt, clippy with warnings as errors, `cargo test`, cargo-deny (licenses, advisories, bans, sources), Biome lint and format, and `tsc --noEmit`. CI (`.github/workflows/ci.yml`) runs the same commands on Windows. Install cargo-deny 0.20.2 first (`cargo binstall cargo-deny@0.20.2`, or `cargo install cargo-deny --locked`).
+
+Clippy lint levels live in the `[lints]` table of `src-tauri/Cargo.toml`. cargo-deny config is `src-tauri/deny.toml`; Biome config is `biome.json`.
+
+`pnpm install` also installs lefthook git hooks. The pre-commit hook runs rustfmt and Biome in check-only mode on staged files, so a badly formatted or lint-failing file blocks the commit. Run `pnpm fix`, re-stage and commit again.
 
 ## Cutting a release
 
