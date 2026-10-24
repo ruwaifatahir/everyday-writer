@@ -67,10 +67,11 @@ pub enum UpdatesState {
         /// The newer version, such as `1.1.0`.
         version: String,
     },
-    /// The last attempt failed.
-    Failed {
-        /// What failed.
-        step: FailedStep,
+    /// The last check the user asked for failed.
+    CheckFailed {
+        /// The update known from before, still offered, such as `1.1.0`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        version: Option<String>,
     },
     /// The update is downloading; the app restarts once it is installed.
     Downloading {
@@ -83,14 +84,6 @@ pub enum UpdatesState {
         /// The version that couldn't be installed, such as `1.1.0`.
         version: String,
     },
-}
-
-/// The step of updating that failed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum FailedStep {
-    /// Asking whether there is an update.
-    Check,
 }
 
 /// A newer version found by a check.
@@ -228,8 +221,9 @@ enum Phase<H> {
     UpToDate,
     /// This update can be installed.
     Available(AvailableUpdate<H>),
-    /// The last check failed.
-    CheckFailed,
+    /// The last check the user asked for failed. The update known before
+    /// it, if any, can still be installed.
+    CheckFailed(Option<AvailableUpdate<H>>),
     /// Update now is waiting to install, or downloading.
     Downloading { percent: u8 },
     /// Installing this update failed; it can be tried again.
@@ -239,20 +233,32 @@ enum Phase<H> {
 impl<H> Phase<H> {
     /// The state this phase shows.
     fn shown(&self) -> UpdatesState {
+        let version = |update: &AvailableUpdate<H>| update.version.clone();
         match self {
             Self::Idle => UpdatesState::Idle,
             Self::Checking => UpdatesState::Checking,
             Self::UpToDate => UpdatesState::UpToDate,
             Self::Available(update) => UpdatesState::Available {
-                version: update.version.clone(),
+                version: version(update),
             },
-            Self::CheckFailed => UpdatesState::Failed {
-                step: FailedStep::Check,
+            Self::CheckFailed(known) => UpdatesState::CheckFailed {
+                version: known.as_ref().map(version),
             },
             Self::Downloading { percent } => UpdatesState::Downloading { percent: *percent },
             Self::InstallFailed(update) => UpdatesState::InstallFailed {
-                version: update.version.clone(),
+                version: version(update),
             },
+        }
+    }
+
+    /// The update Update now can install in this phase, or the phase back
+    /// if there is none.
+    fn into_known(self) -> Result<AvailableUpdate<H>, Self> {
+        match self {
+            Self::Available(update)
+            | Self::InstallFailed(update)
+            | Self::CheckFailed(Some(update)) => Ok(update),
+            other => Err(other),
         }
     }
 }
@@ -329,13 +335,13 @@ where
     async fn update_now(&self) {
         let update = {
             let mut phase = self.lock();
-            if !matches!(*phase, Phase::Available(_) | Phase::InstallFailed(_)) {
-                // Nothing to install, or already installing.
-                return;
-            }
-            match std::mem::replace(&mut *phase, Phase::Downloading { percent: 0 }) {
-                Phase::Available(update) | Phase::InstallFailed(update) => update,
-                _ => unreachable!("matched above"),
+            match std::mem::replace(&mut *phase, Phase::Downloading { percent: 0 }).into_known() {
+                Ok(update) => update,
+                Err(unchanged) => {
+                    // Nothing to install, or already installing.
+                    *phase = unchanged;
+                    return;
+                }
             }
         };
         self.view.render(&UpdatesState::Downloading { percent: 0 });
@@ -364,27 +370,27 @@ where
     }
 
     /// A check the user asked for: shows checking, then what it found.
-    /// Never notifies, since the user is already looking at Settings.
+    /// Never notifies, since the user is already looking at Settings. If it
+    /// fails, an update known before stays offered.
     async fn check(&self) {
-        {
+        let known = {
             let mut phase = self.lock();
-            if matches!(*phase, Phase::Checking) {
-                // One check at a time; the running one will answer.
+            // One check at a time; the running one will answer. And the
+            // update being installed is already the newest.
+            if matches!(*phase, Phase::Checking | Phase::Downloading { .. }) {
                 return;
             }
-            if matches!(*phase, Phase::Downloading { .. }) {
-                // The update being installed is already the newest.
-                return;
-            }
-            *phase = Phase::Checking;
-        }
+            std::mem::replace(&mut *phase, Phase::Checking)
+                .into_known()
+                .ok()
+        };
         self.view.render(&UpdatesState::Checking);
         let found = match self.source.check().await {
             Ok(Some(update)) => Phase::Available(update),
             Ok(None) => Phase::UpToDate,
             Err(error) => {
                 tracing::warn!(kind = %error, "the update check failed");
-                Phase::CheckFailed
+                Phase::CheckFailed(known)
             }
         };
         let shown = found.shown();
@@ -482,7 +488,7 @@ impl<H> Phase<H> {
             Self::InstallFailed(failed) => found
                 .as_ref()
                 .is_some_and(|found| is_newer(&found.version, &failed.version)),
-            Self::Idle | Self::UpToDate | Self::Available(_) | Self::CheckFailed => true,
+            Self::Idle | Self::UpToDate | Self::Available(_) | Self::CheckFailed(_) => true,
         };
         if replaces {
             *self = found.map_or(Self::UpToDate, Self::Available);

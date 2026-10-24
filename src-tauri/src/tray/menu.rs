@@ -96,23 +96,25 @@ pub fn tray_menu(sets: &InstructionSets, updates: &UpdatesState) -> Vec<TrayItem
 }
 
 /// "Update to {version}" once an update is known (even after a failed
-/// install), a disabled "Downloading update…" while it downloads, otherwise
+/// install or check), a disabled "Downloading update…" while it downloads, otherwise
 /// "Check for updates".
 fn update_item(updates: &UpdatesState) -> TrayItem {
     match updates {
         UpdatesState::Downloading { .. } => TrayItem::Disabled {
             label: "Downloading update…".to_owned(),
         },
-        UpdatesState::Available { version } | UpdatesState::InstallFailed { version } => {
-            TrayItem::Item {
-                id: SHOW_UPDATE_ID.to_owned(),
-                label: format!("Update to {version}"),
-            }
-        }
+        UpdatesState::Available { version }
+        | UpdatesState::InstallFailed { version }
+        | UpdatesState::CheckFailed {
+            version: Some(version),
+        } => TrayItem::Item {
+            id: SHOW_UPDATE_ID.to_owned(),
+            label: format!("Update to {version}"),
+        },
         UpdatesState::Idle
         | UpdatesState::Checking
         | UpdatesState::UpToDate
-        | UpdatesState::Failed { .. } => TrayItem::Item {
+        | UpdatesState::CheckFailed { version: None } => TrayItem::Item {
             id: CHECK_FOR_UPDATES_ID.to_owned(),
             label: "Check for updates".to_owned(),
         },
@@ -155,7 +157,7 @@ pub fn action(id: &str) -> Option<TrayAction> {
 mod tests {
     use super::{TrayAction, TrayItem, action, tray_menu};
     use crate::settings::InstructionSets;
-    use crate::updates::{FailedStep, UpdatesState};
+    use crate::updates::UpdatesState;
 
     fn menu(updates: &UpdatesState) -> Vec<TrayItem> {
         tray_menu(&InstructionSets::default(), updates)
@@ -211,9 +213,7 @@ mod tests {
             UpdatesState::Idle,
             UpdatesState::Checking,
             UpdatesState::UpToDate,
-            UpdatesState::Failed {
-                step: FailedStep::Check,
-            },
+            UpdatesState::CheckFailed { version: None },
         ] {
             assert_eq!(
                 update_item(&updates),
@@ -241,6 +241,17 @@ mod tests {
     fn a_failed_install_still_offers_the_update() {
         let updates = UpdatesState::InstallFailed {
             version: "1.1.0".to_owned(),
+        };
+        assert_eq!(
+            update_item(&updates),
+            ("Update to 1.1.0".to_owned(), Some(TrayAction::ShowUpdate))
+        );
+    }
+
+    #[test]
+    fn a_failed_check_still_offers_the_known_update() {
+        let updates = UpdatesState::CheckFailed {
+            version: Some("1.1.0".to_owned()),
         };
         assert_eq!(
             update_item(&updates),

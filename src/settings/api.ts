@@ -89,7 +89,7 @@ export type UpdatesState =
   | { kind: "checking" }
   | { kind: "upToDate" }
   | { kind: "available"; version: string }
-  | { kind: "failed"; step: "check" }
+  | { kind: "checkFailed"; version?: string }
   | { kind: "downloading"; percent: number }
   | { kind: "installFailed"; version: string };
 

@@ -9,8 +9,8 @@ use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
 
 use super::{
-    AvailableUpdate, BusyGate, CheckError, FailedStep, InstallError, Notifier, Remembered,
-    UpdateController, UpdateEvent, UpdateMemory, UpdateSource, UpdatesState, UpdatesView,
+    AvailableUpdate, BusyGate, CheckError, InstallError, Notifier, Remembered, UpdateController,
+    UpdateEvent, UpdateMemory, UpdateSource, UpdatesState, UpdatesView,
 };
 
 /// What the fake source answers to a check.
@@ -261,6 +261,12 @@ fn downloading(percent: u8) -> UpdatesState {
     UpdatesState::Downloading { percent }
 }
 
+fn check_failed(version: Option<&str>) -> UpdatesState {
+    UpdatesState::CheckFailed {
+        version: version.map(str::to_owned),
+    }
+}
+
 fn install_failed(version: &str) -> UpdatesState {
     UpdatesState::InstallFailed {
         version: version.to_owned(),
@@ -355,13 +361,33 @@ async fn a_failed_manual_check_says_so() {
 
     assert_eq!(
         states(&controller),
-        [
-            UpdatesState::Checking,
-            UpdatesState::Failed {
-                step: FailedStep::Check
-            }
-        ]
+        [UpdatesState::Checking, check_failed(None)]
     );
+}
+
+#[tokio::test]
+async fn a_failed_manual_check_keeps_the_known_update_installable() {
+    let controller = offering(&[], true, FakeGate::default()).await;
+    *controller.source.answer.lock().unwrap() = Answer::Fails;
+
+    controller.handle(UpdateEvent::CheckRequested).await;
+    assert_eq!(controller.state(), check_failed(Some("1.1.0")));
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+
+    assert_eq!(installs(&controller), ["1.1.0"]);
+}
+
+#[tokio::test]
+async fn a_failed_manual_check_after_a_failed_install_keeps_the_update_installable() {
+    let controller = offering(&[], true, FakeGate::default()).await;
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+    *controller.source.answer.lock().unwrap() = Answer::Fails;
+
+    controller.handle(UpdateEvent::CheckRequested).await;
+    assert_eq!(controller.state(), check_failed(Some("1.1.0")));
+    controller.handle(UpdateEvent::UpdateNowRequested).await;
+
+    assert_eq!(installs(&controller), ["1.1.0", "1.1.0"]);
 }
 
 #[tokio::test]
@@ -509,10 +535,12 @@ fn the_state_reaches_the_settings_page_tagged_by_kind() {
         serde_json::json!({ "kind": "available", "version": "1.1.0" })
     );
     assert_eq!(
-        json(&UpdatesState::Failed {
-            step: FailedStep::Check
-        }),
-        serde_json::json!({ "kind": "failed", "step": "check" })
+        json(&check_failed(None)),
+        serde_json::json!({ "kind": "checkFailed" })
+    );
+    assert_eq!(
+        json(&check_failed(Some("1.1.0"))),
+        serde_json::json!({ "kind": "checkFailed", "version": "1.1.0" })
     );
     assert_eq!(
         json(&downloading(45)),

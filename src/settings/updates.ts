@@ -81,7 +81,7 @@ function statusFor(state: UpdatesState): {
       return { text: "You're up to date", kind: "ok" };
     case "available":
       return { text: `Version ${state.version} is available` };
-    case "failed":
+    case "checkFailed":
       return { text: "Couldn't check for updates", kind: "error" };
     case "downloading":
       return { text: `Downloading… ${state.percent}%` };
@@ -90,7 +90,23 @@ function statusFor(state: UpdatesState): {
   }
 }
 
+/** The update that can be installed in this state, if any. */
+function knownVersion(state: UpdatesState): string | undefined {
+  switch (state.kind) {
+    case "available":
+    case "installFailed":
+    case "checkFailed":
+      return state.version;
+    default:
+      return undefined;
+  }
+}
+
+/** The state shown now. */
+let shown: UpdatesState = { kind: "idle" };
+
 function render(state: UpdatesState): void {
+  shown = state;
   const { text, kind } = statusFor(state);
   statusLine.textContent = text;
   if (kind) statusLine.dataset.kind = kind;
@@ -98,11 +114,7 @@ function render(state: UpdatesState): void {
   const downloading = state.kind === "downloading";
   checkButton.disabled = state.kind === "checking" || downloading;
   // Shown while an update is offered; disabled so it can't start twice.
-  updateNowButton.hidden = !(
-    state.kind === "available" ||
-    state.kind === "installFailed" ||
-    downloading
-  );
+  updateNowButton.hidden = !(knownVersion(state) !== undefined || downloading);
   updateNowButton.disabled = downloading;
 }
 
@@ -127,7 +139,9 @@ export async function initUpdates(): Promise<void> {
     // Without the event an open window just stays where it is.
   }
   checkButton.addEventListener("click", () => {
-    checkForUpdates().catch(() => render({ kind: "failed", step: "check" }));
+    checkForUpdates().catch(() =>
+      render({ kind: "checkFailed", version: knownVersion(shown) }),
+    );
   });
   updateNowButton.addEventListener("click", () => {
     updateNowButton.disabled = true;
