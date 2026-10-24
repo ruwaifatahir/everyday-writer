@@ -64,6 +64,9 @@ pub fn init(app: &App) -> tauri::Result<()> {
 
     let handle = app.handle().clone();
     settings.on_instruction_sets_change(move |sets| refresh(&handle, sets));
+    let handle = app.handle().clone();
+    app.state::<Arc<TauriUpdatesView>>()
+        .on_change(move |updates| show_updates(&handle, updates));
     Ok(())
 }
 
@@ -86,7 +89,7 @@ fn activate_later(app: &AppHandle, id: InstructionSetId) {
 }
 
 /// Rebuilds the tray menu for a new updates state.
-pub fn show_updates(app: &AppHandle, updates: &UpdatesState) {
+fn show_updates(app: &AppHandle, updates: &UpdatesState) {
     let sets = app.state::<Arc<AppSettings>>().settings().instruction_sets;
     rebuild(app, &sets, updates);
 }

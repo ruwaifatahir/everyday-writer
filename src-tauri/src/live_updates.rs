@@ -14,7 +14,6 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use crate::popup::AppSession;
 use crate::settings::AppSettings;
 use crate::settings_window::{self, CommandError, Section};
-use crate::tray;
 use crate::updates::{
     AvailableUpdate, BusyGate, CheckError, InstallError, Notifier, Remembered, UpdateController,
     UpdateEvent, UpdateMemory, UpdateSource, UpdatesState, UpdatesView,
@@ -258,10 +257,15 @@ impl UpdateMemory for SettingsMemory {
     }
 }
 
-/// Shows the updates state in the settings window and the tray item.
+/// Hears each new updates state.
+type StateListener = Box<dyn Fn(&UpdatesState) + Send + Sync>;
+
+/// Shows the updates state in the settings window, and hands it to
+/// listeners such as the tray item.
 pub struct TauriUpdatesView {
     app: AppHandle,
     state: Mutex<UpdatesState>,
+    listeners: Mutex<Vec<StateListener>>,
 }
 
 impl TauriUpdatesView {
@@ -270,6 +274,7 @@ impl TauriUpdatesView {
         Self {
             app,
             state: Mutex::new(UpdatesState::Idle),
+            listeners: Mutex::default(),
         }
     }
 
@@ -280,12 +285,28 @@ impl TauriUpdatesView {
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
     }
+
+    /// Calls `listener` with every new state. The tray uses it to relabel
+    /// its update item.
+    pub fn on_change(&self, listener: impl Fn(&UpdatesState) + Send + Sync + 'static) {
+        self.listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(Box::new(listener));
+    }
 }
 
 impl UpdatesView for TauriUpdatesView {
     fn render(&self, state: &UpdatesState) {
         *self.state.lock().unwrap_or_else(PoisonError::into_inner) = state.clone();
-        tray::show_updates(&self.app, state);
+        for listener in self
+            .listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+        {
+            listener(state);
+        }
         if self
             .app
             .get_webview_window(settings_window::LABEL)
