@@ -20,6 +20,8 @@ pnpm tauri dev     # run the app
 pnpm tauri build   # build the NSIS installer
 ```
 
+The installer build signs the installer for the updater, so it needs a signing key. See "Building the installer locally" in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Checks
 
 ```sh
