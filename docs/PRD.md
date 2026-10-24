@@ -108,7 +108,7 @@ Instructions are the heart of the app. They decide what the rewrite does.
 - If you use Windows clipboard history (Win+V), the text you rewrite may appear there.
 - Your key is kept safely by Windows, never in a plain file.
 - No tracking and no analytics.
-- The update check is a plain download of a public file from GitHub. It sends no ID, no app version and nothing about your settings or text. GitHub sees your IP address, as with any website visit. Turn off **Check for updates automatically** and the app only contacts GitHub when you ask it to check.
+- The update check is a plain download of a public file from GitHub. It sends no ID, no app version and nothing about your settings or text. GitHub sees your IP address, as with any website visit. Turn off **Check for updates automatically** and the app only contacts GitHub when you ask it to check or update.
 
 ## 6. Not Included (Yet)
 
