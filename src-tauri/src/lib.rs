@@ -85,6 +85,7 @@ pub fn run() {
             settings_window::app_version,
             live_updates::get_updates_state,
             live_updates::check_for_updates,
+            live_updates::set_auto_check,
             live_updates::update_now,
             instruction_set_commands::get_instruction_sets,
             instruction_set_commands::add_instruction_set,

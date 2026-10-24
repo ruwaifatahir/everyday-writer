@@ -7,22 +7,45 @@
 //! - [`UpdateSource`]: asks GitHub whether a newer version exists;
 //! - [`Notifier`]: the Windows notifications about updates;
 //! - [`UpdatesView`]: shows each [`UpdatesState`] in Settings and the tray;
-//! - [`BusyGate`]: lets an install wait until no rewrite or replace runs.
+//! - [`BusyGate`]: lets an install wait until no rewrite or replace runs;
+//! - [`UpdateMemory`]: what is kept between runs, in the settings file.
+//!
+//! The controller owns the automatic-check schedule: the first check
+//! [`FIRST_CHECK_DELAY`] after the app starts, then every
+//! [`CHECK_INTERVAL`], only while automatic checks are on.
 //!
 //! Privacy: a check sends nothing about the user, and failures are logged
 //! only as a fixed error kind, never with URLs or response bodies.
 
 use std::convert::Infallible;
-use std::future::Future;
+use std::future::{Future, poll_fn};
+use std::pin::pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::task::Poll;
+use std::time::Duration;
 
 use serde::Serialize;
+use tokio::sync::watch;
+
+/// How long after the app starts the first automatic check waits, so
+/// starting with Windows stays fast.
+pub const FIRST_CHECK_DELAY: Duration = Duration::from_secs(10);
+
+/// How often automatic checks repeat while the app runs.
+pub const CHECK_INTERVAL: Duration = Duration::from_hours(24);
 
 /// Something that asks the controller to act.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateEvent {
+    /// The app launched. Handling it runs the automatic-check schedule for
+    /// as long as the app runs, so it never returns: send it once, on its
+    /// own task.
+    Started,
     /// The user asked for a check: the tray item or the Settings button.
     CheckRequested,
+    /// The user turned automatic checks on or off. The choice is already
+    /// saved; this only starts or stops the schedule.
+    AutoCheckChanged(bool),
     /// The user clicked Update now in Settings. The only way to install.
     UpdateNowRequested,
 }
@@ -169,6 +192,24 @@ impl<T: UpdatesView + ?Sized> UpdatesView for Arc<T> {
     }
 }
 
+/// What the controller keeps between runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Remembered {
+    /// Whether the app checks for updates by itself.
+    pub auto_check: bool,
+    /// The newest version an update notification was shown for.
+    pub last_notified_version: Option<String>,
+}
+
+/// Where the controller keeps what it remembers between runs.
+pub trait UpdateMemory: Send + Sync {
+    /// What is remembered now.
+    fn recall(&self) -> Remembered;
+
+    /// Remembers that an update notification was shown for `version`.
+    fn remember_notified(&self, version: &str);
+}
+
 /// The controller's own state, richer than the state it shows.
 enum Phase<H> {
     /// Nothing is known yet.
@@ -209,36 +250,37 @@ impl<H> Phase<H> {
 }
 
 /// Checks for updates and shows what it finds.
-pub struct UpdateController<U: UpdateSource, N, V, G> {
+pub struct UpdateController<U: UpdateSource, N, V, G, M> {
     source: U,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "only automatic checks notify, and manual ones come first"
-        )
-    )]
     notifier: N,
     view: V,
     gate: G,
+    memory: M,
     phase: Mutex<Phase<U::Handle>>,
+    /// Whether automatic checks are on. The schedule watches it.
+    auto_check: watch::Sender<bool>,
 }
 
-impl<U, N, V, G> UpdateController<U, N, V, G>
+impl<U, N, V, G, M> UpdateController<U, N, V, G, M>
 where
     U: UpdateSource,
     N: Notifier,
     V: UpdatesView,
     G: BusyGate,
+    M: UpdateMemory,
 {
-    /// A controller that knows of no update yet.
-    pub fn new(source: U, notifier: N, view: V, gate: G) -> Self {
+    /// A controller that knows of no update yet. Whether automatic checks
+    /// are on comes from `memory`.
+    pub fn new(source: U, notifier: N, view: V, gate: G, memory: M) -> Self {
+        let (auto_check, _) = watch::channel(memory.recall().auto_check);
         Self {
             source,
             notifier,
             view,
             gate,
+            memory,
             phase: Mutex::new(Phase::Idle),
+            auto_check,
         }
     }
 
@@ -247,10 +289,15 @@ where
         self.lock().shown()
     }
 
-    /// Reacts to `event`. A check returns once it has an answer.
+    /// Reacts to `event`. A check returns once it has an answer;
+    /// [`UpdateEvent::Started`] never returns.
     pub async fn handle(&self, event: UpdateEvent) {
         match event {
+            UpdateEvent::Started => self.run_schedule().await,
             UpdateEvent::CheckRequested => self.check().await,
+            UpdateEvent::AutoCheckChanged(on) => {
+                self.auto_check.send_replace(on);
+            }
             UpdateEvent::UpdateNowRequested => self.update_now().await,
         }
     }
@@ -324,9 +371,112 @@ where
         self.view.render(&shown);
     }
 
+    /// Checks automatically while automatic checks are on: first
+    /// [`FIRST_CHECK_DELAY`] after they are on, then every
+    /// [`CHECK_INTERVAL`]. Turning them off cancels the wait; turning them
+    /// back on starts over. Returns only if the controller is gone.
+    async fn run_schedule(&self) {
+        let mut on = self.auto_check.subscribe();
+        loop {
+            if on.wait_for(|on| *on).await.is_err() {
+                return;
+            }
+            let mut delay = FIRST_CHECK_DELAY;
+            while wait_while_on(delay, &mut on).await {
+                self.check_automatically().await;
+                delay = CHECK_INTERVAL;
+            }
+        }
+    }
+
+    /// A check nobody asked for. Shows only what it finds, never
+    /// "Checking…", and a failure shows nothing at all. A version newer
+    /// than any announced before gets one notification.
+    async fn check_automatically(&self) {
+        if !self.lock().takes_automatic_result() {
+            return;
+        }
+        let found = match self.source.check().await {
+            Ok(found) => found,
+            Err(error) => {
+                tracing::warn!(kind = %error, "the automatic update check failed");
+                return;
+            }
+        };
+        if let Some(update) = &found {
+            self.announce(&update.version);
+        }
+        let shown = {
+            let mut phase = self.lock();
+            if !phase.takes_automatic_result() {
+                return;
+            }
+            let before = phase.shown();
+            *phase = found.map_or(Phase::UpToDate, Phase::Available);
+            let after = phase.shown();
+            (after != before).then_some(after)
+        };
+        if let Some(shown) = shown {
+            self.view.render(&shown);
+        }
+    }
+
+    /// Notifies about `version` unless it is no newer than the last version
+    /// announced, then remembers it.
+    fn announce(&self, version: &str) {
+        let last = self.memory.recall().last_notified_version;
+        if is_newer(version, last.as_deref()) {
+            self.notifier.update_available(version);
+            self.memory.remember_notified(version);
+        }
+    }
+
     fn lock(&self) -> MutexGuard<'_, Phase<U::Handle>> {
         self.phase.lock().unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+impl<H> Phase<H> {
+    /// Whether an automatic check may replace this phase with what it
+    /// found.
+    fn takes_automatic_result(&self) -> bool {
+        match self {
+            Self::Idle | Self::UpToDate | Self::Available(_) | Self::CheckFailed => true,
+            // A check the user asked for is answering, or Update now is
+            // installing or has just failed (its message stays).
+            Self::Checking | Self::Downloading { .. } | Self::InstallFailed(_) => false,
+        }
+    }
+}
+
+/// Whether `found` is newer than the `last` version announced. Compared as
+/// versions, so 1.10.0 is newer than 1.9.0. A version that can't be read
+/// counts as new unless it is the same text.
+fn is_newer(found: &str, last: Option<&str>) -> bool {
+    let Some(last) = last else {
+        return true;
+    };
+    match (semver::Version::parse(found), semver::Version::parse(last)) {
+        (Ok(found), Ok(last)) => found > last,
+        _ => found != last,
+    }
+}
+
+/// Waits `delay`. Returns `false` early if automatic checks are turned off
+/// meanwhile (or the controller is gone), `true` once the delay is over.
+async fn wait_while_on(delay: Duration, on: &mut watch::Receiver<bool>) -> bool {
+    let mut sleep = pin!(tokio::time::sleep(delay));
+    let mut off = pin!(on.wait_for(|on| !*on));
+    poll_fn(|cx| {
+        if off.as_mut().poll(cx).is_ready() {
+            Poll::Ready(false)
+        } else if sleep.as_mut().poll(cx).is_ready() {
+            Poll::Ready(true)
+        } else {
+            Poll::Pending
+        }
+    })
+    .await
 }
 
 #[cfg(test)]

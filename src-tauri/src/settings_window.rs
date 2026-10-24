@@ -186,11 +186,7 @@ pub fn save_settings(
     new_settings: Settings,
 ) -> Result<(), CommandError> {
     settings
-        .modify(|current| {
-            current.provider = new_settings.provider;
-            current.model = new_settings.model;
-            current.custom_base_url = new_settings.custom_base_url;
-        })
+        .save_form(new_settings)
         .map_err(|_| CommandError::SaveSettings)
 }
 

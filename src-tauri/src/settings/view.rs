@@ -4,6 +4,7 @@
 //! Privacy: keys pass through to the [`KeyStore`] and are never kept,
 //! returned or logged here.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, PoisonError, RwLock};
 
 use super::{
@@ -101,6 +102,9 @@ pub struct AppSettings {
     keys: Arc<dyn KeyStore>,
     current: RwLock<Settings>,
     listeners: RwLock<Vec<Listener>>,
+    /// Whether the file was damaged at startup and nothing has been saved
+    /// over it since. Changes the app makes by itself leave it alone then.
+    damaged: AtomicBool,
 }
 
 impl AppSettings {
@@ -127,6 +131,7 @@ impl AppSettings {
             keys,
             current: RwLock::new(current),
             listeners: RwLock::default(),
+            damaged: AtomicBool::new(startup == Startup::Damaged),
         };
         (app, startup)
     }
@@ -152,8 +157,41 @@ impl AppSettings {
         let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
         settings.instruction_sets = current.instruction_sets.clone();
         self.file.save(&settings)?;
+        self.damaged.store(false, Ordering::Relaxed);
         *current = settings;
         Ok(())
+    }
+
+    /// Saves what the settings form edits: the provider, model and Custom
+    /// base URL from `form`. Everything else in `form` is ignored, so the
+    /// form can't undo the shortcut, start-with-Windows, the instruction
+    /// sets or what the app remembers about updates.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SettingsError`] if the file can't be written. The current
+    /// settings stay unchanged then.
+    pub fn save_form(&self, form: Settings) -> Result<(), SettingsError> {
+        self.modify(|current| {
+            current.provider = form.provider;
+            current.model = form.model;
+            current.custom_base_url = form.custom_base_url;
+        })
+    }
+
+    /// Applies `change`, something the app remembers by itself (such as the
+    /// last update it announced), and saves it. While the file is damaged
+    /// and the user hasn't saved over it, the change is kept in memory only,
+    /// so the app never replaces a file the user might still repair. A
+    /// failed save is logged and the change is still kept in memory.
+    pub fn remember(&self, change: impl FnOnce(&mut Settings)) {
+        let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
+        let mut changed = current.clone();
+        change(&mut changed);
+        if !self.damaged.load(Ordering::Relaxed) && self.file.save(&changed).is_err() {
+            tracing::warn!("the settings file couldn't be written");
+        }
+        *current = changed;
     }
 
     /// Applies `change` to a copy of the current settings, saves it, then
@@ -186,6 +224,7 @@ impl AppSettings {
         let mut changed = current.clone();
         let value = change(&mut changed)?;
         self.file.save(&changed)?;
+        self.damaged.store(false, Ordering::Relaxed);
         *current = changed;
         Ok(value)
     }
@@ -751,5 +790,75 @@ mod tests {
 
         assert_eq!(startup, Startup::Damaged);
         assert_eq!(app.settings(), Settings::default());
+    }
+
+    #[test]
+    fn saving_the_form_keeps_the_update_memory() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        app.modify(|s| {
+            s.auto_check = false;
+            s.last_notified_version = Some("1.1.0".to_owned());
+        })
+        .unwrap();
+
+        // The page sends only what it edits; the rest arrives as defaults.
+        app.save_form(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+        let (restarted, _) = open(&path, Arc::default());
+
+        let saved = restarted.settings();
+        assert_eq!(saved.provider, ProviderKind::Gemini);
+        assert_eq!(saved.model, "gemini-test");
+        assert!(!saved.auto_check);
+        assert_eq!(saved.last_notified_version.as_deref(), Some("1.1.0"));
+    }
+
+    #[test]
+    fn something_the_app_remembers_by_itself_is_saved() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+
+        app.remember(|s| s.last_notified_version = Some("1.1.0".to_owned()));
+        let (restarted, _) = open(&path, Arc::default());
+
+        assert_eq!(
+            restarted.settings().last_notified_version.as_deref(),
+            Some("1.1.0")
+        );
+    }
+
+    #[test]
+    fn something_the_app_remembers_by_itself_never_overwrites_a_damaged_file() {
+        let path = temp_file();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{ not json").unwrap();
+        let (app, _) = open(&path, Arc::default());
+
+        app.remember(|s| s.last_notified_version = Some("1.1.0".to_owned()));
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"{ not json");
+        assert_eq!(
+            app.settings().last_notified_version.as_deref(),
+            Some("1.1.0")
+        );
+    }
+
+    #[test]
+    fn once_the_user_saves_over_a_damaged_file_the_app_remembers_again() {
+        let path = temp_file();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{ not json").unwrap();
+        let (app, _) = open(&path, Arc::default());
+        app.save_form(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+
+        app.remember(|s| s.last_notified_version = Some("1.1.0".to_owned()));
+        let (restarted, _) = open(&path, Arc::default());
+
+        assert_eq!(
+            restarted.settings().last_notified_version.as_deref(),
+            Some("1.1.0")
+        );
     }
 }

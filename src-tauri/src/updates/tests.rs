@@ -6,10 +6,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::sync::{Notify, oneshot};
+use tokio::task::JoinHandle;
 
 use super::{
-    AvailableUpdate, BusyGate, CheckError, FailedStep, InstallError, Notifier, UpdateController,
-    UpdateEvent, UpdateSource, UpdatesState, UpdatesView,
+    AvailableUpdate, BusyGate, CheckError, FailedStep, InstallError, Notifier, Remembered,
+    UpdateController, UpdateEvent, UpdateMemory, UpdateSource, UpdatesState, UpdatesView,
 };
 
 /// What the fake source answers to a check.
@@ -23,7 +24,7 @@ enum Answer {
 /// An update source that gives the scripted answer, optionally only once a
 /// test lets it.
 struct FakeSource {
-    answer: Answer,
+    answer: Mutex<Answer>,
     /// If set, the check waits for this before it answers.
     gate: Mutex<Option<oneshot::Receiver<()>>>,
     checks: AtomicUsize,
@@ -43,7 +44,7 @@ struct FakeSource {
 impl FakeSource {
     fn answering(answer: Answer) -> Self {
         Self {
-            answer,
+            answer: Mutex::new(answer),
             gate: Mutex::new(None),
             checks: AtomicUsize::new(0),
             progress: Vec::new(),
@@ -64,7 +65,8 @@ impl UpdateSource for FakeSource {
         if let Some(gate) = gate {
             let _ = gate.await;
         }
-        match self.answer {
+        let answer = self.answer.lock().unwrap().clone();
+        match answer {
             Answer::Nothing => Ok(None),
             Answer::Update(version) => Ok(Some(AvailableUpdate {
                 version: version.to_owned(),
@@ -152,14 +154,50 @@ impl UpdatesView for FakeView {
     }
 }
 
-type Controller = UpdateController<FakeSource, FakeNotifier, FakeView, FakeGate>;
+/// Update memory kept in a field instead of the settings file.
+struct FakeMemory(Mutex<Remembered>);
+
+impl FakeMemory {
+    fn new(auto_check: bool, last_notified_version: Option<&str>) -> Self {
+        Self(Mutex::new(Remembered {
+            auto_check,
+            last_notified_version: last_notified_version.map(str::to_owned),
+        }))
+    }
+}
+
+impl UpdateMemory for FakeMemory {
+    fn recall(&self) -> Remembered {
+        self.0.lock().unwrap().clone()
+    }
+
+    fn remember_notified(&self, version: &str) {
+        self.0.lock().unwrap().last_notified_version = Some(version.to_owned());
+    }
+}
+
+type Controller = UpdateController<FakeSource, FakeNotifier, FakeView, FakeGate, FakeMemory>;
 
 fn controller(answer: Answer) -> Controller {
     controller_with(FakeSource::answering(answer), FakeGate::default())
 }
 
 fn controller_with(source: FakeSource, gate: FakeGate) -> Controller {
-    UpdateController::new(source, FakeNotifier::default(), FakeView::default(), gate)
+    controller_from(source, gate, FakeMemory::new(true, None))
+}
+
+fn controller_remembering(answer: Answer, memory: FakeMemory) -> Controller {
+    controller_from(FakeSource::answering(answer), FakeGate::default(), memory)
+}
+
+fn controller_from(source: FakeSource, gate: FakeGate, memory: FakeMemory) -> Controller {
+    UpdateController::new(
+        source,
+        FakeNotifier::default(),
+        FakeView::default(),
+        gate,
+        memory,
+    )
 }
 
 /// A controller that already offers 1.1.0, from a source that installs it
@@ -207,6 +245,27 @@ fn install_failed(version: &str) -> UpdatesState {
     UpdatesState::InstallFailed {
         version: version.to_owned(),
     }
+}
+
+/// Starts the app's controller; its schedule runs until the test ends.
+fn start(controller: &Arc<Controller>) -> JoinHandle<()> {
+    let controller = Arc::clone(controller);
+    tokio::spawn(async move { controller.handle(UpdateEvent::Started).await })
+}
+
+/// Lets `secs` seconds pass on the paused test clock.
+async fn after(secs: u64) {
+    tokio::time::sleep(Duration::from_secs(secs)).await;
+}
+
+const DAY: u64 = 24 * 60 * 60;
+
+fn checks(controller: &Controller) -> usize {
+    controller.source.checks.load(Ordering::Relaxed)
+}
+
+fn last_notified(controller: &Controller) -> Option<String> {
+    controller.memory.recall().last_notified_version
 }
 
 fn states(controller: &Controller) -> Vec<UpdatesState> {
@@ -276,10 +335,10 @@ async fn a_failed_manual_check_says_so() {
 
 #[tokio::test]
 async fn checking_again_after_a_failure_can_find_the_update() {
-    let mut controller = controller(Answer::Fails);
+    let controller = controller(Answer::Fails);
     controller.handle(UpdateEvent::CheckRequested).await;
 
-    controller.source.answer = Answer::Update("1.1.0");
+    *controller.source.answer.lock().unwrap() = Answer::Update("1.1.0");
     controller.handle(UpdateEvent::CheckRequested).await;
 
     assert_eq!(controller.state(), available("1.1.0"));
@@ -432,4 +491,196 @@ fn the_state_reaches_the_settings_page_tagged_by_kind() {
         json(&install_failed("1.1.0")),
         serde_json::json!({ "kind": "installFailed", "version": "1.1.0" })
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_first_automatic_check_comes_10_seconds_after_start() {
+    let controller = Arc::new(controller(Answer::Nothing));
+    let schedule = start(&controller);
+
+    tokio::time::sleep(Duration::from_millis(9_999)).await;
+    assert_eq!(checks(&controller), 0);
+    tokio::time::sleep(Duration::from_millis(2)).await;
+    assert_eq!(checks(&controller), 1);
+
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn automatic_checks_repeat_every_24_hours() {
+    let controller = Arc::new(controller(Answer::Nothing));
+    let schedule = start(&controller);
+
+    after(11).await;
+    after(DAY - 2).await;
+    assert_eq!(checks(&controller), 1);
+    after(2).await;
+    assert_eq!(checks(&controller), 2);
+    after(DAY).await;
+    assert_eq!(checks(&controller), 3);
+
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn nothing_is_checked_while_automatic_checks_are_off() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Update("1.1.0"),
+        FakeMemory::new(false, None),
+    ));
+    let schedule = start(&controller);
+
+    after(3 * DAY).await;
+
+    assert_eq!(checks(&controller), 0);
+    assert_eq!(states(&controller), Vec::<UpdatesState>::new());
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn turning_automatic_checks_off_stops_the_schedule_and_on_restarts_it() {
+    let controller = Arc::new(controller(Answer::Nothing));
+    let schedule = start(&controller);
+    after(5).await;
+
+    controller
+        .handle(UpdateEvent::AutoCheckChanged(false))
+        .await;
+    after(3 * DAY).await;
+    assert_eq!(checks(&controller), 0);
+
+    controller.handle(UpdateEvent::AutoCheckChanged(true)).await;
+    after(9).await;
+    assert_eq!(checks(&controller), 0);
+    after(2).await;
+    assert_eq!(checks(&controller), 1);
+
+    schedule.abort();
+}
+
+#[tokio::test]
+async fn a_manual_check_still_works_with_automatic_checks_off() {
+    let controller = controller_remembering(Answer::Update("1.1.0"), FakeMemory::new(false, None));
+
+    controller.handle(UpdateEvent::CheckRequested).await;
+
+    assert_eq!(controller.state(), available("1.1.0"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_automatic_check_that_finds_an_update_notifies_and_offers_it() {
+    let controller = Arc::new(controller(Answer::Update("1.1.0")));
+    let schedule = start(&controller);
+
+    after(11).await;
+
+    // No "Checking…" flashes up for a check the user didn't ask for.
+    assert_eq!(states(&controller), [available("1.1.0")]);
+    assert_eq!(notifications(&controller), ["1.1.0"]);
+    assert_eq!(last_notified(&controller).as_deref(), Some("1.1.0"));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_version_is_announced_only_once() {
+    let controller = Arc::new(controller(Answer::Update("1.1.0")));
+    let schedule = start(&controller);
+
+    after(11 + 3 * DAY).await;
+
+    assert_eq!(checks(&controller), 4);
+    assert_eq!(notifications(&controller), ["1.1.0"]);
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_version_announced_in_an_earlier_run_is_not_announced_again() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Update("1.1.0"),
+        FakeMemory::new(true, Some("1.1.0")),
+    ));
+    let schedule = start(&controller);
+
+    after(11).await;
+
+    assert_eq!(notifications(&controller), Vec::<String>::new());
+    // The tray still offers it.
+    assert_eq!(controller.state(), available("1.1.0"));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_even_newer_version_is_announced_too() {
+    let controller = Arc::new(controller(Answer::Update("1.1.0")));
+    let schedule = start(&controller);
+    after(11).await;
+
+    *controller.source.answer.lock().unwrap() = Answer::Update("1.2.0");
+    after(DAY).await;
+
+    assert_eq!(notifications(&controller), ["1.1.0", "1.2.0"]);
+    assert_eq!(last_notified(&controller).as_deref(), Some("1.2.0"));
+    assert_eq!(controller.state(), available("1.2.0"));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn versions_are_compared_as_versions_not_text() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Update("1.10.0"),
+        FakeMemory::new(true, Some("1.9.0")),
+    ));
+    let schedule = start(&controller);
+    after(11).await;
+
+    *controller.source.answer.lock().unwrap() = Answer::Update("1.2.0");
+    after(DAY).await;
+
+    assert_eq!(notifications(&controller), ["1.10.0"]);
+    assert_eq!(last_notified(&controller).as_deref(), Some("1.10.0"));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_automatic_check_shows_nothing() {
+    let controller = Arc::new(controller(Answer::Fails));
+    let schedule = start(&controller);
+
+    after(11).await;
+
+    assert_eq!(checks(&controller), 1);
+    assert_eq!(states(&controller), Vec::<UpdatesState>::new());
+    assert_eq!(controller.state(), UpdatesState::Idle);
+    assert_eq!(notifications(&controller), Vec::<String>::new());
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_automatic_check_keeps_the_update_already_found() {
+    let controller = Arc::new(controller(Answer::Update("1.1.0")));
+    let schedule = start(&controller);
+    after(11).await;
+
+    *controller.source.answer.lock().unwrap() = Answer::Fails;
+    after(DAY).await;
+
+    assert_eq!(checks(&controller), 2);
+    assert_eq!(states(&controller), [available("1.1.0")]);
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn turning_automatic_checks_off_keeps_the_known_update() {
+    let controller = Arc::new(controller(Answer::Update("1.1.0")));
+    let schedule = start(&controller);
+    after(11).await;
+
+    controller
+        .handle(UpdateEvent::AutoCheckChanged(false))
+        .await;
+    after(DAY).await;
+
+    assert_eq!(controller.state(), available("1.1.0"));
+    assert_eq!(states(&controller), [available("1.1.0")]);
+    schedule.abort();
 }

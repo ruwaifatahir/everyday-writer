@@ -9,9 +9,12 @@
 import {
   appVersion,
   checkForUpdates,
+  errorMessage,
+  getSettings,
   getUpdatesState,
   onScrollTo,
   onUpdatesState,
+  setAutoCheck,
   type UpdatesState,
   updateNow,
 } from "./api";
@@ -26,6 +29,32 @@ const versionLine = element<HTMLParagraphElement>("app-version");
 const checkButton = element<HTMLButtonElement>("updates-check");
 const statusLine = element<HTMLParagraphElement>("updates-status");
 const updateNowButton = element<HTMLButtonElement>("updates-install");
+const autoCheckSwitch = element<HTMLInputElement>("auto-check");
+const autoCheckStatus = element<HTMLParagraphElement>("auto-check-status");
+
+function setAutoCheckSwitch(on: boolean): void {
+  autoCheckSwitch.checked = on;
+  autoCheckSwitch.setAttribute("aria-checked", String(on));
+}
+
+// Applies right away, like "Start with Windows". A known update stays
+// offered when this is turned off.
+autoCheckSwitch.addEventListener("change", async () => {
+  const enabled = autoCheckSwitch.checked;
+  setAutoCheckSwitch(enabled);
+  autoCheckSwitch.disabled = true;
+  autoCheckStatus.textContent = "";
+  delete autoCheckStatus.dataset.kind;
+  try {
+    await setAutoCheck(enabled);
+  } catch (error) {
+    setAutoCheckSwitch(!enabled);
+    autoCheckStatus.textContent = errorMessage(error);
+    autoCheckStatus.dataset.kind = "error";
+  } finally {
+    autoCheckSwitch.disabled = false;
+  }
+});
 
 /** Runs before Update now; resolving false stops it. */
 let confirmUpdateNow: () => Promise<boolean> = () => Promise.resolve(true);
@@ -124,6 +153,11 @@ export async function initUpdates(): Promise<void> {
     if (!heard) render(current);
   } catch {
     // The section still shows the version and the button.
+  }
+  try {
+    setAutoCheckSwitch((await getSettings()).autoCheck);
+  } catch {
+    // The switch keeps its default (on), which is also the setting's.
   }
   try {
     versionLine.textContent = `everyday-writer ${await appVersion()}`;

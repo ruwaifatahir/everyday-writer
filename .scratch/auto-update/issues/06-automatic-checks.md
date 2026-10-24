@@ -12,3 +12,14 @@
 - [ ] The new settings-file fields (`auto_check` default on, `last_notified_version`) load from older files via serde defaults, and saving the Settings form doesn't overwrite them; settings store tests cover both
 - [ ] Controller tests run under Tokio's paused clock (no real sleeps) and cover: first check at 10 s, the 24 h repeat, no checks when off, notify once per version, notify again for newer, silent failures, keeping `Available` when switched off
 - [ ] `pnpm check` passes
+
+## Comments
+
+**Implementer (ticket/06-automatic-checks):**
+
+- Seams tested (chosen without a user round-trip, as an agent): the update controller through `UpdateEvent`s with fake ports under `start_paused`; `SettingsFile` load/save; `AppSettings` (form save, `remember`).
+- Controller (`src-tauri/src/updates.rs`): new events `Started` (runs the schedule and never returns; `live_updates::start` sends it on its own task) and `AutoCheckChanged(bool)`. The schedule watches a `tokio::sync::watch<bool>` seeded from memory; off cancels the wait, on starts over (first check 10 s later again). No public `Tick`: the timer is internal. Automatic checks never render `Checking`, render only on a change, and are skipped/ignored while a manual check runs (`Phase::takes_automatic_result`, an exhaustive match). After merging 04 it is also false for `Downloading` and `InstallFailed`, so an automatic check never hides "Update failed"; a newer version still notifies. `semver` is a direct dep now (already in the lock).
+- Memory port: `UpdateMemory { recall() -> Remembered, remember_notified(version) }`. For 08: add `last_run_version` to `Remembered` and `Settings`, a `remember_run(version)` method, and map it in `live_updates::SettingsMemory`.
+- Settings: `autoCheck` (default on), `lastNotifiedVersion`. Form save moved to `AppSettings::save_form` (tested to keep the memory). Damaged file: new `AppSettings::remember` keeps app-made changes in memory only until the user saves over the damaged file; 08 should use it for `last_run_version`. `set_auto_check` is a user save and uses `modify` (like start-with-Windows).
+- Page: switch in the Updates section, applied at once via `set_auto_check` (build.rs, handler list, capability). It reads `autoCheck` with its own `getSettings()` call so `main.ts` stays untouched.
+- No notification click handler (07). Open: manual checklist rows for automatic checks not added; not verified by hand on an installed build.
