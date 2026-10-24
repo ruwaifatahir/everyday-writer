@@ -87,7 +87,9 @@ export type UpdatesState =
   | { kind: "checking" }
   | { kind: "upToDate" }
   | { kind: "available"; version: string }
-  | { kind: "failed"; step: "check" };
+  | { kind: "failed"; step: "check" }
+  | { kind: "downloading"; percent: number }
+  | { kind: "installFailed"; version: string };
 
 export function getUpdatesState(): Promise<UpdatesState> {
   return invoke<UpdatesState>("get_updates_state");
@@ -96,6 +98,11 @@ export function getUpdatesState(): Promise<UpdatesState> {
 /** Starts a check; the answer arrives through `onUpdatesState`. */
 export function checkForUpdates(): Promise<void> {
   return invoke("check_for_updates");
+}
+
+/** Installs the offered update and restarts; progress arrives through onUpdatesState. */
+export function updateNow(): Promise<void> {
+  return invoke("update_now");
 }
 
 export function onUpdatesState(

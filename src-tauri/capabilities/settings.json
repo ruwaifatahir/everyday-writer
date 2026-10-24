@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Settings window: reads and saves the provider, model and Custom base URL, saves or clears keys, lists the saved provider's models, changes the shortcut and start-with-Windows, shows the app version and the updates state, checks for updates, and manages instruction sets. It can ask whether a key is saved but can never read one.",
+  "description": "Settings window: reads and saves the provider, model and Custom base URL, saves or clears keys, lists the saved provider's models, changes the shortcut and start-with-Windows, shows the app version and the updates state, checks for updates, installs an offered update, and manages instruction sets. It can ask whether a key is saved but can never read one.",
   "windows": ["settings"],
   "permissions": [
     "allow-get-settings",
@@ -16,6 +16,7 @@
     "allow-app-version",
     "allow-get-updates-state",
     "allow-check-for-updates",
+    "allow-update-now",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "allow-get-instruction-sets",
