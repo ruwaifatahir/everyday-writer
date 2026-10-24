@@ -86,6 +86,9 @@ pub struct Settings {
     /// The newest version an update notification was shown for, so each
     /// version is announced only once.
     pub last_notified_version: Option<String>,
+    /// The version the app ran last time, so a run after an update can say
+    /// "Updated to". Missing in files from before this was kept.
+    pub last_run_version: Option<String>,
 }
 
 impl Default for Settings {
@@ -98,6 +101,7 @@ impl Default for Settings {
             start_with_windows: true,
             auto_check: true,
             last_notified_version: None,
+            last_run_version: None,
             instruction_sets: InstructionSets::default(),
         }
     }

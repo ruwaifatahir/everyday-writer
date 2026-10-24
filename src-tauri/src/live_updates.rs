@@ -50,6 +50,7 @@ pub fn start(app: &AppHandle) {
     let session = Arc::clone(app.state::<Arc<AppSession>>().inner());
     let settings = Arc::clone(app.state::<Arc<AppSettings>>().inner());
     let controller: AppUpdates = UpdateController::new(
+        app.package_info().version.to_string(),
         TauriUpdateSource(app.clone()),
         TauriNotifier(app.clone()),
         view,
@@ -182,6 +183,19 @@ impl Notifier for TauriNotifier {
             tracing::warn!("the update notification couldn't be shown");
         }
     }
+
+    fn updated_to(&self, version: &str) {
+        let shown = self
+            .0
+            .notification()
+            .builder()
+            .title("everyday-writer")
+            .body(format!("Updated to {version}"))
+            .show();
+        if shown.is_err() {
+            tracing::warn!("the updated notification couldn't be shown");
+        }
+    }
 }
 
 /// Keeps the update memory in the settings file.
@@ -193,7 +207,14 @@ impl UpdateMemory for SettingsMemory {
         Remembered {
             auto_check: settings.auto_check,
             last_notified_version: settings.last_notified_version,
+            last_run_version: settings.last_run_version,
         }
+    }
+
+    fn remember_run(&self, version: &str) {
+        // Never over a damaged file: see `AppSettings::remember`.
+        self.0
+            .remember(|settings| settings.last_run_version = Some(version.to_owned()));
     }
 
     fn remember_notified(&self, version: &str) {

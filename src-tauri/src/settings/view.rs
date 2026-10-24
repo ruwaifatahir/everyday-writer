@@ -801,6 +801,7 @@ mod tests {
             s.last_notified_version = Some("1.1.0".to_owned());
         })
         .unwrap();
+        app.remember(|s| s.last_run_version = Some("1.0.0".to_owned()));
 
         // The page sends only what it edits; the rest arrives as defaults.
         app.save_form(settings(ProviderKind::Gemini, "gemini-test"))
@@ -812,6 +813,7 @@ mod tests {
         assert_eq!(saved.model, "gemini-test");
         assert!(!saved.auto_check);
         assert_eq!(saved.last_notified_version.as_deref(), Some("1.1.0"));
+        assert_eq!(saved.last_run_version.as_deref(), Some("1.0.0"));
     }
 
     #[test]

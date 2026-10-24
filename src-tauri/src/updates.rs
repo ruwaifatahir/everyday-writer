@@ -178,6 +178,9 @@ pub trait BusyGate: Send + Sync {
 pub trait Notifier: Send + Sync {
     /// Says that `version` can be installed.
     fn update_available(&self, version: &str);
+
+    /// Says that the app now runs `version`, after an update restarted it.
+    fn updated_to(&self, version: &str);
 }
 
 /// Shows the updates state in Settings and the tray.
@@ -199,6 +202,8 @@ pub struct Remembered {
     pub auto_check: bool,
     /// The newest version an update notification was shown for.
     pub last_notified_version: Option<String>,
+    /// The version the app ran last time, if a run was ever recorded.
+    pub last_run_version: Option<String>,
 }
 
 /// Where the controller keeps what it remembers between runs.
@@ -208,6 +213,9 @@ pub trait UpdateMemory: Send + Sync {
 
     /// Remembers that an update notification was shown for `version`.
     fn remember_notified(&self, version: &str);
+
+    /// Remembers that the app ran `version`.
+    fn remember_run(&self, version: &str);
 }
 
 /// The controller's own state, richer than the state it shows.
@@ -251,6 +259,8 @@ impl<H> Phase<H> {
 
 /// Checks for updates and shows what it finds.
 pub struct UpdateController<U: UpdateSource, N, V, G, M> {
+    /// The version the app runs now, such as `1.1.0`.
+    running_version: String,
     source: U,
     notifier: N,
     view: V,
@@ -269,11 +279,19 @@ where
     G: BusyGate,
     M: UpdateMemory,
 {
-    /// A controller that knows of no update yet. Whether automatic checks
-    /// are on comes from `memory`.
-    pub fn new(source: U, notifier: N, view: V, gate: G, memory: M) -> Self {
+    /// A controller for an app running `running_version` that knows of no
+    /// update yet. Whether automatic checks are on comes from `memory`.
+    pub fn new(
+        running_version: impl Into<String>,
+        source: U,
+        notifier: N,
+        view: V,
+        gate: G,
+        memory: M,
+    ) -> Self {
         let (auto_check, _) = watch::channel(memory.recall().auto_check);
         Self {
+            running_version: running_version.into(),
             source,
             notifier,
             view,
@@ -293,7 +311,10 @@ where
     /// [`UpdateEvent::Started`] never returns.
     pub async fn handle(&self, event: UpdateEvent) {
         match event {
-            UpdateEvent::Started => self.run_schedule().await,
+            UpdateEvent::Started => {
+                self.greet_update();
+                self.run_schedule().await;
+            }
             UpdateEvent::CheckRequested => self.check().await,
             UpdateEvent::AutoCheckChanged(on) => {
                 self.auto_check.send_replace(on);
@@ -419,6 +440,18 @@ where
         if let Some(shown) = shown {
             self.view.render(&shown);
         }
+    }
+
+    /// Says "Updated to" the running version if the last run was an older
+    /// one, then remembers this run. A first run (no run recorded, as after
+    /// a fresh install or on a settings file from before this) says nothing.
+    fn greet_update(&self) {
+        let running = self.running_version.as_str();
+        let last = self.memory.recall().last_run_version;
+        if last.is_some_and(|last| is_newer(running, Some(&last))) {
+            self.notifier.updated_to(running);
+        }
+        self.memory.remember_run(running);
     }
 
     /// Notifies about `version` unless it is no newer than the last version
