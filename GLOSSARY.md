@@ -1,4 +1,4 @@
-# everyday-writer
+# Everyday Writer
 
 A background Windows helper that rewrites text the user selected in any app, following the user's own saved instructions.
 
