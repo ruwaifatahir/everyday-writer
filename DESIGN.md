@@ -102,9 +102,9 @@ border or a fill change:
   actions. `.rows` splits a card with stone rules.
 - **Dark chamber**: `ink` fill is for small contained things only (`kbd`
   on the primary button). It is never a theme or a section fill.
-- **Popup**: the window itself has a 2px ink border with an 8px radius,
-  matching the corner Windows 11 rounds it to, so it holds its edge
-  against any desktop.
+- **Popup**: the window draws no border of its own. Windows 11 gives the
+  frameless window its rounded corners, hairline edge and shadow, which
+  hold its edge against any desktop.
 
 ## Components
 
@@ -138,9 +138,8 @@ border or a fill change:
 
 ## Popup states
 
-- Working: a plain "Rewriting…" caption (it becomes "Still rewriting…"
-  after 3s) over the selection itself, set like the result, with the
-  reading band. Copy and Replace disabled.
+- Working: a plain "Rewriting…" caption over the selection itself, set
+  like the result, with the reading band. Copy and Replace disabled.
 - Result: a plain "Rewritten" caption, the text in Figtree 15px fading in
   where the selection was, Replace focused. Long text fades into the
   footer rule and scrolls.

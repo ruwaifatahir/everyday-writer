@@ -1,6 +1,7 @@
-/* Rewrite popup: a fixed 400 x 220 frameless window on cream, framed by a
-   2px ink border so it holds its edge against any desktop (see DESIGN.md).
-   State line, the text, then the action bar. */
+/* Rewrite popup: a fixed 400 x 220 frameless window on cream. Windows 11
+   gives it its rounded corners, hairline edge and shadow, so the page draws
+   no frame of its own (see DESIGN.md). State line, the text, then the
+   action bar. */
 
 @import "../styles/fonts.css";
 @import "../styles/tokens.css";
@@ -14,14 +15,10 @@ body {
   overflow: hidden;
 }
 
-/* The radius matches the corner Windows 11 rounds the window to, so the
-   border follows it instead of being clipped. */
 .popup {
   display: grid;
   grid-template-rows: auto 1fr auto;
   height: 100%;
-  border: var(--border) solid var(--ink);
-  border-radius: var(--radius-window);
 }
 
 /* State line: a plain caption saying where the rewrite is, and close. */

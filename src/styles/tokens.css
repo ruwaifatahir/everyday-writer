@@ -55,7 +55,6 @@
   --radius-chip: 6px; /* kbd and dark square badges */
   --radius-control: 12px; /* buttons, inputs */
   --radius-card: 18px; /* settings cards, dialogs */
-  --radius-window: 8px; /* matches the Windows 11 corner on the popup */
   --radius-pill: 999px;
 
   /* Motion: quick, exponential ease-out */

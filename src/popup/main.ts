@@ -33,14 +33,8 @@ const close = element<HTMLButtonElement>("close");
 
 let current: PopupState["kind"] = "hidden";
 
-/** After this long working, the label says it is still going (Fluent's
-    advice for waits over about 3 seconds). */
-const STILL_WORKING_MS = 3000;
-let stillWorking: number | undefined;
-
 function show(state: PopupState): void {
   current = state.kind;
-  window.clearTimeout(stillWorking);
   popup.dataset.state = state.kind;
   const hasResult = state.kind === "result";
   working.hidden = state.kind !== "working";
@@ -66,9 +60,6 @@ function show(state: PopupState): void {
       statusText.textContent = "Rewriting…";
       result.textContent = "";
       working.scrollTop = 0;
-      stillWorking = window.setTimeout(() => {
-        statusText.textContent = "Still rewriting…";
-      }, STILL_WORKING_MS);
       break;
     case "result":
       statusText.textContent = "Rewritten";
