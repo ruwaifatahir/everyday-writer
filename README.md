@@ -21,15 +21,15 @@ Typos and messy sentences slip into emails, chats and docs. Fixing them usually 
 
 **Before**
 
-> just saw the videos on X, riots happening all over europe
+> hey cant make it to the meeting tmrw, can we moved it to friday. ill send the report befor then
 >
-> ae you alright?
+> thx
 
 **After**
 
-> Just saw the videos on X. There are riots happening all over Europe.
+> Hey, I can't make it to the meeting tomorrow. Can we move it to Friday? I'll send the report before then.
 >
-> Are you alright?
+> Thanks
 
 ## How it works
 
