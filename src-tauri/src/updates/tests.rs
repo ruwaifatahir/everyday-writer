@@ -186,12 +186,8 @@ impl UpdateMemory for FakeMemory {
         self.0.lock().unwrap().clone()
     }
 
-    fn remember_notified(&self, version: &str) {
-        self.0.lock().unwrap().last_notified_version = Some(version.to_owned());
-    }
-
-    fn remember_run(&self, version: &str) {
-        self.0.lock().unwrap().last_run_version = Some(version.to_owned());
+    fn remember(&self, change: impl FnOnce(&mut Remembered)) {
+        change(&mut self.0.lock().unwrap());
     }
 }
 

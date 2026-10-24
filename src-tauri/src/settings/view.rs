@@ -797,11 +797,11 @@ mod tests {
         let path = temp_file();
         let (app, _) = open(&path, Arc::default());
         app.modify(|s| {
-            s.auto_check = false;
-            s.last_notified_version = Some("1.1.0".to_owned());
+            s.updates.auto_check = false;
+            s.updates.last_notified_version = Some("1.1.0".to_owned());
         })
         .unwrap();
-        app.remember(|s| s.last_run_version = Some("1.0.0".to_owned()));
+        app.remember(|s| s.updates.last_run_version = Some("1.0.0".to_owned()));
 
         // The page sends only what it edits; the rest arrives as defaults.
         app.save_form(settings(ProviderKind::Gemini, "gemini-test"))
@@ -811,9 +811,12 @@ mod tests {
         let saved = restarted.settings();
         assert_eq!(saved.provider, ProviderKind::Gemini);
         assert_eq!(saved.model, "gemini-test");
-        assert!(!saved.auto_check);
-        assert_eq!(saved.last_notified_version.as_deref(), Some("1.1.0"));
-        assert_eq!(saved.last_run_version.as_deref(), Some("1.0.0"));
+        assert!(!saved.updates.auto_check);
+        assert_eq!(
+            saved.updates.last_notified_version.as_deref(),
+            Some("1.1.0")
+        );
+        assert_eq!(saved.updates.last_run_version.as_deref(), Some("1.0.0"));
     }
 
     #[test]
@@ -821,11 +824,15 @@ mod tests {
         let path = temp_file();
         let (app, _) = open(&path, Arc::default());
 
-        app.remember(|s| s.last_notified_version = Some("1.1.0".to_owned()));
+        app.remember(|s| s.updates.last_notified_version = Some("1.1.0".to_owned()));
         let (restarted, _) = open(&path, Arc::default());
 
         assert_eq!(
-            restarted.settings().last_notified_version.as_deref(),
+            restarted
+                .settings()
+                .updates
+                .last_notified_version
+                .as_deref(),
             Some("1.1.0")
         );
     }
@@ -837,11 +844,11 @@ mod tests {
         std::fs::write(&path, b"{ not json").unwrap();
         let (app, _) = open(&path, Arc::default());
 
-        app.remember(|s| s.last_notified_version = Some("1.1.0".to_owned()));
+        app.remember(|s| s.updates.last_notified_version = Some("1.1.0".to_owned()));
 
         assert_eq!(std::fs::read(&path).unwrap(), b"{ not json");
         assert_eq!(
-            app.settings().last_notified_version.as_deref(),
+            app.settings().updates.last_notified_version.as_deref(),
             Some("1.1.0")
         );
     }
@@ -855,11 +862,15 @@ mod tests {
         app.save_form(settings(ProviderKind::Gemini, "gemini-test"))
             .unwrap();
 
-        app.remember(|s| s.last_notified_version = Some("1.1.0".to_owned()));
+        app.remember(|s| s.updates.last_notified_version = Some("1.1.0".to_owned()));
         let (restarted, _) = open(&path, Arc::default());
 
         assert_eq!(
-            restarted.settings().last_notified_version.as_deref(),
+            restarted
+                .settings()
+                .updates
+                .last_notified_version
+                .as_deref(),
             Some("1.1.0")
         );
     }

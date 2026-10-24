@@ -81,6 +81,7 @@ mod tests {
 
     use super::{SettingsError, SettingsFile};
     use crate::settings::{ProviderKind, Settings};
+    use crate::updates::Remembered;
 
     /// A fresh, empty folder per test, so tests never share a file.
     fn temp_dir() -> PathBuf {
@@ -169,24 +170,33 @@ mod tests {
 
         let loaded = SettingsFile::new(path).load().unwrap().unwrap();
 
-        assert!(loaded.auto_check);
-        assert_eq!(loaded.last_notified_version, None);
-        assert_eq!(loaded.last_run_version, None);
+        assert!(loaded.updates.auto_check);
+        assert_eq!(loaded.updates.last_notified_version, None);
+        assert_eq!(loaded.updates.last_run_version, None);
     }
 
     #[test]
     fn the_update_memory_survives_a_save() {
-        let file = SettingsFile::new(temp_dir().join("settings.json"));
+        let path = temp_dir().join("settings.json");
+        let file = SettingsFile::new(path.clone());
         let saved = Settings {
-            auto_check: false,
-            last_notified_version: Some("1.1.0".to_owned()),
-            last_run_version: Some("1.0.0".to_owned()),
+            updates: Remembered {
+                auto_check: false,
+                last_notified_version: Some("1.1.0".to_owned()),
+                last_run_version: Some("1.0.0".to_owned()),
+            },
             ..custom_settings()
         };
 
         file.save(&saved).unwrap();
 
         assert_eq!(file.load().unwrap(), Some(saved));
+        // Kept as top-level fields, as in files written before.
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(json["autoCheck"], false);
+        assert_eq!(json["lastNotifiedVersion"], "1.1.0");
+        assert_eq!(json["lastRunVersion"], "1.0.0");
     }
 
     #[test]

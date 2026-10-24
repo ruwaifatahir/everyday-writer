@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::task::Poll;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 /// How long after the app starts the first automatic check waits, so
@@ -188,15 +188,30 @@ impl<T: UpdatesView + ?Sized> UpdatesView for Arc<T> {
     }
 }
 
-/// What the controller keeps between runs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What the controller keeps between runs. Stored in the settings file as
+/// top-level `autoCheck`, `lastNotifiedVersion` and `lastRunVersion`;
+/// missing fields load as their defaults, so older files still load.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Remembered {
-    /// Whether the app checks for updates by itself.
+    /// Whether the app checks for updates by itself. On unless turned off.
     pub auto_check: bool,
-    /// The newest version an update notification was shown for.
+    /// The newest version an update notification was shown for, so each
+    /// version is announced only once.
     pub last_notified_version: Option<String>,
-    /// The version the app ran last time, if a run was ever recorded.
+    /// The version the app ran last time, so a run after an update can say
+    /// "Updated to". Missing in files from before this was kept.
     pub last_run_version: Option<String>,
+}
+
+impl Default for Remembered {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            last_notified_version: None,
+            last_run_version: None,
+        }
+    }
 }
 
 /// Where the controller keeps what it remembers between runs.
@@ -204,11 +219,8 @@ pub trait UpdateMemory: Send + Sync {
     /// What is remembered now.
     fn recall(&self) -> Remembered;
 
-    /// Remembers that an update notification was shown for `version`.
-    fn remember_notified(&self, version: &str);
-
-    /// Remembers that the app ran `version`.
-    fn remember_run(&self, version: &str);
+    /// Applies `change` to what is remembered and keeps it.
+    fn remember(&self, change: impl FnOnce(&mut Remembered));
 }
 
 /// The controller's own state, richer than the state it shows.
@@ -456,7 +468,8 @@ where
         if last.is_some_and(|last| is_newer(running, &last)) {
             self.notifier.updated_to(running);
         }
-        self.memory.remember_run(running);
+        self.memory
+            .remember(|memory| memory.last_run_version = Some(running.to_owned()));
     }
 
     /// Notifies about `version` if none was announced yet or it is newer than
@@ -469,7 +482,8 @@ where
         };
         if new {
             self.notifier.update_available(version);
-            self.memory.remember_notified(version);
+            self.memory
+                .remember(|memory| memory.last_notified_version = Some(version.to_owned()));
         }
     }
 

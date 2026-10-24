@@ -13,6 +13,8 @@ use std::collections::HashMap;
 use keyring_core::Entry;
 use serde::{Deserialize, Serialize};
 
+use crate::updates::Remembered;
+
 pub use instruction_sets::{
     InstructionSet, InstructionSetError, InstructionSetId, InstructionSets, StarterTemplate,
 };
@@ -81,14 +83,10 @@ pub struct Settings {
     pub shortcut: String,
     /// Whether the app starts when the user signs in to Windows.
     pub start_with_windows: bool,
-    /// Whether the app checks for updates by itself. On unless turned off.
-    pub auto_check: bool,
-    /// The newest version an update notification was shown for, so each
-    /// version is announced only once.
-    pub last_notified_version: Option<String>,
-    /// The version the app ran last time, so a run after an update can say
-    /// "Updated to". Missing in files from before this was kept.
-    pub last_run_version: Option<String>,
+    /// What the update controller keeps between runs, stored as top-level
+    /// fields of the file.
+    #[serde(flatten)]
+    pub updates: Remembered,
 }
 
 impl Default for Settings {
@@ -99,9 +97,7 @@ impl Default for Settings {
             custom_base_url: String::new(),
             shortcut: crate::shortcut::DEFAULT_SHORTCUT.to_owned(),
             start_with_windows: true,
-            auto_check: true,
-            last_notified_version: None,
-            last_run_version: None,
+            updates: Remembered::default(),
             instruction_sets: InstructionSets::default(),
         }
     }

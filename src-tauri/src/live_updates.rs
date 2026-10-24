@@ -244,24 +244,12 @@ pub struct SettingsMemory(Arc<AppSettings>);
 
 impl UpdateMemory for SettingsMemory {
     fn recall(&self) -> Remembered {
-        let settings = self.0.settings();
-        Remembered {
-            auto_check: settings.auto_check,
-            last_notified_version: settings.last_notified_version,
-            last_run_version: settings.last_run_version,
-        }
+        self.0.settings().updates
     }
 
-    fn remember_run(&self, version: &str) {
+    fn remember(&self, change: impl FnOnce(&mut Remembered)) {
         // Never over a damaged file: see `AppSettings::remember`.
-        self.0
-            .remember(|settings| settings.last_run_version = Some(version.to_owned()));
-    }
-
-    fn remember_notified(&self, version: &str) {
-        // Never over a damaged file: see `AppSettings::remember`.
-        self.0
-            .remember(|settings| settings.last_notified_version = Some(version.to_owned()));
+        self.0.remember(|settings| change(&mut settings.updates));
     }
 }
 
@@ -335,7 +323,7 @@ pub async fn set_auto_check(
     enabled: bool,
 ) -> Result<(), CommandError> {
     settings
-        .modify(|s| s.auto_check = enabled)
+        .modify(|s| s.updates.auto_check = enabled)
         .map_err(|_| CommandError::SaveSettings)?;
     // Handled in place, not spawned, so quick toggles stay in order.
     controller
