@@ -16,3 +16,16 @@ This ticket introduces the **update controller** from the spec (events in, ports
 - [ ] The check sends no identifiers (no version or machine data in the URL or headers beyond defaults)
 - [ ] Verified by hand against a test endpoint serving a newer version and against no network
 - [ ] `pnpm check` passes
+
+## Comments
+
+**Implementer (ticket/03-check-for-updates-by-hand):**
+
+- Controller: `src-tauri/src/updates.rs` (`UpdateController<U, N, V>`, `UpdateEvent`, `UpdatesState`, ports `UpdateSource` / `Notifier` / `UpdatesView`), tests in `updates/tests.rs`. Internal `Phase<H>` holds the `AvailableUpdate { version, handle }`, so 04 can install from `Phase::Available` without a second check. To extend: add an `UpdateEvent` variant + match arm in `handle`, a `Phase` variant + `shown()` arm, and new generic params (busy gate, memory) on `UpdateController` / `new` / `AppUpdates`.
+- `UpdatesState` is tagged by `kind`, so the failed variant is `Failed { step: FailedStep }` (`{ "kind": "failed", "step": "check" }`), not `Failed { kind }`. Only `FailedStep::Check` exists; 04 adds `Install` (and `Downloading`).
+- `Notifier` has only `update_available`; the field is `expect(dead_code)` outside tests until 06 calls it. 08 adds `updated_to`.
+- No memory port or settings fields yet: nothing in 03 reads or writes them, and 06/08 own those fields.
+- Wiring: `src-tauri/src/live_updates.rs` holds the real ports (`TauriUpdateSource`: `app.updater()` + `check()` under a 30 s `tokio::time::timeout`, errors mapped to a fixed `CheckError` kind before logging), `send(app, event)`, and the commands `get_updates_state` / `check_for_updates` (build.rs, handler list, settings capability). `TauriUpdatesView` keeps the state, rebuilds the tray (`tray::show_updates`) and emits `updates-state` to the settings window.
+- Tray: two ids, so the click needs no state: `check-for-updates` -> `TrayAction::CheckForUpdates` (open at Updates + `CheckRequested`), `show-update` ("Update to X") -> `TrayAction::ShowUpdate` (open at Updates only). `tray_menu(sets, updates)` now takes the updates state.
+- Page: `#updates-check` button and `#updates-status` line in the Updates section; `updates.ts` renders the state (button disabled while checking). An event that arrives while the getter runs wins over the getter's answer.
+- Open: "Verified by hand against a test endpoint serving a newer version and against no network" is not done. A debug-only endpoint override is not added; to test, serve a `latest.json` via `plugins.updater.endpoints` in a local config override. Manual checklist rows for Updates are not added yet.
