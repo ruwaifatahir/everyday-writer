@@ -60,13 +60,24 @@ After:
 **App shell**
 
 - Lives in the system tray, out of sight.
-- The tray menu has an **Instruction set** submenu with a check by the active one, then **Settings** and **Quit**.
-- Settings hold the provider, model, key, shortcut, instruction sets and the start-with-Windows switch. Nothing more.
+- The tray menu has an **Instruction set** submenu with a check by the active one, then **Check for updates**, **Settings** and **Quit**.
+- Settings hold the provider, model, key, shortcut, instruction sets, the start-with-Windows switch and an **Updates** section. Nothing more.
 
 **Getting it**
 
 - Download the installer from the project's GitHub page.
 - Version 1 isn't signed, so Windows shows a "Windows protected your PC" warning. Click "More info", then "Run anyway". The download page explains this.
+
+**Staying up to date**
+
+- The app checks the project's GitHub page for a new version by itself, about 10 seconds after it starts and then once a day.
+- When it finds one, it shows one quiet Windows notification, such as "everyday-writer 1.1.0 is available", once per version. The tray item **Check for updates** becomes **Update to 1.1.0**.
+- Clicking the notification while it's on screen, or the tray item, opens Settings at **Updates**. It shows the version you have, a **Check for updates automatically** switch, a **Check for updates** button and, when there is one, **Update now**.
+- A check you start yourself shows its result only in Settings: "You're up to date", the new version, or "Couldn't check for updates". A failed automatic check stays silent.
+- Nothing installs until you click **Update now**. It shows the download progress, waits for any rewrite or replace to finish, asks first if Settings has unsaved changes, then installs with a small progress window, no questions and no admin prompt. The app restarts by itself and says "Updated to 1.1.0".
+- Your settings, instruction sets, key and start-with-Windows choice are kept.
+- The app only installs updates signed with the project's own key, and never moves to an older version. If an update fails, the old version keeps working and you can try again.
+- Version 1.0.0 can't update itself. People on 1.0.0 install the first version with updates by hand, once.
 
 ## 4. Instructions
 
@@ -91,12 +102,13 @@ Instructions are the heart of the app. They decide what the rewrite does.
 
 ## 5. Privacy & Trust
 
-- The app runs fully on your computer. No server of ours is involved.
+- The app runs fully on your computer. No server of ours is involved: updates come straight from the project's GitHub page.
 - Your text goes only to the AI provider you chose, using your own key.
 - The app never stores your text, logs it or sends it anywhere else.
 - If you use Windows clipboard history (Win+V), the text you rewrite may appear there.
 - Your key is kept safely by Windows, never in a plain file.
 - No tracking and no analytics.
+- The update check is a plain download of a public file from GitHub. It sends no ID, no app version and nothing about your settings or text. GitHub sees your IP address, as with any website visit. Turn off **Check for updates automatically** and the app only contacts GitHub when you ask it to check.
 
 ## 6. Not Included (Yet)
 
@@ -105,7 +117,6 @@ Instructions are the heart of the app. They decide what the rewrite does.
 - Highlighting what changed.
 - A saved history of past rewrites.
 - A different model for each instruction set.
-- Update notices inside the app.
 - A signed installer with no Windows warning (a later goal).
 - Mac, Linux or mobile versions.
 
