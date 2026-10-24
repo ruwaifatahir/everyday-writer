@@ -19,7 +19,7 @@ Record each run in the results table at the end: date, build, Windows version an
 | C1 | Select text in Notepad, press the shortcut | Popup opens near the mouse, shows working, then the result |
 | C2 | Same in Word, a Chrome text field, Slack and Windows Terminal | The result shows in each |
 | C3 | Switch to the Urdu or Arabic layout, repeat C1 | Works; no literal "c" or "v" typed into the text |
-| C4 | Use a shortcut with Win or Alt (set it in Settings), rewrite | No Start menu, colour filter, menu bar or other Windows shortcut fires |
+| C4 | Use a shortcut with Alt (set it in Settings), rewrite; repeat with a Win shortcut saved by an earlier version | No Start menu, colour filter, menu bar or other Windows shortcut fires |
 | C5 | Press the shortcut with nothing selected (Notepad, empty) | No popup and no sound |
 | C6 | Select over 5,000 characters, press the shortcut | "Too long" message; nothing is sent |
 | C7 | Windows Terminal with no selection | Note what happens: Ctrl+C may interrupt the running command (known gap) |
@@ -116,26 +116,30 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | # | Case | Expected |
 |---|---|---|
 | L1 | Click the shortcut field, press a new combination, then click elsewhere | It saves the moment it's pressed and "Shortcut saved." shows; the new one works right away and after a restart |
-| L2 | Pick a shortcut another app holds | Refused with a message; the old one keeps working |
+| L2 | Pick a shortcut another app holds | "Another app already uses this shortcut. Pick a new one."; the old one keeps working |
 | L3 | Start with a shortcut another app holds | Tray notification and Settings opens |
 | L4 | After install | Start with Windows is on; turning it off removes the startup entry |
 | L5 | Launch the app a second time | Settings opens in the running app; no second copy |
 | L6 | Idle for a few minutes | Near-zero CPU in Task Manager; small memory use |
 | L7 | With another shortcut set, click **Reset to default** | Ctrl+Shift+Space works and stays after a restart; the old one stops; the button hides, and stays hidden when Settings reopens |
-| L8 | Let another app hold Ctrl+Shift+Space, then click **Reset to default** | "This shortcut is used by another app" message; the current shortcut keeps working and the button stays |
+| L8 | Let another app hold Ctrl+Shift+Space, then click **Reset to default** | "Another app already uses this shortcut. Pick a new one."; the current shortcut keeps working and the button stays |
 | L9 | Click the shortcut field and press the current shortcut | The field records and saves it; no rewrite starts. Once you leave the field it works |
 | L10 | Click the shortcut field, then press Esc, Tab away or switch to another app; press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
 | L11 | Click the shortcut field, close Settings with the title bar, press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
 | L12 | Click the shortcut field, type letters and spaces, try to paste | Nothing is typed or pasted; the field shows "Press a shortcut…" or the saved shortcut, never typed text |
 | L13 | Click the shortcut field, hold Ctrl, add Shift, then let go | The field shows "Ctrl + …", then "Ctrl + Shift + …", then "Press a shortcut…" again |
 | L14 | In the shortcut field, hold a new combination down for a few seconds | It saves once; auto-repeat records nothing more |
-| L15 | In the shortcut field, press Shift+K, then K on its own | A message under the field says why each was refused; the old shortcut is kept and the field keeps recording, so the next press is taken |
+| L15 | In the shortcut field, press Shift+K, then K on its own | "Include Ctrl or Alt, as in Ctrl + Shift + K." each time; the old shortcut is kept and the field keeps recording, so the next press is taken |
 | L16 | Tab into the shortcut field, then press Tab and Shift+Tab | Focus moves to the next or previous control; Tab is never recorded |
 | L17 | With Narrator on, focus the shortcut field and press a new combination | It is read as a shortcut field with its hint; "Shortcut saved." is announced |
-| L18 | Look at the shortcut section | The hint reads "Nothing happens? Another app may be using that shortcut."; there is no **Use shortcut** button, and Enter on its own isn't applied |
+| L18 | Look at the shortcut section | The hint reads "Click the field, then press Ctrl or Alt with one other key, adding Shift if you like. Nothing happens? Another app may be using that shortcut."; there is no **Use shortcut** button, and Enter on its own isn't applied |
 | L19 | Start with a shortcut another app holds, open Settings, click the field | "This shortcut isn't working…" shows under the field and stays while it records |
 | L20 | In the shortcut field, press a new combination, then press it again without leaving | The second press is recorded, no rewrite starts; once you leave the field the new shortcut works |
 | L21 | With the keyboard, press **Reset to default** | Once it saves, focus moves to **Start with Windows**, not the shortcut field, so recording doesn't start |
+| L22 | In the shortcut field, press Win+Alt+K (or any Win combination that reaches the field) | "Windows keeps the Win key for its own shortcuts. Use Ctrl or Alt."; the old shortcut is kept and the field keeps recording |
+| L23 | In the shortcut field, press Ctrl+C, then Ctrl+V | "Everyday Writer presses Ctrl + C and Ctrl + V to copy and paste your text. Pick a new one." each time; the old shortcut is kept and the field keeps recording. Ctrl+Shift+C saves |
+| L24 | In the shortcut field, press Ctrl+Alt+K | It saves and works; the status reads "Shortcut saved. On keyboards with AltGr, Ctrl + Alt also types special characters, so this shortcut may block one." |
+| L25 | With Win+Shift+R saved by an earlier version (edit `shortcut` in the settings file), start the app and open Settings | Win+Shift+R rewrites, and the field shows "Win + Shift + R"; clicking the field and leaving it keeps it working; picking a new shortcut replaces it |
 
 ## Updates
 
@@ -201,6 +205,6 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 | S1–S16 | | |
 | I1–I7 | | |
 | T1–T7 | | |
-| L1–L11 | | |
+| L1–L25 | | |
 | U1–U22 | | |
 | V1–V2 | | |

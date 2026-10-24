@@ -36,6 +36,8 @@ After:
 - Works in any app where you can select text.
 - One shortcut, which you can change. The default is `Ctrl+Shift+Space`.
 - To change it, click the shortcut field in Settings and press the keys. The field only records key presses, and a new shortcut is saved the moment you press it, with no extra button. While the field records, the current shortcut pauses so you can record it again. Esc cancels and keeps the old one.
+- A new shortcut needs Ctrl or Alt and may add Shift, plus one other key. Win can't be used, because Windows keeps most Win combinations for itself. Ctrl+C and Ctrl+V can't be used, because the app presses them to copy your selection and paste the result. Ctrl+Alt works, with a warning that it can clash with AltGr on some keyboards.
+- A refused shortcut gets a one-line reason under the field, and the field keeps recording. A Win shortcut saved by an earlier version keeps working until you change it.
 - The popup opens right away near your mouse, fully on that screen, and shows a small animation while the AI works.
 - The popup shows the result exactly as it came back, with three buttons: **Replace** (Enter), **Copy** and **✕** (Esc). The buttons are always the same, even if nothing changed.
 - **Replace** puts the result into the original app in place of your selection. If that app was closed in the meantime, the result is copied instead and the popup says so.
