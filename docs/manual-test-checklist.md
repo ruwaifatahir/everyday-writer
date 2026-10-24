@@ -1,6 +1,6 @@
 # Manual test checklist
 
-Run this before every release, on the installed (NSIS) build where possible. Unit tests cover the rewrite session, instruction set rules, providers, settings and clipboard snapshot rules. They can't reach the real Windows clipboard, keyboard input, other apps, the tray, the shortcut or start-up, so those are checked here.
+Run this before every release, on the installed (NSIS) build where possible. Unit tests cover the rewrite session, instruction set rules, providers, settings and clipboard snapshot rules. They can't reach the real Windows clipboard, keyboard input, other apps, the tray, the shortcut, start-up or installing an update, so those are checked here.
 
 Record each run in the results table at the end: date, build, Windows version and one result per case (pass, fail, or n/a with a note).
 
@@ -79,7 +79,7 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S7 | LM Studio as Custom at `http://localhost:1234/v1` with a blank key | Rewrite works; record whether port 1234 and the empty key were right |
 | S8 | Offline, open the model dropdown | Falls back to the built-in list; a typed name still saves |
 | S9 | Built-in suggested model names | Still current for each provider |
-| S10 | Settings holds only provider, model, key, shortcut, instruction sets and start with Windows | Nothing else |
+| S10 | Settings holds only provider, model, key, shortcut, instruction sets, start with Windows and the Updates section | Nothing else |
 | S11 | Look of the settings window and popup | Modern, minimal, clean |
 | S12 | With an update offered, change the model (don't save), click Update now, then press Esc; repeat and click Cancel | Prompt "Save your changes before updating?" with Save, Discard and Cancel, Save focused; Esc and Cancel close it, no update starts, the form still shows the edit |
 | S13 | Same, choose Save | "Saved", then the update starts; after the restart the new model is kept |
@@ -103,7 +103,7 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 
 | # | Case | Expected |
 |---|---|---|
-| T1 | Open the tray menu | Instruction set submenu, Settings, Quit, in that order |
+| T1 | Open the tray menu | Instruction set submenu, Check for updates, Settings, Quit, in that order |
 | T2 | Instruction set submenu | Every set listed, check by the active one |
 | T3 | Click another set | It becomes active; next rewrite uses it; Settings shows it |
 | T4 | Add, rename, delete and restore sets in Settings | Tray submenu matches without a restart |
@@ -122,11 +122,55 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | L5 | Launch the app a second time | Settings opens in the running app; no second copy |
 | L6 | Idle for a few minutes | Near-zero CPU in Task Manager; small memory use |
 
+## Updates
+
+Run on installed NSIS builds. Version 1.0.0 has no updater, so the "older build" is a local build of the release commit with a lower version, pointed at a test **pre-release** instead of `latest`. `releases/latest` never serves a pre-release, so no user gets it.
+
+Setup, once per release (shown for `1.1.0`):
+
+1. Push a test tag such as `v1.1.0-rc.1` from a throwaway branch whose three manifests say `1.1.0-rc.1` (see "Cutting a release" in `CONTRIBUTING.md`). When the draft has the installer, its `.sig` and `latest.json`, publish it with **Set as a pre-release** ticked.
+2. On the same commit, set the three manifests to a lower version such as `1.0.1` (don't commit it) and build the older installer, pointed at the pre-release. It needs no signing key; the update it installs must be signed with the real key, which CI does.
+
+   ```powershell
+   pnpm tauri build --config '{\"bundle\":{\"createUpdaterArtifacts\":false},\"plugins\":{\"updater\":{\"endpoints\":[\"https://github.com/ruwaifatahir/everyday-writer/releases/download/v1.1.0-rc.1/latest.json\"]}}}'
+   ```
+
+3. Uninstall any copy, install the older build, then set a provider, key, a non-default model, an extra instruction set as active, and leave start with Windows and "Check for updates automatically" on.
+4. When done, delete the pre-release: `gh release delete v1.1.0-rc.1 --yes --cleanup-tag`, then `git tag -d v1.1.0-rc.1`.
+
+| # | Case | Expected |
+|---|---|---|
+| U1 | Open Settings | Updates section shows "everyday-writer 1.0.1", the automatic-check switch on, and a Check for updates button |
+| U2 | First launch after installing the older build | No "Updated to" notification |
+| U3 | Restart the app, wait about 10 seconds | One quiet notification "everyday-writer 1.1.0-rc.1 is available"; the tray item now reads "Update to 1.1.0-rc.1" |
+| U4 | Restart again, wait about 10 seconds | No second notification for the same version; the tray reads "Update to 1.1.0-rc.1" again |
+| U5 | Click the notification while it's on screen, with Settings closed; repeat with Settings open and scrolled to the top | Settings opens (or comes to the front) scrolled to Updates, showing "Version 1.1.0-rc.1 is available" and Update now; nothing installs |
+| U6 | Let the notification go to the Action Center, click it there | Record what happens. Not supported: at most Settings opens without scrolling to Updates. Nothing installs |
+| U7 | Click "Update to 1.1.0-rc.1" in the tray, with Settings closed and again with it open | Settings opens or comes to the front at Updates; nothing installs |
+| U8 | Click the Check for updates button in Settings | "Checking…" with the button disabled, then "Version 1.1.0-rc.1 is available". No Windows notification |
+| U9 | Start a rewrite with a provider that never answers (as in P8), then click Update now | "Downloading… 0%" with the button disabled; nothing installs until the rewrite ends (timeout, or the popup closed); the clipboard is restored first |
+| U10 | While U9 waits or downloads, press the shortcut on a selection | No new rewrite starts |
+| U11 | Click Update now with no unsaved changes | "Downloading… N%" rises; the tray item is a disabled "Downloading update…"; then a small installer progress window with no pages to click and no admin (UAC) prompt; the app restarts by itself |
+| U12 | After U11's restart | One notification "Updated to 1.1.0-rc.1"; Settings shows "everyday-writer 1.1.0-rc.1" |
+| U13 | After the update | Provider, model, base URL, key (Credential Manager), instruction sets and the active set, shortcut, start with Windows and the automatic-check switch all kept; after a Windows restart the app starts |
+| U14 | Restart the updated app | No second "Updated to" notification; the tray reads "Check for updates" |
+| U15 | Tray Check for updates on the updated app, with Settings closed | Settings opens at Updates: "Checking…", then "You're up to date". No Windows notification |
+| U16 | Reinstall the older build. Disconnect from the internet, restart it, wait about 30 seconds | No notification, no error shown; Settings shows no failure |
+| U17 | Still offline, check from the tray and from the Settings button | "Couldn't check for updates" in Settings only; online again, the check works |
+| U18 | Turn "Check for updates automatically" off, restart, wait a minute | No notification; the tray reads "Check for updates" and still checks when clicked (U17 online) |
+| U19 | With "Update to …" in the tray, turn the switch off | The tray keeps "Update to …"; Settings keeps Update now |
+| U20 | Disconnect from the internet during the download in U11 | "Update failed. Try again."; the tray reads "Update to …"; the old version keeps working; Update now works once online |
+| U21 | Change one character of the `signature` in the pre-release's `latest.json` and upload it over the original (`gh release upload v1.1.0-rc.1 latest.json --clobber`), restart the older build, click Update now | "Update failed. Try again."; nothing installs; the old version keeps working. Put the original file back afterwards |
+| U22 | Open the `url` from the published `latest.json` in a private browser window | The installer downloads without signing in |
+
+Saving or discarding unsaved changes before Update now is covered by S12–S16.
+
 ## Privacy
 
 | # | Case | Expected |
 |---|---|---|
 | V1 | After running the whole list, read the log files | No selection, result, clipboard content or key |
+| V2 | Read the log lines from the update cases | Only a short error kind for a failed check or install; nothing from settings, text or keys |
 
 ## Results
 
@@ -141,6 +185,7 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 | K1–K10 | | |
 | S1–S16 | | |
 | I1–I7 | | |
-| T1–T5 | | |
+| T1–T7 | | |
 | L1–L6 | | |
-| V1 | | |
+| U1–U22 | | |
+| V1–V2 | | |
