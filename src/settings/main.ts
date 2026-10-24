@@ -361,11 +361,7 @@ async function init(): Promise<void> {
     view.provider = settings.provider;
     modelInput.value = settings.model;
     baseUrlInput.value = settings.customBaseUrl;
-    savedForm = {
-      provider: settings.provider,
-      model: settings.model,
-      customBaseUrl: settings.customBaseUrl,
-    };
+    savedForm = currentForm();
     const radio = form.querySelector<HTMLInputElement>(
       `input[name="provider"][value="${settings.provider}"]`,
     );
