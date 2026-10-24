@@ -115,7 +115,7 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 
 | # | Case | Expected |
 |---|---|---|
-| L1 | Change the shortcut | New one works right away and after a restart |
+| L1 | Click the shortcut field, press a new combination, then click elsewhere | It saves the moment it's pressed and "Shortcut saved." shows; the new one works right away and after a restart |
 | L2 | Pick a shortcut another app holds | Refused with a message; the old one keeps working |
 | L3 | Start with a shortcut another app holds | Tray notification and Settings opens |
 | L4 | After install | Start with Windows is on; turning it off removes the startup entry |
@@ -123,9 +123,19 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | L6 | Idle for a few minutes | Near-zero CPU in Task Manager; small memory use |
 | L7 | With another shortcut set, click **Reset to default** | Ctrl+Shift+Space works and stays after a restart; the old one stops; the button hides, and stays hidden when Settings reopens |
 | L8 | Let another app hold Ctrl+Shift+Space, then click **Reset to default** | "This shortcut is used by another app" message; the current shortcut keeps working and the button stays |
-| L9 | Click the shortcut field and press the current shortcut | The field records it; no rewrite starts. Saving it leaves it working |
+| L9 | Click the shortcut field and press the current shortcut | The field records and saves it; no rewrite starts. Once you leave the field it works |
 | L10 | Click the shortcut field, then press Esc, Tab away or switch to another app; press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
 | L11 | Click the shortcut field, close Settings with the title bar, press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
+| L12 | Click the shortcut field, type letters and spaces, try to paste | Nothing is typed or pasted; the field shows "Press a shortcut…" or the saved shortcut, never typed text |
+| L13 | Click the shortcut field, hold Ctrl, add Shift, then let go | The field shows "Ctrl + …", then "Ctrl + Shift + …", then "Press a shortcut…" again |
+| L14 | In the shortcut field, hold a new combination down for a few seconds | It saves once; auto-repeat records nothing more |
+| L15 | In the shortcut field, press Shift+K, then K on its own | A message under the field says why each was refused; the old shortcut is kept and the field keeps recording, so the next press is taken |
+| L16 | Tab into the shortcut field, then press Tab and Shift+Tab | Focus moves to the next or previous control; Tab is never recorded |
+| L17 | With Narrator on, focus the shortcut field and press a new combination | It is read as a shortcut field with its hint; "Shortcut saved." is announced |
+| L18 | Look at the shortcut section | The hint reads "Nothing happens? Another app may be using that shortcut."; there is no **Use shortcut** button, and Enter on its own isn't applied |
+| L19 | Start with a shortcut another app holds, open Settings, click the field | "This shortcut isn't working…" shows under the field and stays while it records |
+| L20 | In the shortcut field, press a new combination, then press it again without leaving | The second press is recorded, no rewrite starts; once you leave the field the new shortcut works |
+| L21 | With the keyboard, press **Reset to default** | Once it saves, focus moves to **Start with Windows**, not the shortcut field, so recording doesn't start |
 
 ## Updates
 
