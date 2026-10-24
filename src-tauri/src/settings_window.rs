@@ -23,7 +23,7 @@ use crate::settings::{
     ApiKey, ApiKeySource, AppSettings, KeyError, KeyringApiKeys, Provider, ProviderKind,
     SaveKeyError, Settings,
 };
-use crate::shortcut::{self, Hotkeys, ShortcutError, TauriHotkeys};
+use crate::shortcut::{self, Hotkeys, TauriHotkeys};
 
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
@@ -129,12 +129,6 @@ pub enum CommandError {
     /// An empty key was submitted.
     #[error("Enter an API key first.")]
     BlankKey,
-    /// Windows refused the new shortcut. The previous one is kept.
-    #[error("This shortcut is used by another app. Pick a new one.")]
-    ShortcutTaken,
-    /// The new shortcut isn't a usable combination.
-    #[error("Use Ctrl, Alt or Win together with one other key.")]
-    ShortcutInvalid,
     /// Windows refused to change its startup list.
     #[error("Couldn't change the Windows startup setting. Try again.")]
     Autostart,
@@ -180,12 +174,36 @@ impl CommandError {
     }
 }
 
-impl From<shortcut::ChangeError> for CommandError {
+/// Why [`set_shortcut`] didn't change the shortcut. The previous one still
+/// works. Unlike [`CommandError`], it reaches the window as a reason, such as
+/// `"noCtrlOrAlt"`, and Settings words it: Rust judges, the page explains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SetShortcutError {
+    /// The keys don't make a shortcut.
+    NotAShortcut,
+    /// Neither Ctrl nor Alt is held.
+    NoCtrlOrAlt,
+    /// Win is held.
+    Win,
+    /// It is Ctrl+C or Ctrl+V, which the app presses itself.
+    CopyPaste,
+    /// Windows refused it, almost always because another app uses it.
+    Taken,
+    /// The settings file couldn't be written.
+    Save,
+}
+
+impl From<shortcut::ChangeError> for SetShortcutError {
     fn from(error: shortcut::ChangeError) -> Self {
+        use shortcut::{ChangeError, Refusal};
         match error {
-            shortcut::ChangeError::Shortcut(ShortcutError::Taken) => Self::ShortcutTaken,
-            shortcut::ChangeError::Shortcut(ShortcutError::Invalid) => Self::ShortcutInvalid,
-            shortcut::ChangeError::Save => Self::SaveSettings,
+            ChangeError::Refused(Refusal::NotAShortcut) => Self::NotAShortcut,
+            ChangeError::Refused(Refusal::NoCtrlOrAlt) => Self::NoCtrlOrAlt,
+            ChangeError::Refused(Refusal::Win) => Self::Win,
+            ChangeError::Refused(Refusal::CopyPaste) => Self::CopyPaste,
+            ChangeError::Taken => Self::Taken,
+            ChangeError::Save => Self::Save,
         }
     }
 }
@@ -396,15 +414,14 @@ fn resume_saved_shortcut(app: &AppHandle) {
 ///
 /// # Errors
 ///
-/// Returns [`CommandError::ShortcutTaken`] if another app holds it,
-/// [`CommandError::ShortcutInvalid`] if it isn't a usable combination and
-/// [`CommandError::SaveSettings`] if it can't be saved.
+/// Returns the [`SetShortcutError`] that says why: a rule for new shortcuts
+/// is broken, another app holds it, or it can't be saved.
 #[tauri::command(async)]
 pub fn set_shortcut(
     settings: State<'_, Arc<AppSettings>>,
     hotkeys: State<'_, TauriHotkeys>,
     shortcut: String,
-) -> Result<(), CommandError> {
+) -> Result<(), SetShortcutError> {
     let _changing = SHORTCUT_CHANGE
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
@@ -452,7 +469,7 @@ pub fn set_start_with_windows(
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandError, Section, page};
+    use super::{CommandError, Section, SetShortcutError, page};
     use crate::llm::RewriteError;
     use crate::settings::ProviderKind;
 
@@ -471,6 +488,26 @@ mod tests {
         let json = serde_json::to_string(&CommandError::BlankKey).unwrap();
 
         assert_eq!(json, r#""Enter an API key first.""#);
+    }
+
+    /// `ShortcutRefusal` in `src/settings/api.ts` mirrors these names.
+    #[test]
+    fn a_refused_shortcut_reaches_the_window_as_its_reason() {
+        use crate::shortcut::{ChangeError, Refusal};
+
+        let reasons = [
+            (ChangeError::Refused(Refusal::NotAShortcut), "notAShortcut"),
+            (ChangeError::Refused(Refusal::NoCtrlOrAlt), "noCtrlOrAlt"),
+            (ChangeError::Refused(Refusal::Win), "win"),
+            (ChangeError::Refused(Refusal::CopyPaste), "copyPaste"),
+            (ChangeError::Taken, "taken"),
+            (ChangeError::Save, "save"),
+        ];
+        for (error, reason) in reasons {
+            let json = serde_json::to_string(&SetShortcutError::from(error)).unwrap();
+
+            assert_eq!(json, format!("\"{reason}\""));
+        }
     }
 
     #[test]

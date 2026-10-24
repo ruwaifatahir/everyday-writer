@@ -4,7 +4,7 @@
 //! The `global-shortcut` plugin is registered in [`crate::run`].
 
 use tauri::AppHandle;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 /// The rewrite shortcut until the user picks another one.
 pub const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
@@ -20,29 +20,77 @@ pub enum ShortcutError {
     Taken,
 }
 
+/// Why a new shortcut can't be picked. A saved one is loaded by the older,
+/// looser rules of [`parse`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum Refusal {
+    /// The text isn't a shortcut at all.
+    #[error("the text is not a shortcut")]
+    NotAShortcut,
+    /// It uses Win, which Windows keeps for itself.
+    #[error("the shortcut uses Win")]
+    Win,
+    /// It has neither Ctrl nor Alt.
+    #[error("the shortcut has neither Ctrl nor Alt")]
+    NoCtrlOrAlt,
+    /// It is Ctrl+C or Ctrl+V, which the app presses to copy the selection
+    /// and paste the result.
+    #[error("the app needs the shortcut to copy and paste")]
+    CopyPaste,
+}
+
 /// The shortcut couldn't be changed. The previous one still works.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum ChangeError {
-    /// The new shortcut was refused.
+    /// The new shortcut breaks a rule for picking one.
     #[error(transparent)]
-    Shortcut(#[from] ShortcutError),
+    Refused(#[from] Refusal),
+    /// Windows refused it, almost always because another app uses it.
+    #[error("the shortcut is used by another app")]
+    Taken,
     /// The new shortcut worked but couldn't be saved, so it was dropped.
     #[error("the shortcut couldn't be saved")]
     Save,
 }
 
-/// Parses `text` into a shortcut the app accepts: Ctrl, Alt or Win, any
+/// Parses `text` into a shortcut the user may pick now. Stricter than
+/// [`parse`], so a shortcut saved under the old rules keeps working until the
+/// user changes it.
+///
+/// # Errors
+///
+/// Returns the [`Refusal`] that says why `text` can't be picked.
+pub fn parse_new(text: &str) -> Result<Shortcut, Refusal> {
+    let shortcut: Shortcut = text.trim().parse().map_err(|_| Refusal::NotAShortcut)?;
+    if shortcut.mods.contains(Modifiers::SUPER) {
+        return Err(Refusal::Win);
+    }
+    if !shortcut
+        .mods
+        .intersects(Modifiers::CONTROL | Modifiers::ALT)
+    {
+        return Err(Refusal::NoCtrlOrAlt);
+    }
+    let copy_or_paste = [Code::KeyC, Code::KeyV]
+        .map(|key| Shortcut::new(Some(Modifiers::CONTROL), key))
+        .contains(&shortcut);
+    if copy_or_paste {
+        return Err(Refusal::CopyPaste);
+    }
+    Ok(shortcut)
+}
+
+/// Parses `text` into a shortcut the app loads: Ctrl, Alt or Win, any
 /// Shift, and one key. Shift alone isn't enough, as it would take over a
-/// capital letter or symbol while the user types.
+/// capital letter or symbol while the user types. These are the rules a
+/// saved shortcut was picked under; a new one must pass [`parse_new`].
 ///
 /// # Errors
 ///
 /// Returns [`ShortcutError::Invalid`] if `text` isn't such a shortcut.
 pub fn parse(text: &str) -> Result<Shortcut, ShortcutError> {
     let shortcut: Shortcut = text.trim().parse().map_err(|_| ShortcutError::Invalid)?;
-    let required = tauri_plugin_global_shortcut::Modifiers::CONTROL
-        | tauri_plugin_global_shortcut::Modifiers::ALT
-        | tauri_plugin_global_shortcut::Modifiers::SUPER;
+    let required = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
     if shortcut.mods.intersects(required) {
         Ok(shortcut)
     } else {
@@ -80,23 +128,29 @@ pub trait Hotkeys {
 /// startup or is paused), in which case it is tried again. A paused
 /// `current` has nothing to release.
 ///
+/// `new` must pass the rules for a new shortcut ([`parse_new`]); `current` is
+/// read by the looser rules a saved one was picked under ([`parse`]).
+///
 /// # Errors
 ///
-/// Returns [`ChangeError::Shortcut`] if `new` is invalid or taken, and
-/// [`ChangeError::Save`] if saving fails. `current` stays registered then.
+/// Returns [`ChangeError::Refused`] if `new` breaks a rule,
+/// [`ChangeError::Taken`] if Windows refuses it and [`ChangeError::Save`] if
+/// saving fails. `current` stays registered then.
 pub fn change<E>(
     hotkeys: &impl Hotkeys,
     current: &str,
     new: &str,
     save: impl FnOnce(&str) -> Result<(), E>,
 ) -> Result<(), ChangeError> {
-    let new_shortcut = parse(new)?;
+    let new_shortcut = parse_new(new)?;
     let current_shortcut = parse(current).ok();
     let unchanged = current_shortcut == Some(new_shortcut);
     if unchanged && hotkeys.is_registered(new_shortcut) {
         return Ok(());
     }
-    hotkeys.register(new_shortcut)?;
+    hotkeys
+        .register(new_shortcut)
+        .map_err(|_| ChangeError::Taken)?;
     if save(new.trim()).is_err() {
         if !unchanged {
             hotkeys.unregister(new_shortcut);
@@ -181,7 +235,9 @@ mod tests {
 
     use tauri_plugin_global_shortcut::Shortcut;
 
-    use super::{ChangeError, Hotkeys, ShortcutError, change, is_default, parse, pause, resume};
+    use super::{
+        ChangeError, Hotkeys, Refusal, ShortcutError, change, is_default, parse, pause, resume,
+    };
 
     /// Global shortcuts in memory. `taken` are held by "another app".
     #[derive(Default)]
@@ -246,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn a_shortcut_needs_ctrl_alt_or_win() {
+    fn a_saved_shortcut_loads_with_ctrl_alt_or_win() {
         assert!(parse("Alt+R").is_ok());
         assert!(parse("Super+Shift+K").is_ok());
         assert_eq!(parse("Shift+A"), Err(ShortcutError::Invalid));
@@ -312,22 +368,151 @@ mod tests {
 
         let result = change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", saving(&saved));
 
-        assert_eq!(result, Err(ChangeError::Shortcut(ShortcutError::Taken)));
+        assert_eq!(result, Err(ChangeError::Taken));
         assert!(hotkeys.works("Ctrl+Shift+Space"));
         assert_eq!(hotkeys.count(), 1);
         assert_eq!(saved.into_inner(), None);
     }
 
     #[test]
-    fn an_invalid_shortcut_is_refused_and_the_old_one_keeps_working() {
+    fn a_new_shortcut_without_ctrl_or_alt_is_refused_and_the_old_one_keeps_working() {
         let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
         let saved = RefCell::new(None);
 
         let result = change(&hotkeys, "Ctrl+Shift+Space", "Shift+A", saving(&saved));
 
-        assert_eq!(result, Err(ChangeError::Shortcut(ShortcutError::Invalid)));
+        assert_eq!(result, Err(ChangeError::Refused(Refusal::NoCtrlOrAlt)));
         assert!(hotkeys.works("Ctrl+Shift+Space"));
         assert_eq!(saved.into_inner(), None);
+    }
+
+    #[test]
+    fn a_new_shortcut_with_win_is_refused_and_the_old_one_keeps_working() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved = RefCell::new(None);
+
+        let result = change(&hotkeys, "Ctrl+Shift+Space", "Ctrl+Super+K", saving(&saved));
+
+        assert_eq!(result, Err(ChangeError::Refused(Refusal::Win)));
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 1);
+        assert_eq!(saved.into_inner(), None);
+    }
+
+    /// The app presses Ctrl+C to copy the selection and Ctrl+V to paste the
+    /// result, so taking either would start a rewrite inside a rewrite.
+    #[test]
+    fn ctrl_c_and_ctrl_v_are_refused_and_the_old_one_keeps_working() {
+        for copy_or_paste in ["Ctrl+C", "control+v"] {
+            let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+            let saved = RefCell::new(None);
+
+            let result = change(&hotkeys, "Ctrl+Shift+Space", copy_or_paste, saving(&saved));
+
+            assert_eq!(
+                result,
+                Err(ChangeError::Refused(Refusal::CopyPaste)),
+                "{copy_or_paste}"
+            );
+            assert!(hotkeys.works("Ctrl+Shift+Space"));
+            assert_eq!(hotkeys.count(), 1);
+            assert_eq!(saved.into_inner(), None);
+        }
+    }
+
+    #[test]
+    fn a_new_shortcut_with_ctrl_or_alt_and_any_shift_is_allowed() {
+        for allowed in [
+            "Ctrl+K",
+            "Alt+K",
+            "Ctrl+Shift+K",
+            "Alt+Shift+K",
+            "Ctrl+Alt+K",
+        ] {
+            let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+            let saved = RefCell::new(None);
+
+            change(&hotkeys, "Ctrl+Shift+Space", allowed, saving(&saved)).unwrap();
+
+            assert!(hotkeys.works(allowed), "{allowed}");
+            assert_eq!(saved.into_inner().as_deref(), Some(allowed));
+        }
+    }
+
+    #[test]
+    fn a_key_on_its_own_is_refused_for_missing_ctrl_or_alt() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+
+        let result = change(&hotkeys, "Ctrl+Shift+Space", "K", |_| Ok::<_, ()>(()));
+
+        assert_eq!(result, Err(ChangeError::Refused(Refusal::NoCtrlOrAlt)));
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+    }
+
+    /// Copying or pasting with Shift held isn't what the app presses.
+    #[test]
+    fn ctrl_c_and_ctrl_v_with_more_modifiers_are_allowed() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+
+        change(&hotkeys, "Ctrl+Shift+Space", "Ctrl+Shift+C", |_| {
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+C"));
+    }
+
+    #[test]
+    fn text_that_is_not_a_shortcut_is_refused_as_not_a_shortcut() {
+        for text in ["Ctrl+Banana", "Ctrl+Shift+", ""] {
+            let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+
+            let result = change(&hotkeys, "Ctrl+Shift+Space", text, |_| Ok::<_, ()>(()));
+
+            assert_eq!(
+                result,
+                Err(ChangeError::Refused(Refusal::NotAShortcut)),
+                "{text:?}"
+            );
+            assert!(hotkeys.works("Ctrl+Shift+Space"));
+        }
+    }
+
+    /// Win+K was allowed before the recorder; it keeps working until the
+    /// user picks another shortcut.
+    #[test]
+    fn a_saved_win_shortcut_still_loads_pauses_and_resumes() {
+        let hotkeys = FakeHotkeys::default();
+        hotkeys.register(parse("Super+K").unwrap()).unwrap();
+
+        pause(&hotkeys, "Super+K");
+        assert!(!hotkeys.works("Super+K"));
+        resume(&hotkeys, "Super+K").unwrap();
+
+        assert!(hotkeys.works("Super+K"));
+        assert!(!is_default("Super+K"));
+    }
+
+    #[test]
+    fn a_saved_win_shortcut_is_replaced_by_a_new_one() {
+        let hotkeys = FakeHotkeys::with("Super+K");
+        let saved = RefCell::new(None);
+
+        change(&hotkeys, "Super+K", "Alt+Shift+R", saving(&saved)).unwrap();
+
+        assert!(hotkeys.works("Alt+Shift+R"));
+        assert!(!hotkeys.works("Super+K"));
+        assert_eq!(saved.into_inner().as_deref(), Some("Alt+Shift+R"));
+    }
+
+    #[test]
+    fn a_saved_win_shortcut_cannot_be_picked_again() {
+        let hotkeys = FakeHotkeys::with("Super+K");
+
+        let result = change(&hotkeys, "Super+K", "Super+K", |_| Ok::<_, ()>(()));
+
+        assert_eq!(result, Err(ChangeError::Refused(Refusal::Win)));
+        assert!(hotkeys.works("Super+K"));
     }
 
     #[test]
@@ -416,7 +601,7 @@ mod tests {
             saving(&saved),
         );
 
-        assert_eq!(result, Err(ChangeError::Shortcut(ShortcutError::Taken)));
+        assert_eq!(result, Err(ChangeError::Taken));
         assert!(hotkeys.works("Alt+Shift+R"));
         assert_eq!(hotkeys.count(), 1);
         assert_eq!(saved.into_inner(), None);
