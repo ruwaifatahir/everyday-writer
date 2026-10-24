@@ -16,6 +16,7 @@ import {
   type Settings,
   saveApiKey,
   saveSettings,
+  settingsReady,
   suggestedModels,
   testConnection,
 } from "./api";
@@ -551,31 +552,51 @@ document.addEventListener("keydown", (event) => {
 
 async function init(): Promise<void> {
   let settings: Settings | undefined;
-  try {
-    suggested = await suggestedModels();
-  } catch {
-    // Without the list the model field still takes any typed name.
-  }
-  try {
-    settings = await getSettings();
+  // Both at once: the window stays hidden until the page is drawn.
+  const [models, loaded] = await Promise.allSettled([
+    suggestedModels(),
+    getSettings(),
+  ]);
+  // Without the list the model field still takes any typed name.
+  if (models.status === "fulfilled") suggested = models.value;
+  if (loaded.status === "fulfilled") {
+    settings = loaded.value;
     view.provider = settings.provider;
     modelInput.value = settings.model;
     baseUrlInput.value = settings.customBaseUrl;
     savedForm = currentForm();
     providerPicker.set(settings.provider);
-  } catch (error) {
-    showStatus(errorMessage(error, "load your settings"), "error");
+  } else {
+    showStatus(errorMessage(loaded.reason, "load your settings"), "error");
   }
   renderProvider();
   renderKey();
   renderModel();
   await Promise.all([loadKeyState(), initLaunch(settings)]);
-  document.body.dataset.ready = "";
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 // The Instruction sets and Updates sections run on their own; see
-// instruction-sets.ts and updates.ts. Once all have loaded, the window
-// scrolls to the section Rust opened it at, if any.
-void Promise.all([init(), initInstructionSets(), initUpdates()]).then(
-  scrollToRequestedSection,
+// instruction-sets.ts and updates.ts. Once all have loaded and the fonts
+// are in, the window scrolls to the section Rust opened it at, if any, and
+// tells Rust to show it, so it never appears blank or half drawn. A failed
+// step still shows the window, with what did load.
+void Promise.allSettled([init(), initInstructionSets(), initUpdates()]).then(
+  async () => {
+    // Laying the page out starts its font loads. Scroll once they're in,
+    // as they change the sections' heights.
+    void document.body.offsetHeight;
+    await document.fonts.ready;
+    scrollToRequestedSection();
+    // The second frame starts once the first, with everything above, is
+    // painted; showing the window sooner can show an older frame.
+    await nextFrame();
+    await nextFrame();
+    await settingsReady().catch(() => {
+      // Rust shows the window anyway after its timeout.
+    });
+  },
 );

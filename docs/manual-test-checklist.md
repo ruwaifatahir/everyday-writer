@@ -86,6 +86,7 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S14 | Same, but empty the model field first, choose Save | The usual "Enter a model name." error; no update starts |
 | S15 | Same, choose Discard changes | The update starts without saving; after the restart the old model is back |
 | S16 | Type a new key without saving, click Update now; then Save, and click Update now again | First click asks; with nothing unsaved it updates right away with no prompt |
+| S17 | Open Settings from the tray, a second launch, first run, a shortcut another app holds at start-up, the popup's Open Settings and an update notification | Each time the window appears already drawn, in its real fonts, in front with keyboard focus; never an empty cream frame. The notification opens it at Updates without a visible scroll |
 
 ## Instruction sets
 

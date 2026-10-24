@@ -133,11 +133,6 @@ export function scrollToRequestedSection(): void {
 }
 
 export async function initUpdates(): Promise<void> {
-  try {
-    await onScrollTo(scrollToSection);
-  } catch {
-    // Without the event an open window just stays where it is.
-  }
   checkButton.addEventListener("click", () => {
     checkForUpdates().catch(() =>
       render({ kind: "checkFailed", version: knownVersion(shown) }),
@@ -155,6 +150,24 @@ export async function initUpdates(): Promise<void> {
         updateNowButton.disabled = false;
       });
   });
+  // All at once: the window stays hidden until the page is drawn.
+  await Promise.all([
+    listenForScroll(),
+    loadState(),
+    loadAutoCheck(),
+    loadVersion(),
+  ]);
+}
+
+async function listenForScroll(): Promise<void> {
+  try {
+    await onScrollTo(scrollToSection);
+  } catch {
+    // Without the event an open window just stays where it is.
+  }
+}
+
+async function loadState(): Promise<void> {
   try {
     // Listen first, so a state sent while the getter runs isn't missed, and
     // let such an event win over the getter's possibly older answer.
@@ -168,11 +181,17 @@ export async function initUpdates(): Promise<void> {
   } catch {
     // The section still shows the version and the button.
   }
+}
+
+async function loadAutoCheck(): Promise<void> {
   try {
     autoCheckSwitch.checked = (await getSettings()).autoCheck;
   } catch {
     // The switch keeps its default (on), which is also the setting's.
   }
+}
+
+async function loadVersion(): Promise<void> {
   try {
     versionLine.textContent = `Version ${await appVersion()}`;
   } catch {

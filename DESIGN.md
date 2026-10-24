@@ -48,7 +48,7 @@ One theme: cream. No dark mode, no per-window variants.
   never load fonts from a CDN.
 - `src/styles/tokens.css`: every color, size, radius and duration.
 - `src/styles/base.css`: reset, document defaults, serif headings,
-  selection, no-select chrome, scrollbars, fade-in on `body[data-ready]`,
+  selection, no-select chrome, scrollbars,
   reduced motion.
 - `src/styles/components.css`: buttons, `kbd`, `.badge`, icon buttons,
   inputs, switch, radio, `.panel` / `.panel-foot`, text roles.
@@ -171,7 +171,8 @@ status and error lines). Picker lists drop in 4px over 120ms. The Active badge f
 Dialogs scale in from 98% over 220ms while the scrim fades in; they leave
 over 120ms, fading and dropping 4px (`transition-behavior: allow-discrete`
 with `@starting-style`). The popup window itself opens and closes
-instantly.
+instantly, fading its page in on `body[data-ready]`. Settings has no fade:
+it stays hidden until its page and fonts are drawn, then appears at once.
 
 Under reduced motion nothing travels: every entrance becomes a 120ms
 opacity fade, buttons don't press down, and the reading band stops.
