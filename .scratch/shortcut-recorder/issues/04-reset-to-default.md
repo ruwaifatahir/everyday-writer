@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The button shows when the saved shortcut differs from the default, compared as parsed shortcuts rather than strings, and hides once the default is set.
-- [ ] Clicking it makes Ctrl+Shift+Space work and saves it, and the old shortcut stops working.
-- [ ] If the default is taken, the taken message shows and the current shortcut keeps working.
-- [ ] A Rust test covers changing back to the default, including when it's taken.
-- [ ] A row is added to the manual test checklist.
-- [ ] Copy follows the better-writing skill.
-- [ ] `pnpm check` passes.
+- [x] The button shows when the saved shortcut differs from the default, compared as parsed shortcuts rather than strings, and hides once the default is set.
+- [x] Clicking it makes Ctrl+Shift+Space work and saves it, and the old shortcut stops working.
+- [x] If the default is taken, the taken message shows and the current shortcut keeps working.
+- [x] A Rust test covers changing back to the default, including when it's taken.
+- [x] A row is added to the manual test checklist.
+- [x] Copy follows the better-writing skill.
+- [x] `pnpm check` passes.

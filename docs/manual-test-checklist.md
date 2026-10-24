@@ -121,6 +121,8 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | L4 | After install | Start with Windows is on; turning it off removes the startup entry |
 | L5 | Launch the app a second time | Settings opens in the running app; no second copy |
 | L6 | Idle for a few minutes | Near-zero CPU in Task Manager; small memory use |
+| L7 | With another shortcut set, click **Reset to default** | Ctrl+Shift+Space works and stays after a restart; the old one stops; the button hides, and stays hidden when Settings reopens |
+| L8 | Let another app hold Ctrl+Shift+Space, then click **Reset to default** | "This shortcut is used by another app" message; the current shortcut keeps working and the button stays |
 
 ## Updates
 
