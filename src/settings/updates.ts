@@ -174,8 +174,8 @@ export async function initUpdates(): Promise<void> {
     // The switch keeps its default (on), which is also the setting's.
   }
   try {
-    versionLine.textContent = `everyday-writer ${await appVersion()}`;
+    versionLine.textContent = `Version ${await appVersion()}`;
   } catch {
-    versionLine.textContent = "everyday-writer";
+    // The line stays empty; the window title already names the app.
   }
 }

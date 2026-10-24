@@ -189,7 +189,7 @@ fn notify_shortcut_failed(app: &AppHandle, error: ShortcutError) {
     let shown = app
         .notification()
         .builder()
-        .title("everyday-writer")
+        .title(&app.package_info().name)
         .body(body)
         .show();
     if shown.is_err() {

@@ -1,4 +1,4 @@
-# everyday-writer: Product Requirements
+# Everyday Writer: Product Requirements
 
 ## 1. Problem
 
@@ -71,7 +71,7 @@ After:
 **Staying up to date**
 
 - The app checks the project's GitHub page for a new version by itself, about 10 seconds after it starts and then once a day.
-- When it finds one, it shows one quiet Windows notification, such as "everyday-writer 1.1.0 is available. Click to update.", once per version. The tray item **Check for updates** becomes **Update to 1.1.0**.
+- When it finds one, it shows one quiet Windows notification, such as "Everyday Writer 1.1.0 is available. Click to update.", once per version. The tray item **Check for updates** becomes **Update to 1.1.0**.
 - Clicking the notification while it's on screen, or the tray item, opens Settings at **Updates**. It shows the version you have, a **Check for updates automatically** switch, a **Check for updates** button and, when there is one, **Update now**.
 - A check you start yourself shows its result only in Settings: "You're up to date.", the new version, or "Couldn't check for updates. Check your connection and try again.". A failed automatic check stays silent.
 - Nothing installs until you click **Update now**. It shows the download progress, waits for any rewrite or replace to finish, asks first if Settings has unsaved changes, then installs with a small progress window, no questions and no admin prompt. The app restarts by itself and says "Updated to 1.1.0".

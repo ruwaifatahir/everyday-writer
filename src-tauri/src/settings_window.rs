@@ -80,7 +80,7 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         return Ok(());
     }
     let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
-        .title("everyday-writer settings")
+        .title(format!("{} Settings", app.package_info().name))
         .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
         .theme(Some(Theme::Light))

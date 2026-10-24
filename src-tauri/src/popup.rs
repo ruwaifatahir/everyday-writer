@@ -61,7 +61,7 @@ pub type AppSession = RewriteSession<
 /// Returns an error if the window can't be created.
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("popup.html".into()))
-        .title("everyday-writer")
+        .title(&app.package_info().name)
         .inner_size(WIDTH, HEIGHT)
         .decorations(false)
         .theme(Some(Theme::Light))

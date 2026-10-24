@@ -140,9 +140,9 @@ Setup, once per release (shown for `1.1.0`):
 
 | # | Case | Expected |
 |---|---|---|
-| U1 | Open Settings | Updates section shows "everyday-writer 1.0.1", the automatic-check switch on, and a Check for updates button |
+| U1 | Open Settings | Updates section shows "Version 1.0.1", the automatic-check switch on, and a Check for updates button |
 | U2 | First launch after installing the older build | No "Updated to" notification |
-| U3 | Restart the app, wait about 10 seconds | One quiet notification "everyday-writer 1.1.0-rc.1 is available. Click to update."; the tray item now reads "Update to 1.1.0-rc.1" |
+| U3 | Restart the app, wait about 10 seconds | One quiet notification "Everyday Writer 1.1.0-rc.1 is available. Click to update."; the tray item now reads "Update to 1.1.0-rc.1" |
 | U4 | Restart again, wait about 10 seconds | No second notification for the same version; the tray reads "Update to 1.1.0-rc.1" again |
 | U5 | Click the notification while it's on screen, with Settings closed; repeat with Settings open and scrolled to the top | Settings opens (or comes to the front) scrolled to Updates, showing "Version 1.1.0-rc.1 is available." and Update now; nothing installs |
 | U6 | Let the notification go to the Action Center, click it there | Record what happens. Not supported: at most Settings opens without scrolling to Updates. Nothing installs |
@@ -151,7 +151,7 @@ Setup, once per release (shown for `1.1.0`):
 | U9 | Start a rewrite with a provider that never answers (as in P8), then click Update now | "Downloading… 0%" with the button disabled; nothing installs until the rewrite ends (timeout, or the popup closed); the clipboard is restored first |
 | U10 | While U9 waits or downloads, press the shortcut on a selection | No new rewrite starts |
 | U11 | Click Update now with no unsaved changes | "Downloading… N%" rises; the tray item is a disabled "Downloading update…"; then a small installer progress window with no pages to click and no admin (UAC) prompt; the app restarts by itself |
-| U12 | After U11's restart | One notification "Updated to 1.1.0-rc.1"; Settings shows "everyday-writer 1.1.0-rc.1" |
+| U12 | After U11's restart | One notification "Updated to 1.1.0-rc.1"; Settings shows "Version 1.1.0-rc.1" |
 | U13 | After the update | Provider, model, base URL, key (Credential Manager), instruction sets and the active set, shortcut, start with Windows and the automatic-check switch all kept; after a Windows restart the app starts |
 | U14 | Restart the updated app | No second "Updated to" notification; the tray reads "Check for updates" |
 | U15 | Tray Check for updates on the updated app, with Settings closed | Settings opens at Updates: "Checking…", then "You're up to date". No Windows notification |

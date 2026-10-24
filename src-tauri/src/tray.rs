@@ -44,7 +44,7 @@ pub fn init(app: &App) -> tauri::Result<()> {
         )))?;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .tooltip("everyday-writer")
+        .tooltip(&app.package_info().name)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match menu::action(event.id.as_ref()) {
