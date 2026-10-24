@@ -805,3 +805,107 @@ fn debug_output_hides_the_result() {
 
     assert!(!shown.contains("SECRET-RESULT"));
 }
+
+// The busy gate: an update waits for the session to be idle and holds it.
+
+#[tokio::test]
+async fn an_idle_session_is_held_at_once_and_then_ignores_the_shortcut() {
+    let session = session(
+        FakeBridge::selecting("helo wrld"),
+        TestRewriter::returning("Hello, world."),
+    );
+
+    session.hold_when_idle().await;
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 0);
+    assert_eq!(states(&session), []);
+}
+
+#[tokio::test]
+async fn holding_waits_for_a_running_rewrite_then_closes_its_result() {
+    let (rewriter, answer) = TestRewriter::gated();
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        tokio::join!(
+            async {
+                session.hold_when_idle().await;
+                assert_eq!(states(&session)[1], result("Hello, world."));
+            },
+            async {
+                tokio::task::yield_now().await;
+                let _ = answer.send(Ok("Hello, world.".to_owned()));
+            }
+        );
+    });
+
+    assert!(!session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert_eq!(
+        states(&session),
+        [
+            PopupState::Working,
+            result("Hello, world."),
+            PopupState::Hidden
+        ]
+    );
+}
+
+#[tokio::test]
+async fn holding_waits_for_a_running_replace() {
+    let (finish_replace, gate) = oneshot::channel();
+    let session = session(
+        FakeBridge {
+            replace_gate: Mutex::new(Some(gate)),
+            ..FakeBridge::selecting("helo wrld")
+        },
+        TestRewriter::returning("Hello, world."),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    tokio::join!(session.handle(Event::Replace), async {
+        session.bridge.replacing.notified().await;
+        tokio::join!(
+            async {
+                session.hold_when_idle().await;
+                assert_eq!(session.bridge.replaced(), [(7, "Hello, world.".to_owned())]);
+            },
+            async {
+                tokio::task::yield_now().await;
+                let _ = finish_replace.send(());
+            }
+        );
+    });
+}
+
+#[tokio::test]
+async fn holding_closes_a_message() {
+    let session = session_with(
+        FakeBridge::selecting("helo wrld"),
+        TestRewriter::returning("unused"),
+        FakeSettings::not_ready(ProviderReadiness::MissingKey),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.hold_when_idle().await;
+
+    assert_eq!(states(&session).last(), Some(&PopupState::Hidden));
+}
+
+#[tokio::test]
+async fn a_released_session_rewrites_again() {
+    let session = session(
+        FakeBridge::selecting("helo wrld"),
+        TestRewriter::returning("Hello, world."),
+    );
+    session.hold_when_idle().await;
+
+    session.release();
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(
+        states(&session),
+        [PopupState::Working, result("Hello, world.")]
+    );
+}
