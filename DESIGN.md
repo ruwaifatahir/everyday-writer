@@ -51,7 +51,7 @@ One theme: cream. No dark mode, no per-window variants.
   selection, no-select chrome, scrollbars, fade-in on `body[data-ready]`,
   reduced motion.
 - `src/styles/components.css`: buttons, `kbd`, `.badge`, icon buttons,
-  inputs, switch, radio, `.panel` / `.panel-foot`, `.wave`, text roles.
+  inputs, switch, radio, `.panel` / `.panel-foot`, text roles.
 - `src/popup/popup.css` and `src/settings/settings.css`: layout only.
 
 Both windows paint `--cream` natively (`BACKGROUND` in `popup.rs` and
@@ -64,16 +64,17 @@ and the Settings title bar matches. Change both sides together.
 |---|---|
 | `cream` | Every surface: page, cards, inputs, secondary buttons |
 | `ink` | Text, every 2px border, `kbd` fill, focus ring |
-| `stone` | Card outlines, row rules, segmented track, neutral pill |
+| `stone` | Card outlines, row rules, segmented track |
 | `ink-soft` | Hints and secondary text (6.4:1 on cream) |
-| `fog` | Non-text only: the off switch knob |
+| `fog` | Non-text: the off switch knob; the reading band's resting text |
 | `lavender` | Primary buttons and the on switch. Nothing else |
-| `forest` | Success: the popup's "Rewritten" pill, ok status, saved key |
+| `forest` | Success: ok status, saved key |
 | `ember` | Active: the active instruction set, a confirming delete |
 | `ember-ink` | Error text, invalid borders, danger buttons |
 
 Wispr's Fog (#8a8a80) is 3.4:1 on cream, too light for small text, so text
-uses `ink-soft` instead. There is no blue, no red, no gradient.
+uses `ink-soft` instead. There is no blue, no red, and no gradient but the
+popup's reading band.
 
 ## Type
 
@@ -114,12 +115,13 @@ border or a fill change:
   faded color. A disabled quiet button is `ink-soft` too.
 - **Quiet** button: no border, underline on hover; `.danger` is ember-ink;
   `.confirming` turns it into an ember pill with an ink border.
-- **Badge** (`.badge`, `.set-badge`, the popup state): full pill, 13px/500.
+- **Badge** (`.badge`, `.set-badge`): full pill, 13px/500.
   Forest with cream text for done, ember with ink text for active, stone
   with ink text for neutral.
-- **Waveform** (`.wave`): Wispr's visualizer. Cream pill, 2px ink border,
-  seven 4px ink bars that breathe while the popup works. Static under
-  reduced motion. It replaces any spinner or skeleton.
+- **Reading band** (`.working`, popup only): the selection in `fog`, a
+  wide band of `ink` sweeping across it every 1.6s after a 0.4s wait.
+  Plain `ink-soft` under reduced motion. It replaces any spinner or
+  skeleton.
 - **Segmented** picker: stone track, the chosen option a cream tile with
   the ink border.
 - **Switch**: cream track with ink border and fog knob; on is lavender with
@@ -136,18 +138,21 @@ border or a fill change:
 
 ## Popup states
 
-- Working: "Rewriting…" label, the waveform centered, Copy and Replace
-  disabled.
-- Result: forest "Rewritten" pill with a check, the text in Figtree 15px,
-  Replace focused. Long text fades into the footer rule and scrolls.
-- Message: stone "Not rewritten" pill, the message in Garamond 20px, and
+- Working: a plain "Rewriting…" caption (it becomes "Still rewriting…"
+  after 3s) over the selection itself, set like the result, with the
+  reading band. Copy and Replace disabled.
+- Result: a plain "Rewritten" caption, the text in Figtree 15px fading in
+  where the selection was, Replace focused. Long text fades into the
+  footer rule and scrolls.
+- Message: a plain "Not rewritten" caption, the message in Garamond 20px, and
   an outlined Open Settings button at the compact 30px size when there is
   something to fix, so a two-line message still clears the footer.
 
 ## Motion
 
-120ms for state changes, 220ms for entrances, exponential ease-out. Results,
-messages and the result pill rise 4px as they appear, and so do the Settings
+120ms for state changes, 220ms for entrances, exponential ease-out. The
+popup result fades in over 220ms where the selection was. Popup
+messages rise 4px as they appear, and so do the Settings
 parts that swap in (the saved-key row, the key entry, the base URL field,
 status and error lines). The Active badge fades in from 95% over 120ms.
 Dialogs scale in from 98% over 220ms while the scrim fades in; they leave
@@ -156,7 +161,7 @@ with `@starting-style`). The popup window itself opens and closes
 instantly.
 
 Under reduced motion nothing travels: every entrance becomes a 120ms
-opacity fade, buttons don't press down, and the waveform stops.
+opacity fade, buttons don't press down, and the reading band stops.
 
 ## Native behavior
 
@@ -177,7 +182,10 @@ Ctrl+W, asking first about unsaved edits.
 
 ## Don't
 
-- Add shadows, gradients, blur, or a second accent color.
-- Add a status dot, spinner or skeleton; use the waveform or a pill.
+- Add shadows, gradients (beyond the reading band), blur, or a second
+  accent color.
+- Add a status dot, spinner, skeleton or status pill; say the state in
+  plain caption text and let the reading band show the work.
 - Use radii under 12px on buttons, inputs or cards (only `kbd` is smaller).
-- Use `fog` for text, or put cream content on cream without a border.
+- Use `fog` for text (the reading band is the one exception), or put
+  cream content on cream without a border.

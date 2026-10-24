@@ -1,5 +1,5 @@
 /* Shared controls: text roles, buttons, keyboard hints, badges, icon
-   buttons, inputs, switch, radio, cards, the waveform. Both windows import
+   buttons, inputs, switch, radio, cards. Both windows import
    this, so the popup and Settings read as one product. Import after
    tokens.css and base.css. Separation is 2px borders and fill changes;
    nothing here casts a shadow. */
@@ -416,79 +416,6 @@ input[type="radio"]:checked::before {
   border-top: var(--border) solid var(--stone);
 }
 
-/* Waveform: Wispr's visualizer. A cream pill, ink bars that breathe while
-   the app works. Markup: .wave > span x7. */
-
-.wave {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  height: 40px;
-  padding: 0 var(--space-16);
-  background: var(--cream);
-  border: var(--border) solid var(--ink);
-  border-radius: var(--radius-pill);
-}
-
-.wave span {
-  width: 4px;
-  height: 22px;
-  background: var(--ink);
-  border-radius: var(--radius-pill);
-  transform: scaleY(var(--rest));
-  animation: wave 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
-  animation-delay: var(--delay);
-}
-
-.wave span:nth-child(1) {
-  --rest: 0.36;
-  --peak: 0.62;
-  --delay: -0.9s;
-}
-
-.wave span:nth-child(2) {
-  --rest: 0.5;
-  --peak: 0.95;
-  --delay: -0.3s;
-}
-
-.wave span:nth-child(3) {
-  --rest: 0.42;
-  --peak: 0.78;
-  --delay: -0.65s;
-}
-
-.wave span:nth-child(4) {
-  --rest: 0.6;
-  --peak: 1;
-  --delay: -0.1s;
-}
-
-.wave span:nth-child(5) {
-  --rest: 0.38;
-  --peak: 0.84;
-  --delay: -0.5s;
-}
-
-.wave span:nth-child(6) {
-  --rest: 0.52;
-  --peak: 0.7;
-  --delay: -0.8s;
-}
-
-.wave span:nth-child(7) {
-  --rest: 0.36;
-  --peak: 0.58;
-  --delay: -0.2s;
-}
-
-@keyframes wave {
-  to {
-    transform: scaleY(var(--peak));
-  }
-}
-
 @keyframes rise {
   from {
     opacity: 0;
@@ -520,9 +447,5 @@ input[type="radio"]:checked::before {
 
   .button:active:not(:disabled) {
     transform: none;
-  }
-
-  .wave span {
-    animation: none;
   }
 }

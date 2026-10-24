@@ -43,14 +43,18 @@ pub enum Event {
 }
 
 /// What the popup shows. Serialized for the popup window as
-/// `{ "kind": "working" }`, `{ "kind": "result", "text": ... }` and so on.
+/// `{ "kind": "working", "text": ... }`, `{ "kind": "result", "text": ... }`
+/// and so on.
 #[derive(Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PopupState {
     /// The popup is hidden.
     Hidden,
-    /// A rewrite is in progress.
-    Working,
+    /// A rewrite of the selection is in progress.
+    Working {
+        /// The selection being rewritten. User data: never log it.
+        text: String,
+    },
     /// The result, exactly as the rewrite returned it.
     Result {
         /// The result. User data: never log it.
@@ -70,7 +74,7 @@ impl std::fmt::Debug for PopupState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Hidden => f.write_str("Hidden"),
-            Self::Working => f.write_str("Working"),
+            Self::Working { .. } => f.write_str("Working { .. }"),
             Self::Result { .. } => f.write_str("Result { .. }"),
             Self::Message { text, action } => f
                 .debug_struct("Message")
@@ -199,9 +203,11 @@ enum Phase<W> {
 
 /// What an open popup shows.
 enum View {
-    /// Rewrite number `run` is in progress. Dropping `cancel` cancels it.
+    /// Rewrite number `run` of `selection` is in progress. Dropping
+    /// `cancel` cancels it.
     Working {
         run: u64,
+        selection: String,
         #[expect(dead_code, reason = "only dropped, which cancels the rewrite")]
         cancel: oneshot::Sender<()>,
     },
@@ -215,7 +221,9 @@ impl View {
     /// The popup state this view shows.
     fn shown(&self) -> PopupState {
         match self {
-            Self::Working { .. } => PopupState::Working,
+            Self::Working { selection, .. } => PopupState::Working {
+                text: selection.clone(),
+            },
             Self::Result(text) => PopupState::Result { text: text.clone() },
             Self::Message(message) => message.clone(),
         }
@@ -403,7 +411,12 @@ where
                 selection: captured.selection.clone(),
                 cancelled,
             };
-            (View::Working { run, cancel }, Some(working))
+            let view = View::Working {
+                run,
+                selection: captured.selection.clone(),
+                cancel,
+            };
+            (view, Some(working))
         };
         let shown = view.shown();
         state.phase = Phase::Open { captured, view };

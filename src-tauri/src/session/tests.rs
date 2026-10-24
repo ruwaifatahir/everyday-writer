@@ -255,6 +255,12 @@ fn states(session: &TestSession) -> Vec<PopupState> {
     session.popup.states.lock().unwrap().clone()
 }
 
+fn working(text: &str) -> PopupState {
+    PopupState::Working {
+        text: text.to_owned(),
+    }
+}
+
 fn result(text: &str) -> PopupState {
     PopupState::Result {
         text: text.to_owned(),
@@ -277,7 +283,7 @@ async fn a_rewrite_shows_working_then_the_result() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("helo wrld"), result("Hello, world.")]
     );
 }
 
@@ -320,7 +326,7 @@ async fn an_unchanged_result_is_still_shown_as_a_result() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("Hello, world."), result("Hello, world.")]
     );
 }
 
@@ -349,7 +355,7 @@ async fn a_failed_copy_keeps_the_result_shown() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("helo wrld"), result("Hello, world.")]
     );
 }
 
@@ -377,7 +383,7 @@ async fn replace_puts_the_result_into_the_original_window_and_hides_the_popup() 
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
             PopupState::Hidden
         ]
@@ -461,7 +467,7 @@ async fn replace_does_nothing_while_working() {
     });
 
     assert_eq!(session.bridge.replaced(), []);
-    assert_eq!(states(&session), [PopupState::Working, PopupState::Hidden]);
+    assert_eq!(states(&session), [working("helo wrld"), PopupState::Hidden]);
 }
 
 #[tokio::test]
@@ -497,7 +503,7 @@ async fn close_hides_the_result() {
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
             PopupState::Hidden
         ]
@@ -517,7 +523,7 @@ async fn closing_while_working_cancels_the_rewrite_and_a_late_answer_is_ignored(
     });
 
     assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
-    assert_eq!(states(&session), [PopupState::Working, PopupState::Hidden]);
+    assert_eq!(states(&session), [working("helo wrld"), PopupState::Hidden]);
 }
 
 #[tokio::test]
@@ -539,7 +545,7 @@ async fn a_failed_rewrite_shows_a_message_without_any_content() {
     session.handle(Event::ShortcutPressed).await;
 
     let shown = states(&session);
-    assert_eq!(shown.first(), Some(&PopupState::Working));
+    assert_eq!(shown.first(), Some(&working("SECRET-SELECTION")));
     let Some(PopupState::Message { text, .. }) = shown.get(1) else {
         panic!("expected a message, got {shown:?}");
     };
@@ -590,7 +596,10 @@ async fn a_selection_of_5000_characters_is_rewritten() {
     // 5,000 characters but 10,000 bytes: the limit counts characters.
     let session = rewritten(&"é".repeat(5_000), "done").await;
 
-    assert_eq!(states(&session), [PopupState::Working, result("done")]);
+    assert_eq!(
+        states(&session),
+        [working(&"é".repeat(5_000)), result("done")]
+    );
 }
 
 #[tokio::test]
@@ -676,14 +685,14 @@ async fn a_rewrite_with_no_answer_after_30_seconds_is_cancelled() {
     tokio::join!(session.handle(Event::ShortcutPressed), async {
         session.rewriter.called.notified().await;
         tokio::time::sleep(Duration::from_millis(29_999)).await;
-        assert_eq!(states(&session), [PopupState::Working]);
+        assert_eq!(states(&session), [working("helo wrld")]);
     });
 
     assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             message("The AI took too long. Try again.", None)
         ]
     );
@@ -710,7 +719,7 @@ async fn the_shortcut_while_working_restarts_on_the_same_selection_without_captu
             ("Be formal.".to_owned(), "helo wrld".to_owned()),
         ]
     );
-    assert_eq!(states(&session), [PopupState::Working, result("Second.")]);
+    assert_eq!(states(&session), [working("helo wrld"), result("Second.")]);
 }
 
 #[tokio::test]
@@ -724,9 +733,9 @@ async fn the_shortcut_on_a_result_rewrites_the_same_selection_again() {
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
         ]
     );
@@ -793,7 +802,7 @@ async fn each_rewrite_error_shows_its_own_message() {
 
         assert_eq!(
             states(&session),
-            [PopupState::Working, message(text, action)],
+            [working("helo"), message(text, action)],
             "for {error:?}"
         );
     }
@@ -845,7 +854,7 @@ async fn holding_waits_for_a_running_rewrite_then_closes_its_result() {
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
             PopupState::Hidden
         ]
@@ -906,6 +915,6 @@ async fn a_released_session_rewrites_again() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("helo wrld"), result("Hello, world.")]
     );
 }

@@ -9,7 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 
 type PopupState =
   | { kind: "hidden" }
-  | { kind: "working" }
+  | { kind: "working"; text: string }
   | { kind: "result"; text: string }
   | { kind: "message"; text: string; action: "openSettings" | null };
 
@@ -33,8 +33,14 @@ const close = element<HTMLButtonElement>("close");
 
 let current: PopupState["kind"] = "hidden";
 
+/** After this long working, the label says it is still going (Fluent's
+    advice for waits over about 3 seconds). */
+const STILL_WORKING_MS = 3000;
+let stillWorking: number | undefined;
+
 function show(state: PopupState): void {
   current = state.kind;
+  window.clearTimeout(stillWorking);
   popup.dataset.state = state.kind;
   const hasResult = state.kind === "result";
   working.hidden = state.kind !== "working";
@@ -44,6 +50,8 @@ function show(state: PopupState): void {
   replace.disabled = !hasResult;
   // The message itself is read out with the status, not only "Not rewritten".
   statusDetail.textContent = state.kind === "message" ? `. ${state.text}` : "";
+  // The selection is user data too: it only stays in the page while working.
+  working.textContent = state.kind === "working" ? state.text : "";
 
   switch (state.kind) {
     case "hidden":
@@ -57,6 +65,10 @@ function show(state: PopupState): void {
     case "working":
       statusText.textContent = "Rewriting…";
       result.textContent = "";
+      working.scrollTop = 0;
+      stillWorking = window.setTimeout(() => {
+        statusText.textContent = "Still rewriting…";
+      }, STILL_WORKING_MS);
       break;
     case "result":
       statusText.textContent = "Rewritten";

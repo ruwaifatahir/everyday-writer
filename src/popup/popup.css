@@ -24,8 +24,7 @@ body {
   border-radius: var(--radius-window);
 }
 
-/* State line: a plain label while working, a pill once there's an outcome,
-   and close. */
+/* State line: a plain caption saying where the rewrite is, and close. */
 
 .bar {
   display: flex;
@@ -35,53 +34,16 @@ body {
   padding: 0 var(--space-8) 0 var(--space-16);
 }
 
-.state {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-  height: 26px;
+.status {
   margin-right: auto;
   font-size: var(--text-caption);
   line-height: 1;
   font-weight: var(--weight-medium);
   color: var(--ink-soft);
-  border-radius: var(--radius-pill);
-}
-
-.state-mark {
-  display: none;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.status {
   white-space: nowrap;
 }
 
-.popup[data-state="result"] .state {
-  padding: 0 var(--space-12) 0 var(--space-10);
-  color: var(--cream);
-  background: var(--forest);
-  animation: rise var(--motion-normal) var(--ease);
-}
-
-.popup[data-state="result"] .state-mark {
-  display: block;
-}
-
-.popup[data-state="message"] .state {
-  padding: 0 var(--space-12);
-  color: var(--ink);
-  background: var(--stone);
-}
-
-/* Body: the waveform, the result, or a message */
+/* Body: the selection being rewritten, the result, or a message */
 
 .body {
   position: relative;
@@ -89,32 +51,74 @@ body {
   padding: 0 var(--space-8) var(--space-12) var(--space-16);
 }
 
-.working {
-  display: grid;
-  place-items: center;
-  height: 100%;
-  padding-right: var(--space-8);
-  padding-bottom: var(--space-4);
-}
-
+/* While it works, the popup shows the selection itself, set exactly like
+   the result, with a band of ink reading across it (Apple's Writing Tools
+   plays its wait over the text too). The result then lands in the same
+   place. The band holds off for a beat, so a quick rewrite never flickers. */
+.working,
 .result {
   height: 100%;
   padding-right: var(--space-8);
-  overflow-y: auto;
   font-size: var(--text-body);
   line-height: 1.5;
-  color: var(--ink);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  user-select: text;
-  cursor: text;
   unicode-bidi: plaintext;
   text-align: start;
   /* Long text runs under a short fade instead of a hard cut at the rule;
      the padding lets the last line scroll clear of it. */
   padding-bottom: var(--space-12);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
-  animation: rise var(--motion-normal) var(--ease);
+}
+
+.working {
+  overflow: hidden;
+  color: var(--ink-soft);
+  /* Pale text the band brings up to full ink as it passes. Fog is too
+     light for text that has to be read, but this is only held while the
+     rewrite runs, and the band keeps sweeping it back to ink. */
+  background:
+    linear-gradient(
+      100deg,
+      var(--fog) 30%,
+      var(--ink) 45%,
+      var(--ink) 55%,
+      var(--fog) 70%
+    )
+    100% 0 / 300% 100% no-repeat;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: read 1.6s cubic-bezier(0.45, 0, 0.55, 1) 0.4s infinite;
+}
+
+@keyframes read {
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* The result takes the selection's place, so it fades in without travel. */
+.result {
+  overflow-y: auto;
+  color: var(--ink);
+  user-select: text;
+  cursor: text;
+  animation: settle var(--motion-normal) var(--ease);
+}
+
+@keyframes settle {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Under reduced motion the selection waits, unlit. */
+@media (prefers-reduced-motion: reduce) {
+  .working {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    animation: none;
+  }
 }
 
 /* Focusable so the keyboard can scroll it; Enter there is still Replace.
