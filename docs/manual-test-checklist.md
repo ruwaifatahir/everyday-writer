@@ -121,6 +121,9 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | L4 | After install | Start with Windows is on; turning it off removes the startup entry |
 | L5 | Launch the app a second time | Settings opens in the running app; no second copy |
 | L6 | Idle for a few minutes | Near-zero CPU in Task Manager; small memory use |
+| L7 | Click the shortcut field and press the current shortcut | The field records it; no rewrite starts. Saving it leaves it working |
+| L8 | Click the shortcut field, then press Esc, Tab away or switch to another app; press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
+| L9 | Click the shortcut field, close Settings with the title bar, press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
 
 ## Updates
 
