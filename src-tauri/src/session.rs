@@ -185,10 +185,10 @@ const KEY_UNREADABLE: &str = "Couldn't read your saved API key. Enter it again i
 const REWRITE_FAILED: &str = "Couldn't rewrite your text. Try again.";
 
 /// Replace found the original window closed and copied the result.
-const WINDOW_CLOSED: &str = "The original window closed. Press Ctrl+V to paste the rewrite.";
+const WINDOW_CLOSED: &str = "The original window closed. Press Ctrl + V to paste the rewrite.";
 
 /// Replace couldn't reach the original window and copied the result.
-const REPLACE_FAILED: &str = "Couldn't replace your text. Press Ctrl+V to paste the rewrite.";
+const REPLACE_FAILED: &str = "Couldn't replace your text. Press Ctrl + V to paste the rewrite.";
 
 /// The session's own state, richer than the popup state it shows.
 enum Phase<W> {
