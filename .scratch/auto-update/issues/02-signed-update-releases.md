@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Needs the maintainer:** generating the key pair and adding the two repo secrets are manual steps. Write them as exact steps in `CONTRIBUTING.md` and hand them over; never generate, print or commit the private key.
 

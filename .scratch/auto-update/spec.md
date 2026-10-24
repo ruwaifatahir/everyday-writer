@@ -1,4 +1,4 @@
-Labels: ready-for-agent
+Labels: resolved
 
 # Auto-update
 

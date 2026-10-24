@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The prompt appears only when the form has unsaved changes, using the page's existing dirty-state knowledge
 - [ ] Save: saves, and only updates if the save succeeded; a failed save shows the usual save error and doesn't update

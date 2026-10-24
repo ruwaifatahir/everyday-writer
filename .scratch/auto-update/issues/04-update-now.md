@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The rewrite session can report that no rewrite or replace is running and can be waited on (the busy gate). While the update holds it, a shortcut press doesn't start a new rewrite. Existing session tests still pass, and new ones cover the gate
 - [ ] Update now: wait for idle, close the popup, install with progress (`Downloading { percent }`); the Update now button and the tray item are disabled while downloading ("Downloading update…" in the tray)

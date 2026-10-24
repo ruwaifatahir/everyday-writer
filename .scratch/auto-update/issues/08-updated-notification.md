@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] On start, if `last_run_version` exists and is older than the running version, send `updated_to(running)`; then always record the running version
 - [ ] A missing `last_run_version` (fresh install or a file from before this feature) shows nothing and just records the version

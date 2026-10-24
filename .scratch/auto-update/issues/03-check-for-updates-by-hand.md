@@ -6,7 +6,7 @@ This ticket introduces the **update controller** from the spec (events in, ports
 
 **Blocked by:** 01, 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The update controller owns the check rules and is driven only through events and ports; the real update source wraps the Tauri updater with a timeout
 - [ ] `UpdatesState` (`Idle`, `Checking`, `UpToDate`, `Available { version }`, `Failed { kind }`; later `Downloading`) is serialized for the Settings page like `PopupState`, and the page listens for its changes

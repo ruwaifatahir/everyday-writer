@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The controller owns the schedule (10 s after start, then every 24 h) and cancels it cleanly when auto-check is turned off; it restarts when the switch goes back on
 - [ ] Notify only when the version is newer than `last_notified_version`, then record it; again for a newer version; never for manual checks

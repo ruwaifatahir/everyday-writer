@@ -4,7 +4,7 @@
 
 **Blocked by:** 01, 02, 03, 04, 05, 06, 07, 08
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] `docs/manual-test-checklist.md` gains the update steps from the spec's Testing Decisions (older build → test release, notification, click, Update now, restart, "Updated to", data kept, unsaved-changes prompt, mid-rewrite wait, offline, tampered signature)
 - [x] `CONTRIBUTING.md` release steps include "update an installed older build to the draft before publishing"

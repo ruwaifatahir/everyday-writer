@@ -4,7 +4,7 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The notification plugin's click handler is registered at startup, before any toast can be shown
 - [ ] A click on the update-available toast opens Settings at Updates and never installs anything

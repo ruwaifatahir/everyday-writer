@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Settings shows an Updates section with "everyday-writer {version}", where the version comes from the running app, not a hard-coded string
 - [ ] The section matches the existing Settings styles and layout (plain HTML/TS, no new frontend deps)
