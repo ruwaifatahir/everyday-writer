@@ -78,7 +78,8 @@ pub fn run() {
             settings_window::is_key_saved,
             settings_window::save_api_key,
             settings_window::clear_api_key,
-            settings_window::list_models,
+            settings_window::suggested_models,
+            settings_window::test_connection,
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
             settings_window::set_start_with_windows,
@@ -188,7 +189,7 @@ fn notify_shortcut_failed(app: &AppHandle, error: ShortcutError) {
     let shown = app
         .notification()
         .builder()
-        .title("everyday-writer")
+        .title(&app.package_info().name)
         .body(body)
         .show();
     if shown.is_err() {

@@ -220,7 +220,7 @@ impl TauriNotifier {
             .0
             .notification()
             .builder()
-            .title("everyday-writer")
+            .title(&self.0.package_info().name)
             .body(body)
             .extra(TOAST_KIND, kind)
             .show();
@@ -234,7 +234,10 @@ impl Notifier for TauriNotifier {
     fn update_available(&self, version: &str) {
         self.show(
             UPDATE_AVAILABLE,
-            format!("everyday-writer {version} is available"),
+            format!(
+                "{} {version} is available. Click to update.",
+                self.0.package_info().name
+            ),
         );
     }
 
@@ -412,7 +415,7 @@ mod tests {
             "actionId": "tap",
             "notification": {
                 "id": 3,
-                "title": "everyday-writer",
+                "title": "Everyday Writer",
                 "body": "Your shortcut is used by another app. Pick a new one in Settings."
             }
         }));

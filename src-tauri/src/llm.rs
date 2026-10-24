@@ -10,44 +10,89 @@ mod genai_rewriter;
 
 use std::future::Future;
 
-use serde::Serialize;
-
-pub use genai_rewriter::{GenaiRewriter, model_list};
+pub use genai_rewriter::{Connection, GenaiRewriter, check_connection};
 
 use crate::settings::ProviderKind;
 
-/// Model names for the settings dropdown. The user can always type a name
-/// that isn't listed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelList {
-    /// Model names exactly as the provider expects them.
-    pub names: Vec<String>,
-    /// `true` if the names came from the provider, `false` if they are the
-    /// built-in suggestions because the list couldn't be fetched.
-    pub from_provider: bool,
+/// How much a model may think before it answers. A rewrite is short, so
+/// each Suggested Model asks for the least it accepts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Thinking {
+    /// No thinking at all.
+    Off,
+    /// The provider's lowest level short of off.
+    Minimal,
+    /// A little thinking: the lowest level some models accept.
+    Low,
 }
 
-/// A short built-in list of model names per provider, shown when the
-/// provider's own list can't be fetched. Custom has none: its models depend
-/// entirely on the server.
-pub fn suggested_models(provider: ProviderKind) -> &'static [&'static str] {
+/// A model the app lists for a provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SuggestedModel {
+    /// The name exactly as the provider expects it.
+    pub name: &'static str,
+    /// The thinking level sent with it, or `None` to leave the provider's
+    /// default.
+    pub thinking: Option<Thinking>,
+}
+
+/// A Suggested Model and the thinking level sent with it.
+macro_rules! model {
+    ($name:literal, $thinking:expr) => {
+        SuggestedModel {
+            name: $name,
+            thinking: $thinking,
+        }
+    };
+}
+
+/// The Suggested Models for `provider`, fastest first. Built in, never
+/// fetched (see ADR 0003); refresh them each release. Ollama and Custom have
+/// none: their models depend on the user's own machine or server.
+pub fn suggested_models(provider: ProviderKind) -> &'static [SuggestedModel] {
+    use Thinking::{Low, Minimal, Off};
     match provider {
-        ProviderKind::OpenAi => &["gpt-5-mini", "gpt-4.1-mini", "gpt-4.1"],
-        ProviderKind::Anthropic => &["claude-haiku-4-5", "claude-sonnet-4-5"],
+        ProviderKind::OpenAi => &[
+            model!("gpt-6-luna", Some(Off)),
+            model!("gpt-6.1-sol", Some(Low)),
+            model!("gpt-5.6-luna", Some(Low)),
+        ],
+        ProviderKind::Anthropic => &[
+            model!("claude-haiku-5-5", Some(Off)),
+            model!("claude-sonnet-5-5", Some(Low)),
+        ],
         ProviderKind::Gemini => &[
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
+            model!("gemini-3.5-flash-lite", Some(Minimal)),
+            model!("gemini-3.8-flash", Some(Low)),
+            // genai would send Argon a thinking budget, which it doesn't
+            // document; its default is left alone.
+            model!("gemini-4-argon", None),
         ],
         ProviderKind::OpenRouter => &[
-            "openai/gpt-4.1-mini",
-            "anthropic/claude-haiku-4.5",
-            "google/gemini-2.5-flash",
+            model!("openai/gpt-6-luna", Some(Off)),
+            model!("anthropic/claude-haiku-5.5", Some(Off)),
+            model!("google/gemini-3.8-flash", Some(Low)),
+            model!("deepseek/deepseek-v4.1-flash", Some(Low)),
+            model!("anthropic/claude-sonnet-5.5", Some(Low)),
+            model!("openai/gpt-6.1-sol", Some(Low)),
         ],
-        ProviderKind::Ollama => &["llama3.2", "qwen2.5", "gemma3"],
-        ProviderKind::Custom => &[],
+        ProviderKind::Ollama | ProviderKind::Custom => &[],
     }
+}
+
+/// The thinking level to send with `model` on `provider`: only for a
+/// Suggested Model, since the levels a typed name accepts are unknown.
+pub fn thinking_for(provider: ProviderKind, model: &str) -> Option<Thinking> {
+    suggested_models(provider)
+        .iter()
+        .find(|suggested| suggested.name == model)
+        .and_then(|suggested| suggested.thinking)
+}
+
+/// The model a provider starts with when the user picks it: its fastest
+/// Suggested Model, or none for Ollama and Custom.
+pub fn first_model(provider: ProviderKind) -> Option<&'static str> {
+    suggested_models(provider).first().map(|model| model.name)
 }
 
 /// Rewrites a selection by following the active instruction set.
@@ -124,9 +169,9 @@ pub enum RewriteError {
     /// The Windows Credential Manager could not be read.
     #[error("the saved API key could not be read")]
     KeyStore,
-    /// The provider, model or base URL setting is not usable.
-    #[error("the AI settings are not valid: {0}")]
-    InvalidSettings(&'static str),
+    /// The model or base URL setting is not usable.
+    #[error("the settings are not valid: {0}")]
+    InvalidSettings(InvalidSetting),
     /// The provider rejected the API key (HTTP 401 or 403).
     #[error("the provider rejected the API key")]
     Unauthorized,
@@ -150,10 +195,63 @@ pub enum RewriteError {
     Other,
 }
 
+/// Which setting made [`RewriteError::InvalidSettings`], so each gets its
+/// own message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum InvalidSetting {
+    /// The model name is empty.
+    #[error("the model name is empty")]
+    Model,
+    /// A Custom base URL isn't an `http(s)` URL.
+    #[error("the base URL must start with http:// or https://")]
+    BaseUrl,
+}
+
 #[cfg(test)]
 mod tests {
     use super::fake::FakeRewriter;
-    use super::{RewriteError, RewritePrompt, Rewriter};
+    use super::{
+        RewriteError, RewritePrompt, Rewriter, Thinking, first_model, suggested_models,
+        thinking_for,
+    };
+    use crate::settings::ProviderKind;
+
+    #[test]
+    fn a_suggested_model_carries_its_thinking_level() {
+        assert_eq!(
+            thinking_for(ProviderKind::OpenAi, "gpt-6-luna"),
+            Some(Thinking::Off)
+        );
+        assert_eq!(
+            thinking_for(ProviderKind::Gemini, "gemini-3.5-flash-lite"),
+            Some(Thinking::Minimal)
+        );
+    }
+
+    #[test]
+    fn a_typed_model_gets_no_thinking_level() {
+        assert_eq!(thinking_for(ProviderKind::OpenAi, "my-fine-tune"), None);
+        // A name is only known on the provider that lists it.
+        assert_eq!(thinking_for(ProviderKind::Custom, "gpt-6-luna"), None);
+    }
+
+    #[test]
+    fn only_hosted_providers_have_suggested_models() {
+        assert_eq!(
+            first_model(ProviderKind::Gemini),
+            Some("gemini-3.5-flash-lite")
+        );
+        assert_eq!(first_model(ProviderKind::Ollama), None);
+        assert_eq!(first_model(ProviderKind::Custom), None);
+        for provider in [
+            ProviderKind::OpenAi,
+            ProviderKind::Anthropic,
+            ProviderKind::Gemini,
+            ProviderKind::OpenRouter,
+        ] {
+            assert!(!suggested_models(provider).is_empty(), "{provider:?}");
+        }
+    }
 
     #[test]
     fn the_selection_is_the_whole_user_message() {

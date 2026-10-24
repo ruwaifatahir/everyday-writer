@@ -12,10 +12,10 @@ export type ProviderKind =
   | "ollama"
   | "custom";
 
-export interface ModelList {
-  names: string[];
-  /** False when these are built-in suggestions because the list couldn't be fetched. */
-  fromProvider: boolean;
+/** What a connection test found; mirrors `Connection` in `genai_rewriter.rs`. */
+export interface Connection {
+  /** Whether the provider lists the model; null when none was given. */
+  modelFound: boolean | null;
 }
 
 export interface Settings {
@@ -44,7 +44,7 @@ export function saveSettings(newSettings: ProviderSettings): Promise<void> {
   return invoke("save_settings", { newSettings });
 }
 
-/** Rejects with "This shortcut is used by another app" if Windows refuses it; the old one stays. */
+/** Rejects with "This shortcut is used by another app. Pick a new one." if Windows refuses it; the old one stays. */
 export function setShortcut(shortcut: string): Promise<void> {
   return invoke("set_shortcut", { shortcut });
 }
@@ -66,12 +66,28 @@ export function saveApiKey(provider: ProviderKind, key: string): Promise<void> {
   return invoke("save_api_key", { provider, key });
 }
 
-/** Never rejects for a provider problem: falls back to built-in suggestions. */
-export function listModels(
+/** The built-in Suggested Model names per provider, fastest first. */
+export function suggestedModels(): Promise<Record<ProviderKind, string[]>> {
+  return invoke<Record<ProviderKind, string[]>>("suggested_models");
+}
+
+/**
+ * Checks that `provider` accepts a key without spending tokens: `key` if
+ * one was typed, otherwise the saved one. Also says whether it offers
+ * `model`. Rejects with a message to show as is.
+ */
+export function testConnection(
   provider: ProviderKind,
   customBaseUrl: string,
-): Promise<ModelList> {
-  return invoke<ModelList>("list_models", { provider, customBaseUrl });
+  key: string | null,
+  model: string,
+): Promise<Connection> {
+  return invoke<Connection>("test_connection", {
+    provider,
+    customBaseUrl,
+    key,
+    model,
+  });
 }
 
 export function clearApiKey(provider: ProviderKind): Promise<void> {
@@ -127,7 +143,10 @@ export function onScrollTo(handler: (id: string) => void): Promise<UnlistenFn> {
   );
 }
 
-/** Command errors arrive as a short, user-facing message. */
-export function errorMessage(error: unknown): string {
-  return typeof error === "string" ? error : "Something went wrong. Try again.";
+/**
+ * Command errors arrive as a short, user-facing message. Anything else names
+ * what failed, `action` being the attempt, as in "save your settings".
+ */
+export function errorMessage(error: unknown, action: string): string {
+  return typeof error === "string" ? error : `Couldn't ${action}. Try again.`;
 }

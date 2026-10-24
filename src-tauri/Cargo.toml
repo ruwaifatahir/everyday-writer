@@ -1,7 +1,7 @@
 [package]
 name = "everyday-writer"
-version = "1.1.0"
-description = "Rewrites text selected in any app"
+version = "1.2.0"
+description = "Rewrite selected text in any app with one shortcut."
 authors = ["Ruwaifa Tahir"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ruwaifatahir/everyday-writer"
@@ -21,6 +21,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 genai = { version = "0.7.0", default-features = false, features = ["native-tls", "system-proxy"] }
 keyring-core = "1.0.1"
+# Settings' key test asks OpenRouter about a key, which genai can't. Already in
+# the graph through genai, which also turns on its `native-tls`.
+reqwest = { version = "0.13.5", default-features = false }
 # Compares update versions, so each one is announced once. Already in the graph through Tauri.
 semver = { version = "1.0.28", default-features = false, features = ["std"] }
 serde = { version = "1", default-features = false, features = ["derive", "std"] }
@@ -48,9 +51,11 @@ tauri-plugin-updater = { version = "2.14.0", default-features = false, features 
 windows-native-keyring-store = { version = "1.1.0", default-features = false }
 # The text bridge: clipboard access (safe API) plus SendInput, key state and
 # the foreground window. Both are already in the graph through Tauri.
+# `Win32_Graphics_Dwm` colors the settings window's title bar.
 clipboard-win = { version = "5.4.3", default-features = false }
 windows = { version = "0.62.2", default-features = false, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }

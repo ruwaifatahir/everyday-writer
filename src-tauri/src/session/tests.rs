@@ -11,7 +11,7 @@ use super::{
     BridgeError, Captured, Event, MAX_SELECTION_CHARS, MessageAction, PopupState, PopupView,
     REWRITE_TIMEOUT, RewriteSession, TextBridge,
 };
-use crate::llm::{RewriteError, Rewriter};
+use crate::llm::{InvalidSetting, RewriteError, Rewriter};
 use crate::settings::{ModelSettings, Provider, ProviderReadiness, SettingsView};
 
 /// A bridge whose capture finds `selection`, recording what it is asked
@@ -248,11 +248,18 @@ fn message(text: &str, action: Option<MessageAction>) -> PopupState {
     PopupState::Message {
         text: text.to_owned(),
         action,
+        copied: false,
     }
 }
 
 fn states(session: &TestSession) -> Vec<PopupState> {
     session.popup.states.lock().unwrap().clone()
+}
+
+fn working(text: &str) -> PopupState {
+    PopupState::Working {
+        text: text.to_owned(),
+    }
 }
 
 fn result(text: &str) -> PopupState {
@@ -277,7 +284,7 @@ async fn a_rewrite_shows_working_then_the_result() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("helo wrld"), result("Hello, world.")]
     );
 }
 
@@ -320,7 +327,7 @@ async fn an_unchanged_result_is_still_shown_as_a_result() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("Hello, world."), result("Hello, world.")]
     );
 }
 
@@ -349,7 +356,7 @@ async fn a_failed_copy_keeps_the_result_shown() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("helo wrld"), result("Hello, world.")]
     );
 }
 
@@ -377,7 +384,7 @@ async fn replace_puts_the_result_into_the_original_window_and_hides_the_popup() 
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
             PopupState::Hidden
         ]
@@ -403,8 +410,9 @@ async fn replace_into_a_closed_window_copies_the_result_and_shows_a_message() {
     assert_eq!(
         states(&session).last(),
         Some(&PopupState::Message {
-            text: "Original window closed, copied instead".to_owned(),
+            text: "The original window closed. Press Ctrl+V to paste the rewrite.".to_owned(),
             action: None,
+            copied: true,
         })
     );
 }
@@ -426,8 +434,9 @@ async fn a_failed_replace_copies_the_result_and_says_so() {
     assert_eq!(
         states(&session).last(),
         Some(&PopupState::Message {
-            text: "Couldn't replace your text, copied instead".to_owned(),
+            text: "Couldn't replace your text. Press Ctrl+V to paste the rewrite.".to_owned(),
             action: None,
+            copied: true,
         })
     );
 }
@@ -461,7 +470,7 @@ async fn replace_does_nothing_while_working() {
     });
 
     assert_eq!(session.bridge.replaced(), []);
-    assert_eq!(states(&session), [PopupState::Working, PopupState::Hidden]);
+    assert_eq!(states(&session), [working("helo wrld"), PopupState::Hidden]);
 }
 
 #[tokio::test]
@@ -497,7 +506,7 @@ async fn close_hides_the_result() {
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
             PopupState::Hidden
         ]
@@ -517,7 +526,7 @@ async fn closing_while_working_cancels_the_rewrite_and_a_late_answer_is_ignored(
     });
 
     assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
-    assert_eq!(states(&session), [PopupState::Working, PopupState::Hidden]);
+    assert_eq!(states(&session), [working("helo wrld"), PopupState::Hidden]);
 }
 
 #[tokio::test]
@@ -539,7 +548,7 @@ async fn a_failed_rewrite_shows_a_message_without_any_content() {
     session.handle(Event::ShortcutPressed).await;
 
     let shown = states(&session);
-    assert_eq!(shown.first(), Some(&PopupState::Working));
+    assert_eq!(shown.first(), Some(&working("SECRET-SELECTION")));
     let Some(PopupState::Message { text, .. }) = shown.get(1) else {
         panic!("expected a message, got {shown:?}");
     };
@@ -590,7 +599,10 @@ async fn a_selection_of_5000_characters_is_rewritten() {
     // 5,000 characters but 10,000 bytes: the limit counts characters.
     let session = rewritten(&"é".repeat(5_000), "done").await;
 
-    assert_eq!(states(&session), [PopupState::Working, result("done")]);
+    assert_eq!(
+        states(&session),
+        [working(&"é".repeat(5_000)), result("done")]
+    );
 }
 
 #[tokio::test]
@@ -606,7 +618,7 @@ async fn no_key_asks_for_one_with_open_settings_and_sends_nothing() {
     assert_eq!(
         states(&session),
         [message(
-            "Add your API key to get started",
+            "Add your API key to get started.",
             Some(MessageAction::OpenSettings)
         )]
     );
@@ -626,7 +638,7 @@ async fn no_model_asks_for_one_with_open_settings_and_sends_nothing() {
     assert_eq!(
         states(&session),
         [message(
-            "Choose a model to get started",
+            "Choose a model to get started.",
             Some(MessageAction::OpenSettings)
         )]
     );
@@ -646,7 +658,7 @@ async fn no_custom_base_url_asks_for_one_with_open_settings_and_sends_nothing() 
     assert_eq!(
         states(&session),
         [message(
-            "Add your Custom base URL to get started",
+            "Add your base URL to get started.",
             Some(MessageAction::OpenSettings)
         )]
     );
@@ -676,15 +688,15 @@ async fn a_rewrite_with_no_answer_after_30_seconds_is_cancelled() {
     tokio::join!(session.handle(Event::ShortcutPressed), async {
         session.rewriter.called.notified().await;
         tokio::time::sleep(Duration::from_millis(29_999)).await;
-        assert_eq!(states(&session), [PopupState::Working]);
+        assert_eq!(states(&session), [working("helo wrld")]);
     });
 
     assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
-            message("The AI took too long. Try again.", None)
+            working("helo wrld"),
+            message("OpenAI took too long. Try again.", None)
         ]
     );
 }
@@ -710,7 +722,7 @@ async fn the_shortcut_while_working_restarts_on_the_same_selection_without_captu
             ("Be formal.".to_owned(), "helo wrld".to_owned()),
         ]
     );
-    assert_eq!(states(&session), [PopupState::Working, result("Second.")]);
+    assert_eq!(states(&session), [working("helo wrld"), result("Second.")]);
 }
 
 #[tokio::test]
@@ -724,9 +736,9 @@ async fn the_shortcut_on_a_result_rewrites_the_same_selection_again() {
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
         ]
     );
@@ -738,27 +750,27 @@ async fn each_rewrite_error_shows_its_own_message() {
     let cases = [
         (
             RewriteError::Network,
-            "Can't reach the AI. Check your internet connection.",
+            "Couldn't reach OpenAI. Check your connection and try again.",
             None,
         ),
         (
             RewriteError::Unauthorized,
-            "Your API key was rejected. Check it in Settings.",
+            "OpenAI rejected your API key. Check it in Settings.",
             open_settings,
         ),
         (
             RewriteError::RateLimited,
-            "Too many requests right now. Wait a moment and try again.",
+            "OpenAI is busy. Wait a moment and try again.",
             None,
         ),
         (
             RewriteError::Provider { status: 500 },
-            "The AI service had a problem. Try again.",
+            "OpenAI returned an error. Try again.",
             None,
         ),
         (
             RewriteError::EmptyResponse,
-            "The AI sent back nothing. Try again.",
+            "OpenAI sent back nothing. Try again.",
             None,
         ),
         (
@@ -768,17 +780,22 @@ async fn each_rewrite_error_shows_its_own_message() {
         ),
         (
             RewriteError::MissingApiKey,
-            "Add your API key to get started",
+            "Add your API key to get started.",
             open_settings,
         ),
         (
             RewriteError::KeyStore,
-            "Couldn't read your saved API key. Check it in Settings.",
+            "Couldn't read your saved API key. Enter it again in Settings.",
             open_settings,
         ),
         (
-            RewriteError::InvalidSettings("model"),
-            "Your AI settings need a look.",
+            RewriteError::InvalidSettings(InvalidSetting::Model),
+            "Choose a model to get started.",
+            open_settings,
+        ),
+        (
+            RewriteError::InvalidSettings(InvalidSetting::BaseUrl),
+            "Enter a base URL starting with http:// or https://.",
             open_settings,
         ),
     ];
@@ -793,7 +810,7 @@ async fn each_rewrite_error_shows_its_own_message() {
 
         assert_eq!(
             states(&session),
-            [PopupState::Working, message(text, action)],
+            [working("helo"), message(text, action)],
             "for {error:?}"
         );
     }
@@ -845,7 +862,7 @@ async fn holding_waits_for_a_running_rewrite_then_closes_its_result() {
     assert_eq!(
         states(&session),
         [
-            PopupState::Working,
+            working("helo wrld"),
             result("Hello, world."),
             PopupState::Hidden
         ]
@@ -906,6 +923,6 @@ async fn a_released_session_rewrites_again() {
 
     assert_eq!(
         states(&session),
-        [PopupState::Working, result("Hello, world.")]
+        [working("helo wrld"), result("Hello, world.")]
     );
 }

@@ -27,11 +27,12 @@ pub use view::{AppSettings, ChangeError, ProviderReadiness, SaveKeyError, Settin
 #[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
     /// `OpenAI`.
-    #[default]
     OpenAi,
     /// Anthropic (Claude).
     Anthropic,
-    /// Google Gemini.
+    /// Google Gemini. The default: it has a free tier, so a new user can
+    /// start without paying.
+    #[default]
     Gemini,
     /// `OpenRouter`.
     OpenRouter,
@@ -42,6 +43,16 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
+    /// Every provider, in the order Settings lists them.
+    pub const ALL: [Self; 6] = [
+        Self::OpenAi,
+        Self::Anthropic,
+        Self::Gemini,
+        Self::OpenRouter,
+        Self::Ollama,
+        Self::Custom,
+    ];
+
     /// The account name of this provider's API key in the keyring.
     pub fn key_name(self) -> &'static str {
         match self {
@@ -51,6 +62,29 @@ impl ProviderKind {
             Self::OpenRouter => "openrouter",
             Self::Ollama => "ollama",
             Self::Custom => "custom",
+        }
+    }
+
+    /// The provider's name inside a sentence, as in "Couldn't reach Gemini".
+    /// Matches `PROVIDER_NAMES` in `src/settings/main.ts`, except Custom,
+    /// which reads as "your server".
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::OpenAi => "OpenAI",
+            Self::Anthropic => "Anthropic",
+            Self::Gemini => "Gemini",
+            Self::OpenRouter => "OpenRouter",
+            Self::Ollama => "Ollama",
+            Self::Custom => "your server",
+        }
+    }
+
+    /// The provider's name at the start of a sentence, as in "Gemini is
+    /// busy" or "Your server is busy".
+    pub fn display_subject(self) -> &'static str {
+        match self {
+            Self::Custom => "Your server",
+            other => other.display_name(),
         }
     }
 
@@ -70,7 +104,10 @@ impl ProviderKind {
 pub struct Settings {
     /// The chosen provider.
     pub provider: ProviderKind,
-    /// The model name exactly as the provider expects it.
+    /// The model name exactly as the provider expects it. Missing from a
+    /// file it loads empty, not as the fresh-install model, which belongs
+    /// to the default provider and may not match the saved one.
+    #[serde(default)]
     pub model: String,
     /// The Custom provider's base URL. Kept while another provider is
     /// chosen, so switching back doesn't lose it.
@@ -93,7 +130,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             provider: ProviderKind::default(),
-            model: String::new(),
+            model: crate::llm::first_model(ProviderKind::default())
+                .unwrap_or_default()
+                .to_owned(),
             custom_base_url: String::new(),
             shortcut: crate::shortcut::DEFAULT_SHORTCUT.to_owned(),
             start_with_windows: true,
@@ -357,6 +396,22 @@ mod tests {
             custom_base_url: base_url.to_owned(),
             ..Settings::default()
         }
+    }
+
+    #[test]
+    fn custom_is_named_your_server_in_messages() {
+        let name = ProviderKind::Custom.display_name();
+        let subject = ProviderKind::Custom.display_subject();
+
+        assert_eq!((name, subject), ("your server", "Your server"));
+    }
+
+    #[test]
+    fn a_named_provider_reads_the_same_anywhere_in_a_sentence() {
+        let name = ProviderKind::OpenAi.display_name();
+        let subject = ProviderKind::OpenAi.display_subject();
+
+        assert_eq!((name, subject), ("OpenAI", "OpenAI"));
     }
 
     #[test]

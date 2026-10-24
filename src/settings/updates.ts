@@ -32,24 +32,21 @@ const updateNowButton = element<HTMLButtonElement>("updates-install");
 const autoCheckSwitch = element<HTMLInputElement>("auto-check");
 const autoCheckStatus = element<HTMLParagraphElement>("auto-check-status");
 
-function setAutoCheckSwitch(on: boolean): void {
-  autoCheckSwitch.checked = on;
-  autoCheckSwitch.setAttribute("aria-checked", String(on));
-}
-
 // Applies right away, like "Start with Windows". A known update stays
 // offered when this is turned off.
 autoCheckSwitch.addEventListener("change", async () => {
   const enabled = autoCheckSwitch.checked;
-  setAutoCheckSwitch(enabled);
   autoCheckSwitch.disabled = true;
   autoCheckStatus.textContent = "";
   delete autoCheckStatus.dataset.kind;
   try {
     await setAutoCheck(enabled);
   } catch (error) {
-    setAutoCheckSwitch(!enabled);
-    autoCheckStatus.textContent = errorMessage(error);
+    autoCheckSwitch.checked = !enabled;
+    autoCheckStatus.textContent = errorMessage(
+      error,
+      "change automatic update checks",
+    );
     autoCheckStatus.dataset.kind = "error";
   } finally {
     autoCheckSwitch.disabled = false;
@@ -78,11 +75,14 @@ function statusFor(state: UpdatesState): {
     case "checking":
       return { text: "Checking…" };
     case "upToDate":
-      return { text: "You're up to date", kind: "ok" };
+      return { text: "You're up to date.", kind: "ok" };
     case "available":
-      return { text: `Version ${state.version} is available` };
+      return { text: `Version ${state.version} is available.` };
     case "checkFailed":
-      return { text: "Couldn't check for updates", kind: "error" };
+      return {
+        text: "Couldn't check for updates. Check your connection and try again.",
+        kind: "error",
+      };
     case "downloading":
       return { text: `Downloading… ${state.percent}%` };
     case "installFailed":
@@ -169,13 +169,13 @@ export async function initUpdates(): Promise<void> {
     // The section still shows the version and the button.
   }
   try {
-    setAutoCheckSwitch((await getSettings()).autoCheck);
+    autoCheckSwitch.checked = (await getSettings()).autoCheck;
   } catch {
     // The switch keeps its default (on), which is also the setting's.
   }
   try {
-    versionLine.textContent = `everyday-writer ${await appVersion()}`;
+    versionLine.textContent = `Version ${await appVersion()}`;
   } catch {
-    versionLine.textContent = "everyday-writer";
+    // The line stays empty; the window title already names the app.
   }
 }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>everyday-writer</title>
+    <title>Everyday Writer</title>
     <link rel="stylesheet" href="/src/popup/popup.css" />
     <script type="module" src="/src/popup/main.ts" defer></script>
   </head>
@@ -11,28 +11,26 @@
   <body>
     <main class="popup" id="popup" data-state="working">
       <header class="bar">
-        <p class="status" id="status" role="status" aria-live="polite">Rewriting…</p>
+        <p class="status" id="status" role="status" aria-live="polite"><span id="status-text">Rewriting…</span><span class="visually-hidden" id="status-detail"></span></p>
         <button type="button" class="icon-button" id="close" aria-label="Close" title="Close (Esc)">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
         </button>
       </header>
 
       <section class="body">
-        <div class="working" id="working" aria-hidden="true">
-          <span class="line"></span>
-          <span class="line"></span>
-          <span class="line short"></span>
-        </div>
-        <p class="result" id="result" hidden></p>
+        <div class="working" id="working" aria-hidden="true"></div>
+        <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must take focus so the keyboard can scroll it -->
+        <section class="result" id="result" aria-label="Rewritten text" tabindex="0" hidden></section>
         <div class="message" id="message" hidden>
           <p class="message-text" id="message-text"></p>
-          <button type="button" class="button quiet" id="open-settings" hidden>Open Settings</button>
+          <button type="button" class="button secondary" id="open-settings" hidden>Open Settings</button>
         </div>
       </section>
 
-      <footer class="actions">
-        <button type="button" class="button quiet" id="copy" disabled>Copy</button>
-        <button type="button" class="button primary" id="replace" disabled>
+      <footer class="actions panel-foot">
+        <span class="keys" aria-hidden="true"><kbd>Esc</kbd> to close</span>
+        <button type="button" class="button secondary" id="copy" disabled>Copy</button>
+        <button type="button" class="button primary" id="replace" aria-describedby="result" disabled>
           Replace <kbd aria-hidden="true">Enter</kbd>
         </button>
       </footer>

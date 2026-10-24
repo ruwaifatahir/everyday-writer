@@ -1,0 +1,84 @@
+/* Shared reset and document defaults for every window. Import after
+   fonts.css and tokens.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: var(--leading);
+  font-weight: var(--weight-regular);
+  font-synthesis: none;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--cream);
+  caret-color: var(--ink);
+  accent-color: var(--ink);
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--ink);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+/* Headings are Garamond at weight 400: they lead by size, never by bold. */
+h1,
+h2 {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  text-wrap: balance;
+}
+
+/* Each window fades in once its first state is drawn (main.ts sets
+   data-ready), so it never flashes an empty frame. Like a native window,
+   chrome text can't be selected and the pointer stays an arrow; text you
+   may want to copy opts back in. */
+body {
+  margin: 0;
+  opacity: 0;
+  transition: opacity var(--motion-normal) var(--ease);
+  user-select: none;
+  cursor: default;
+}
+
+body[data-ready] {
+  opacity: 1;
+}
+
+input,
+textarea,
+.selectable {
+  user-select: text;
+}
+
+input:not([type="radio"], [type="checkbox"]),
+textarea,
+.selectable {
+  cursor: text;
+}
+
+/* Windows' own thin scrollbar, in system colors. */
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: GrayText transparent;
+}
+
+/* Reduced motion keeps the fades and drops the travel: entrances become a
+   short opacity change, nothing slides or scales. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-normal: var(--motion-fast);
+  }
+}

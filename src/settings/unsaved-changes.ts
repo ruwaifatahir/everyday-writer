@@ -1,8 +1,9 @@
-// "Save your changes before updating?" prompt for the provider form.
+// The "Save your changes?" prompt: Save, Discard or Cancel.
 //
-// An update restarts the app, so edits that were never saved would be lost.
-// Only the provider form counts: the Shortcut and startup group applies right
-// away, and instruction sets save on their own.
+// Updating (which restarts the app) and closing the window ask about unsaved
+// edits to the provider form; leaving the instruction set editor asks about
+// its draft. The Shortcut and startup group applies right away, so it never
+// counts.
 
 import type { ProviderSettings } from "./api";
 
@@ -36,12 +37,51 @@ export function choiceFrom(returnValue: string): UnsavedChoice {
     : "cancel";
 }
 
-/** Shows the prompt and resolves with the user's choice once it closes. */
+/** The prompt's words for one situation. */
+export interface UnsavedPrompt {
+  title: string;
+  body: string;
+}
+
+export const BEFORE_UPDATING: UnsavedPrompt = {
+  title: "Save your changes before updating?",
+  body: "The app restarts to finish the update. Changes you haven't saved will be lost.",
+};
+
+export const BEFORE_CLOSING: UnsavedPrompt = {
+  title: "Save your changes before closing?",
+  body: "Provider, model and key changes you haven't saved will be lost.",
+};
+
+export const LEAVING_SET_EDITOR: UnsavedPrompt = {
+  title: "Save this instruction set?",
+  body: "Discard closes the editor and drops your edits.",
+};
+
+/** Shows the prompt for an update. */
 export function askToSaveBeforeUpdating(): Promise<UnsavedChoice> {
+  return askToSave(BEFORE_UPDATING);
+}
+
+/** Whether any dialog is showing now. Dialogs handle Esc themselves. */
+export function isDialogOpen(): boolean {
+  return document.querySelector("dialog[open]") !== null;
+}
+
+/**
+ * Shows the Save / Discard / Cancel prompt with `prompt`'s words and
+ * resolves with the user's choice once it closes.
+ */
+export function askToSave(prompt: UnsavedPrompt): Promise<UnsavedChoice> {
   const dialog = document.getElementById("unsaved-dialog");
-  if (!(dialog instanceof HTMLDialogElement)) {
+  const title = document.getElementById("unsaved-title");
+  const body = document.getElementById("unsaved-body");
+  if (!(dialog instanceof HTMLDialogElement) || !title || !body) {
     return Promise.resolve("cancel");
   }
+  if (dialog.open) return Promise.resolve("cancel");
+  title.textContent = prompt.title;
+  body.textContent = prompt.body;
   return new Promise((resolve) => {
     dialog.addEventListener(
       "close",

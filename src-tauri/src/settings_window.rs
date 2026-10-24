@@ -9,12 +9,14 @@
     reason = "Tauri commands receive `State` by value"
 )]
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::window::Color;
+use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder};
 
 use crate::autostart::{self, TauriAutostart};
-use crate::llm::{self, ModelList};
+use crate::llm::{self, Connection};
 use crate::settings::{
     ApiKey, ApiKeySource, AppSettings, KeyError, KeyringApiKeys, Provider, ProviderKind,
     SaveKeyError, Settings,
@@ -23,6 +25,14 @@ use crate::shortcut::{self, Hotkeys, ShortcutError, TauriHotkeys};
 
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
+
+/// The page background (`--cream` in `src/styles/tokens.css`), painted natively
+/// so the window never flashes white before the page loads.
+const BACKGROUND: Color = Color(0xff, 0xff, 0xeb, 0xff);
+
+/// The title bar matches the page: `--cream` behind `--ink` text.
+const TITLE_BAR: u32 = 0xff_ff_eb;
+const TITLE_TEXT: u32 = 0x1a_1a_1a;
 
 /// Asks an open settings window to scroll to a section. The payload is the
 /// section's id in `settings.html`.
@@ -69,14 +79,20 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         }
         return Ok(());
     }
-    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
-        .title("everyday-writer settings")
+    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
+        .title(format!("{} Settings", app.package_info().name))
         .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
+        .theme(Some(Theme::Light))
+        .background_color(BACKGROUND)
         .maximizable(false)
         .center()
         .focused(true)
         .build()?;
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        crate::win32::color_title_bar(hwnd, TITLE_BAR, TITLE_TEXT);
+    }
     Ok(())
 }
 
@@ -103,10 +119,10 @@ pub enum CommandError {
     #[error("Couldn't reach Windows Credential Manager. Try again.")]
     KeyStore,
     /// An empty key was submitted.
-    #[error("Enter a key first.")]
+    #[error("Enter an API key first.")]
     BlankKey,
     /// Windows refused the new shortcut. The previous one is kept.
-    #[error("This shortcut is used by another app")]
+    #[error("This shortcut is used by another app. Pick a new one.")]
     ShortcutTaken,
     /// The new shortcut isn't a usable combination.
     #[error("Use Ctrl, Alt or Win together with one other key.")]
@@ -114,6 +130,46 @@ pub enum CommandError {
     /// Windows refused to change its startup list.
     #[error("Couldn't change the Windows startup setting. Try again.")]
     Autostart,
+    /// A key test found no key to send.
+    #[error("Enter an API key first.")]
+    NoKeyToTest,
+    /// A key test had no model to check.
+    #[error("Choose a model first.")]
+    NoModel,
+    /// A key test had no usable Custom base URL.
+    #[error("Enter a base URL starting with http:// or https://.")]
+    InvalidBaseUrl,
+    /// The provider rejected the key.
+    #[error("{} rejected this API key. Check it and try again.", .0.display_subject())]
+    KeyRejected(ProviderKind),
+    /// The provider is rate limiting; the key itself may be fine.
+    #[error("{} is busy. Wait a moment and try again.", .0.display_subject())]
+    RateLimited(ProviderKind),
+    /// The provider couldn't be reached.
+    #[error("Couldn't reach {}. Check your connection and try again.", .0.display_name())]
+    Unreachable(ProviderKind),
+    /// The provider answered with another error.
+    #[error("{} returned an error. Try again.", .0.display_subject())]
+    ProviderFailed(ProviderKind),
+}
+
+impl CommandError {
+    /// The key test's error for `error`, naming `provider` as the popup does.
+    fn from_rewrite(error: llm::RewriteError, provider: ProviderKind) -> Self {
+        use llm::{InvalidSetting, RewriteError};
+        match error {
+            RewriteError::MissingApiKey => Self::NoKeyToTest,
+            RewriteError::KeyStore => Self::KeyStore,
+            RewriteError::InvalidSettings(InvalidSetting::Model) => Self::NoModel,
+            RewriteError::InvalidSettings(InvalidSetting::BaseUrl) => Self::InvalidBaseUrl,
+            RewriteError::Unauthorized => Self::KeyRejected(provider),
+            RewriteError::RateLimited => Self::RateLimited(provider),
+            RewriteError::Network => Self::Unreachable(provider),
+            RewriteError::Provider { .. } | RewriteError::EmptyResponse | RewriteError::Other => {
+                Self::ProviderFailed(provider)
+            }
+        }
+    }
 }
 
 impl From<shortcut::ChangeError> for CommandError {
@@ -190,25 +246,55 @@ pub fn save_api_key(
     Ok(settings.set_key(provider, &ApiKey::new(key))?)
 }
 
-/// The models `provider` offers, for the model dropdown, at
-/// `custom_base_url` for Custom. The saved key goes along only where
-/// [`Settings::may_send_saved_key`] allows: a Custom URL typed but not saved
-/// is asked without a key. Falls back to built-in suggestions when the list
-/// can't be fetched; never fails.
+/// The Suggested Model names for every provider, fastest first, for the
+/// model picker. Built in, so this never touches the network.
 #[tauri::command]
-pub async fn list_models(
+pub fn suggested_models() -> HashMap<ProviderKind, Vec<&'static str>> {
+    ProviderKind::ALL
+        .into_iter()
+        .map(|provider| {
+            let names = llm::suggested_models(provider)
+                .iter()
+                .map(|model| model.name)
+                .collect();
+            (provider, names)
+        })
+        .collect()
+}
+
+/// Checks that `provider` accepts a key, at `custom_base_url` for Custom,
+/// without spending tokens (see [`llm::check_connection`]), and whether it
+/// offers `model`. Uses `key` if one was typed, otherwise the saved key
+/// where [`Settings::may_send_saved_key`] allows.
+///
+/// # Errors
+///
+/// Returns a [`CommandError`] saying why the provider couldn't be used.
+#[tauri::command]
+pub async fn test_connection(
     app: AppHandle,
     provider: ProviderKind,
     custom_base_url: String,
-) -> ModelList {
+    key: Option<String>,
+    model: String,
+) -> Result<Connection, CommandError> {
     let target = Provider::from_kind(provider, &custom_base_url);
-    let saved = app.state::<Arc<AppSettings>>().settings();
-    if saved.may_send_saved_key(&target) {
-        let keys = app.state::<KeyringApiKeys>().inner().clone();
-        llm::model_list(&target, Arc::new(keys)).await
-    } else {
-        llm::model_list(&target, Arc::new(NoKey)).await
-    }
+    let model = Some(model.as_str());
+    let checked = match key.filter(|key| !key.trim().is_empty()) {
+        Some(key) => {
+            llm::check_connection(&target, Arc::new(TypedKey(ApiKey::new(key))), model).await
+        }
+        None if app
+            .state::<Arc<AppSettings>>()
+            .settings()
+            .may_send_saved_key(&target) =>
+        {
+            let keys = app.state::<KeyringApiKeys>().inner().clone();
+            llm::check_connection(&target, Arc::new(keys), model).await
+        }
+        None => llm::check_connection(&target, Arc::new(NoKey), model).await,
+    };
+    checked.map_err(|error| CommandError::from_rewrite(error, provider))
 }
 
 /// A key source with no keys, for endpoints the saved key must not reach.
@@ -217,6 +303,15 @@ struct NoKey;
 impl ApiKeySource for NoKey {
     fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
         Ok(None)
+    }
+}
+
+/// The key typed in Settings and not saved yet, for [`test_connection`].
+struct TypedKey(ApiKey);
+
+impl ApiKeySource for TypedKey {
+    fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
+        Ok(Some(self.0.clone()))
     }
 }
 
@@ -294,6 +389,8 @@ pub fn set_start_with_windows(
 #[cfg(test)]
 mod tests {
     use super::{CommandError, Section, page};
+    use crate::llm::RewriteError;
+    use crate::settings::ProviderKind;
 
     #[test]
     fn the_window_opens_at_the_top_by_default() {
@@ -309,6 +406,16 @@ mod tests {
     fn an_error_reaches_the_window_as_its_message() {
         let json = serde_json::to_string(&CommandError::BlankKey).unwrap();
 
-        assert_eq!(json, r#""Enter a key first.""#);
+        assert_eq!(json, r#""Enter an API key first.""#);
+    }
+
+    #[test]
+    fn a_key_test_error_names_the_provider() {
+        let error = CommandError::from_rewrite(RewriteError::Network, ProviderKind::Custom);
+
+        assert_eq!(
+            error.to_string(),
+            "Couldn't reach your server. Check your connection and try again."
+        );
     }
 }
