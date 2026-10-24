@@ -18,6 +18,7 @@ import {
 } from "./api";
 import { initInstructionSets } from "./instruction-sets";
 import { initLaunch } from "./launch";
+import { initUpdates, scrollToRequestedSection } from "./updates";
 
 const PROVIDER_NAMES: Record<ProviderKind, string> = {
   openai: "OpenAI",
@@ -333,7 +334,9 @@ async function init(): Promise<void> {
   document.body.dataset.ready = "";
 }
 
-void init();
-
-// The Instruction sets section runs on its own; see instruction-sets.ts.
-void initInstructionSets();
+// The Instruction sets and Updates sections run on their own; see
+// instruction-sets.ts and updates.ts. Once all have loaded, the window
+// scrolls to the section Rust opened it at, if any.
+void Promise.all([init(), initInstructionSets(), initUpdates()]).then(
+  scrollToRequestedSection,
+);

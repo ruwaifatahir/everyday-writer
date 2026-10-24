@@ -143,6 +143,16 @@
       <p class="status" id="sets-status" role="status" aria-live="polite"></p>
     </section>
 
+    <!-- Updates. Outside the provider form: nothing here waits for Save.
+         Rendered by src/settings/updates.ts. The tray and update notifications
+         open the window scrolled here (settings_window::Section::Updates). -->
+    <section class="updates" id="updates" aria-labelledby="updates-title">
+      <header class="sets-head">
+        <h2 id="updates-title">Updates</h2>
+      </header>
+      <p class="app-version" id="app-version"></p>
+    </section>
+
     <template id="set-editor-template">
       <form class="set-editor" novalidate autocomplete="off">
         <label class="field">

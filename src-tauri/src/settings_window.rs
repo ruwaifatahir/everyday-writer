@@ -11,7 +11,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::autostart::{self, TauriAutostart};
 use crate::llm::{self, ModelList};
@@ -24,18 +24,61 @@ use crate::shortcut::{self, Hotkeys, ShortcutError, TauriHotkeys};
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
 
+/// Asks an open settings window to scroll to a section. The payload is the
+/// section's id in `settings.html`.
+const SCROLL_EVENT: &str = "settings-scroll-to";
+
+/// A section the settings window can open scrolled to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    /// Version and updates.
+    Updates,
+}
+
+impl Section {
+    /// The section's element id in `settings.html`.
+    const fn id(self) -> &'static str {
+        match self {
+            Self::Updates => "updates",
+        }
+    }
+}
+
+/// The page to load: the settings page, with the section as its fragment so
+/// a new window starts there.
+fn page(section: Option<Section>) -> String {
+    match section {
+        Some(section) => format!("settings.html#{}", section.id()),
+        None => "settings.html".to_owned(),
+    }
+}
+
 /// Opens the settings window, or brings it to the front if it's open.
 ///
 /// # Errors
 ///
 /// Returns an error if the window can't be created or shown.
 pub fn open(app: &AppHandle) -> tauri::Result<()> {
+    open_at(app, None)
+}
+
+/// Opens the settings window scrolled to `section`, or brings an open one to
+/// the front and scrolls it there. `None` leaves an open window where it is.
+///
+/// # Errors
+///
+/// Returns an error if the window can't be created or shown.
+pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(LABEL) {
         window.unminimize()?;
         window.show()?;
-        return window.set_focus();
+        window.set_focus()?;
+        if let Some(section) = section {
+            window.emit_to(LABEL, SCROLL_EVENT, section.id())?;
+        }
+        return Ok(());
     }
-    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
+    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
         .title("everyday-writer settings")
         .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
@@ -50,12 +93,24 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
 /// that run inside the event loop (the single-instance callback, menu
 /// events): building a window there deadlocks on Windows.
 pub fn open_later(app: &AppHandle) {
+    open_at_later(app, None);
+}
+
+/// [`open_at`] from a spawned task, for the same callbacks as
+/// [`open_later`]: the tray menu and notification clicks.
+pub fn open_at_later(app: &AppHandle, section: Option<Section>) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if open(&app).is_err() {
+        if open_at(&app, section).is_err() {
             tracing::warn!("the settings window could not open");
         }
     });
+}
+
+/// The running app's version, such as `1.0.0`.
+#[tauri::command]
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 /// A command failed. Serialized as a short message the window shows as is.
@@ -263,7 +318,17 @@ pub fn set_start_with_windows(
 
 #[cfg(test)]
 mod tests {
-    use super::CommandError;
+    use super::{CommandError, Section, page};
+
+    #[test]
+    fn the_window_opens_at_the_top_by_default() {
+        assert_eq!(page(None), "settings.html");
+    }
+
+    #[test]
+    fn the_window_can_open_at_the_updates_section() {
+        assert_eq!(page(Some(Section::Updates)), "settings.html#updates");
+    }
 
     #[test]
     fn an_error_reaches_the_window_as_its_message() {

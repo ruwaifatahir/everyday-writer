@@ -2,6 +2,7 @@
 // A key only ever travels from here to Rust; no command sends one back.
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type ProviderKind =
   | "openai"
@@ -73,6 +74,18 @@ export function listModels(
 
 export function clearApiKey(provider: ProviderKind): Promise<void> {
   return invoke("clear_api_key", { provider });
+}
+
+/** The running app's version, such as `1.0.0`. */
+export function appVersion(): Promise<string> {
+  return invoke<string>("app_version");
+}
+
+/** Rust asks the open window to scroll to a section, by element id. */
+export function onScrollTo(handler: (id: string) => void): Promise<UnlistenFn> {
+  return listen<string>("settings-scroll-to", (event) =>
+    handler(event.payload),
+  );
 }
 
 /** Command errors arrive as a short, user-facing message. */

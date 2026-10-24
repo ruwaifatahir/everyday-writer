@@ -15,6 +15,7 @@ fn main() {
             "set_shortcut",
             "is_shortcut_working",
             "set_start_with_windows",
+            "app_version",
             "get_instruction_sets",
             "add_instruction_set",
             "edit_instruction_set",

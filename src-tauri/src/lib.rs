@@ -77,6 +77,7 @@ pub fn run() {
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
             settings_window::set_start_with_windows,
+            settings_window::app_version,
             instruction_set_commands::get_instruction_sets,
             instruction_set_commands::add_instruction_set,
             instruction_set_commands::edit_instruction_set,
