@@ -122,11 +122,12 @@
                 spellcheck="false"
                 autocomplete="off"
                 aria-roledescription="shortcut field"
-                aria-describedby="shortcut-hint shortcut-status"
+                aria-describedby="shortcut-hint shortcut-warning shortcut-status"
               />
               <button type="button" class="button secondary" id="shortcut-reset" hidden>Reset to default</button>
             </div>
             <p class="hint" id="shortcut-hint">Click the field, then press Ctrl or Alt with one other key, adding Shift if you like. Nothing happens? Another app may be using that shortcut.</p>
+            <p class="hint field-status" id="shortcut-warning" data-kind="error"></p>
             <p class="hint field-status" id="shortcut-status" role="status" aria-live="polite"></p>
           </div>
 

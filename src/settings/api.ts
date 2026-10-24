@@ -44,8 +44,8 @@ export function saveSettings(newSettings: ProviderSettings): Promise<void> {
   return invoke("save_settings", { newSettings });
 }
 
-/** Why `setShortcut` refused; mirrors `SetShortcutError` in `settings_window.rs`. */
-export type ShortcutRefusal =
+/** Why `setShortcut` failed; mirrors `SetShortcutError` in `settings_window.rs`. */
+export type SetShortcutErrorReason =
   | "notAShortcut"
   | "noCtrlOrAlt"
   | "win"
@@ -53,12 +53,16 @@ export type ShortcutRefusal =
   | "taken"
   | "save";
 
-/** Rejects with a `ShortcutRefusal` saying why; the old shortcut stays. */
+/** Rejects with a `SetShortcutErrorReason` saying why; the old shortcut stays. */
 export function setShortcut(shortcut: string): Promise<void> {
   return invoke("set_shortcut", { shortcut });
 }
 
-/** Stops the saved shortcut while the field records, so pressing it reaches the field. */
+/**
+ * Stops the saved shortcut while the field records, so pressing it reaches
+ * the field. Rust applies it only while this window has focus, and brings
+ * the shortcut back by itself when the window loses focus or closes.
+ */
 export function pauseShortcut(): Promise<void> {
   return invoke("pause_shortcut");
 }
@@ -73,12 +77,16 @@ export function isShortcutWorking(): Promise<boolean> {
   return invoke<boolean>("is_shortcut_working");
 }
 
-/** The shortcut "Reset to default" sets. Matches `DEFAULT_SHORTCUT` in Rust. */
-export const DEFAULT_SHORTCUT = "Ctrl+Shift+Space";
+/** Mirrors `DefaultShortcut` in `settings_window.rs`. */
+export interface DefaultShortcut {
+  /** What "Reset to default" sets with `setShortcut`, as Rust parses it. */
+  shortcut: string;
+  /** Whether the saved shortcut is the default, compared as keys, not text. */
+  isSaved: boolean;
+}
 
-/** Whether the saved shortcut is the default, compared as keys, not text. */
-export function isDefaultShortcut(): Promise<boolean> {
-  return invoke<boolean>("is_default_shortcut");
+export function defaultShortcut(): Promise<DefaultShortcut> {
+  return invoke<DefaultShortcut>("default_shortcut");
 }
 
 export function setStartWithWindows(enabled: boolean): Promise<void> {

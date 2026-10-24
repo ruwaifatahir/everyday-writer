@@ -3,6 +3,9 @@
 //!
 //! The `global-shortcut` plugin is registered in [`crate::run`].
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -163,28 +166,150 @@ pub fn change<E>(
     Ok(())
 }
 
-/// Pauses the `saved` shortcut while Settings records a new one, so pressing
-/// it reaches the field instead of starting a rewrite. [`resume`] brings it
-/// back. Does nothing if `saved` isn't a valid shortcut.
-pub fn pause(hotkeys: &impl Hotkeys, saved: &str) {
-    if let Ok(saved) = parse(saved) {
-        hotkeys.unregister(saved);
-    }
+/// Pauses the saved shortcut while Settings records a new one, so pressing it
+/// reaches the field instead of starting a rewrite.
+///
+/// The shortcut is paused exactly while two things hold: Settings asked for
+/// it ([`Pause::request`]) and the Settings window has focus
+/// ([`Pause::set_focused`], [`Pause::close`]). Every call settles the
+/// shortcut to match both, so the order the calls arrive in doesn't matter:
+/// a late pause can't leave the app without a shortcut once Settings has lost
+/// focus or closed, and a late resume can't free the field while it records.
+///
+/// Every change, pause and resume takes the same lock, so two quick changes
+/// can't both read the same previous shortcut and a resume can't bring back a
+/// shortcut that a change is replacing. The saved shortcut is read through
+/// `saved` under that lock for the same reason.
+#[derive(Debug, Default)]
+pub struct Pause {
+    /// Settings asked to pause and hasn't asked to resume since.
+    requested: AtomicBool,
+    /// The Settings window has focus.
+    focused: AtomicBool,
+    /// The lock. Holds whether a working shortcut is paused, so a failure to
+    /// bring it back is reported once, and a shortcut that never worked
+    /// isn't reported again.
+    paused: Mutex<bool>,
 }
 
-/// Brings back the `saved` shortcut after [`pause`]. Does nothing if it
-/// already works, so it is safe to call whenever recording might have ended.
-///
-/// # Errors
-///
-/// Returns [`ShortcutError::Invalid`] if `saved` isn't a valid shortcut and
-/// [`ShortcutError::Taken`] if another app took it while it was paused.
-pub fn resume(hotkeys: &impl Hotkeys, saved: &str) -> Result<(), ShortcutError> {
-    let saved = parse(saved)?;
-    if hotkeys.is_registered(saved) {
-        return Ok(());
+impl Pause {
+    /// Nothing paused, and Settings not focused.
+    pub const fn new() -> Self {
+        Self {
+            requested: AtomicBool::new(false),
+            focused: AtomicBool::new(false),
+            paused: Mutex::new(false),
+        }
     }
-    hotkeys.register(saved)
+
+    /// Settings starts (`recording`) or stops recording a new shortcut.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ShortcutError::Taken`] if a paused shortcut can't come back,
+    /// because another app took it meanwhile.
+    pub fn request(
+        &self,
+        hotkeys: &impl Hotkeys,
+        saved: impl FnOnce() -> String,
+        recording: bool,
+    ) -> Result<(), ShortcutError> {
+        let mut paused = self.lock();
+        self.requested.store(recording, Ordering::SeqCst);
+        self.settle_locked(hotkeys, &saved(), &mut paused)
+    }
+
+    /// The Settings window gained or lost focus. Never blocks, so window
+    /// events can call it; call [`Pause::settle`] after it.
+    pub fn set_focused(&self, focused: bool) {
+        self.focused.store(focused, Ordering::SeqCst);
+    }
+
+    /// The Settings window closed, which ends any recording. Never blocks;
+    /// call [`Pause::settle`] after it.
+    pub fn close(&self) {
+        self.requested.store(false, Ordering::SeqCst);
+        self.focused.store(false, Ordering::SeqCst);
+    }
+
+    /// Pauses or brings back the saved shortcut to match the last request
+    /// and focus. Does nothing if `saved` isn't a valid shortcut.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ShortcutError::Taken`] if a paused shortcut can't come back,
+    /// because another app took it meanwhile.
+    pub fn settle(
+        &self,
+        hotkeys: &impl Hotkeys,
+        saved: impl FnOnce() -> String,
+    ) -> Result<(), ShortcutError> {
+        let mut paused = self.lock();
+        self.settle_locked(hotkeys, &saved(), &mut paused)
+    }
+
+    /// [`change`] under the lock. If Settings is still recording, the new
+    /// shortcut is paused too, so pressing it again records it instead of
+    /// starting a rewrite.
+    ///
+    /// # Errors
+    ///
+    /// As [`change`].
+    pub fn change<E>(
+        &self,
+        hotkeys: &impl Hotkeys,
+        saved: impl FnOnce() -> String,
+        new: &str,
+        save: impl FnOnce(&str) -> Result<(), E>,
+    ) -> Result<(), ChangeError> {
+        let mut paused = self.lock();
+        let changed = change(hotkeys, &saved(), new, save);
+        if changed.is_ok() && self.wants_pause() {
+            // Only pausing: a resume here would report a failure that the
+            // next settle reports anyway.
+            if let Ok(new) = parse(new) {
+                hotkeys.unregister(new);
+                *paused = true;
+            }
+        }
+        changed
+    }
+
+    fn lock(&self) -> MutexGuard<'_, bool> {
+        self.paused.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn wants_pause(&self) -> bool {
+        self.requested.load(Ordering::SeqCst) && self.focused.load(Ordering::SeqCst)
+    }
+
+    fn settle_locked(
+        &self,
+        hotkeys: &impl Hotkeys,
+        saved: &str,
+        paused: &mut bool,
+    ) -> Result<(), ShortcutError> {
+        let Ok(saved) = parse(saved) else {
+            return Ok(());
+        };
+        let registered = hotkeys.is_registered(saved);
+        if self.wants_pause() {
+            if registered {
+                hotkeys.unregister(saved);
+                *paused = true;
+            }
+            return Ok(());
+        }
+        let was_paused = std::mem::take(paused);
+        if registered {
+            return Ok(());
+        }
+        // Tried even if it never worked, in case the app holding it let go.
+        match hotkeys.register(saved) {
+            Err(error) if was_paused => Err(error),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// The real global shortcuts, through the Tauri plugin. Each press calls
@@ -235,14 +360,12 @@ mod tests {
 
     use tauri_plugin_global_shortcut::Shortcut;
 
-    use super::{
-        ChangeError, Hotkeys, Refusal, ShortcutError, change, is_default, parse, pause, resume,
-    };
+    use super::{ChangeError, Hotkeys, Pause, Refusal, ShortcutError, change, is_default, parse};
 
     /// Global shortcuts in memory. `taken` are held by "another app".
     #[derive(Default)]
     struct FakeHotkeys {
-        taken: HashSet<Shortcut>,
+        taken: RefCell<HashSet<Shortcut>>,
         registered: RefCell<HashSet<Shortcut>>,
     }
 
@@ -253,9 +376,14 @@ mod tests {
             hotkeys
         }
 
-        fn taken(mut self, taken: &str) -> Self {
-            self.taken.insert(shortcut(taken));
+        fn taken(self, taken: &str) -> Self {
+            self.take(taken);
             self
+        }
+
+        /// Another app registers `taken` now, as if it grabbed it while paused.
+        fn take(&self, taken: &str) {
+            self.taken.borrow_mut().insert(shortcut(taken));
         }
 
         fn works(&self, text: &str) -> bool {
@@ -269,7 +397,9 @@ mod tests {
 
     impl Hotkeys for FakeHotkeys {
         fn register(&self, shortcut: Shortcut) -> Result<(), ShortcutError> {
-            if self.taken.contains(&shortcut) || !self.registered.borrow_mut().insert(shortcut) {
+            if self.taken.borrow().contains(&shortcut)
+                || !self.registered.borrow_mut().insert(shortcut)
+            {
                 return Err(ShortcutError::Taken);
             }
             Ok(())
@@ -286,6 +416,19 @@ mod tests {
 
     fn shortcut(text: &str) -> Shortcut {
         text.parse().unwrap()
+    }
+
+    /// Reads the saved shortcut as the settings window would.
+    fn saved(text: &str) -> impl FnOnce() -> String + '_ {
+        || text.to_owned()
+    }
+
+    /// Settings is open and has focus, and its field records over `text`.
+    fn recording(hotkeys: &FakeHotkeys, text: &str) -> Pause {
+        let pause = Pause::new();
+        pause.set_focused(true);
+        pause.request(hotkeys, saved(text), true).unwrap();
+        pause
     }
 
     /// A `save` that records what it saved.
@@ -482,12 +625,11 @@ mod tests {
     /// user picks another shortcut.
     #[test]
     fn a_saved_win_shortcut_still_loads_pauses_and_resumes() {
-        let hotkeys = FakeHotkeys::default();
-        hotkeys.register(parse("Super+K").unwrap()).unwrap();
+        let hotkeys = FakeHotkeys::with("Super+K");
 
-        pause(&hotkeys, "Super+K");
+        let pause = recording(&hotkeys, "Super+K");
         assert!(!hotkeys.works("Super+K"));
-        resume(&hotkeys, "Super+K").unwrap();
+        pause.request(&hotkeys, saved("Super+K"), false).unwrap();
 
         assert!(hotkeys.works("Super+K"));
         assert!(!is_default("Super+K"));
@@ -616,69 +758,211 @@ mod tests {
     }
 
     #[test]
-    fn pausing_frees_the_shortcut() {
+    fn recording_pauses_the_shortcut_while_settings_has_focus() {
         let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
 
-        pause(&hotkeys, "Ctrl+Shift+Space");
+        recording(&hotkeys, "Ctrl+Shift+Space");
 
         assert!(!hotkeys.works("Ctrl+Shift+Space"));
         assert_eq!(hotkeys.count(), 0);
     }
 
     #[test]
-    fn resuming_brings_the_paused_shortcut_back_and_twice_is_harmless() {
+    fn ending_recording_brings_the_paused_shortcut_back_and_twice_is_harmless() {
         let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
-        pause(&hotkeys, "Ctrl+Shift+Space");
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
 
-        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
-        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
+        pause
+            .request(&hotkeys, saved("Ctrl+Shift+Space"), false)
+            .unwrap();
+        pause
+            .request(&hotkeys, saved("Ctrl+Shift+Space"), false)
+            .unwrap();
 
         assert!(hotkeys.works("Ctrl+Shift+Space"));
         assert_eq!(hotkeys.count(), 1);
     }
 
+    /// A pause sent while Settings had focus can reach Rust after Settings
+    /// lost focus, when nothing would resume the shortcut any more.
     #[test]
-    fn recording_the_paused_shortcut_again_saves_it_and_leaves_it_working() {
+    fn a_pause_that_arrives_after_settings_lost_focus_leaves_the_shortcut_working() {
         let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
-        let saved = RefCell::new(None);
-        pause(&hotkeys, "Ctrl+Shift+Space");
+        let pause = Pause::new();
+        pause.set_focused(true);
+        pause.set_focused(false);
+        pause.settle(&hotkeys, saved("Ctrl+Shift+Space")).unwrap();
 
-        change(
-            &hotkeys,
-            "Ctrl+Shift+Space",
-            "Ctrl+Shift+Space",
-            saving(&saved),
-        )
-        .unwrap();
-        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
+        pause
+            .request(&hotkeys, saved("Ctrl+Shift+Space"), true)
+            .unwrap();
 
         assert!(hotkeys.works("Ctrl+Shift+Space"));
-        assert_eq!(hotkeys.count(), 1);
-        assert_eq!(saved.into_inner().as_deref(), Some("Ctrl+Shift+Space"));
     }
 
     #[test]
-    fn a_new_shortcut_picked_while_paused_works_and_is_saved() {
+    fn losing_focus_brings_the_paused_shortcut_back_without_a_resume() {
         let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
-        let saved = RefCell::new(None);
-        pause(&hotkeys, "Ctrl+Shift+Space");
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
 
-        change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", saving(&saved)).unwrap();
-        resume(&hotkeys, "Alt+Shift+R").unwrap();
+        pause.set_focused(false);
+        pause.settle(&hotkeys, saved("Ctrl+Shift+Space")).unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+    }
+
+    /// Settings closed mid-save: its last pause can arrive after the close.
+    #[test]
+    fn closing_settings_brings_the_paused_shortcut_back_and_a_later_pause_is_ignored() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
+
+        pause.close();
+        pause.settle(&hotkeys, saved("Ctrl+Shift+Space")).unwrap();
+        pause
+            .request(&hotkeys, saved("Ctrl+Shift+Space"), true)
+            .unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+    }
+
+    #[test]
+    fn closing_settings_ends_recording_for_the_next_window() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
+        pause.close();
+        pause.settle(&hotkeys, saved("Ctrl+Shift+Space")).unwrap();
+
+        pause.set_focused(true);
+        pause.settle(&hotkeys, saved("Ctrl+Shift+Space")).unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+    }
+
+    /// A field still recording when Settings regains focus pauses again,
+    /// even if its pause reached Rust before the focus did.
+    #[test]
+    fn regaining_focus_while_recording_pauses_the_shortcut_again() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let pause = Pause::new();
+        pause
+            .request(&hotkeys, saved("Ctrl+Shift+Space"), true)
+            .unwrap();
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+
+        pause.set_focused(true);
+        pause.settle(&hotkeys, saved("Ctrl+Shift+Space")).unwrap();
+
+        assert!(!hotkeys.works("Ctrl+Shift+Space"));
+    }
+
+    #[test]
+    fn a_paused_shortcut_another_app_took_is_reported_once_when_it_cannot_come_back() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
+        hotkeys.take("Ctrl+Shift+Space");
+
+        let ended = pause.request(&hotkeys, saved("Ctrl+Shift+Space"), false);
+        let again = pause.request(&hotkeys, saved("Ctrl+Shift+Space"), false);
+
+        assert_eq!(ended, Err(ShortcutError::Taken));
+        assert_eq!(again, Ok(()));
+    }
+
+    /// The app already reported it when it started.
+    #[test]
+    fn a_shortcut_that_never_worked_is_not_reported_when_recording_ends() {
+        let hotkeys = FakeHotkeys::default().taken("Ctrl+Shift+Space");
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
+
+        let ended = pause.request(&hotkeys, saved("Ctrl+Shift+Space"), false);
+
+        assert_eq!(ended, Ok(()));
+        assert!(!hotkeys.works("Ctrl+Shift+Space"));
+    }
+
+    #[test]
+    fn recording_the_paused_shortcut_again_saves_it_and_it_works_once_recording_ends() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved_text = RefCell::new(None);
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
+
+        pause
+            .change(
+                &hotkeys,
+                saved("Ctrl+Shift+Space"),
+                "Ctrl+Shift+Space",
+                saving(&saved_text),
+            )
+            .unwrap();
+        assert!(!hotkeys.works("Ctrl+Shift+Space"), "still recording");
+        pause
+            .request(&hotkeys, saved("Ctrl+Shift+Space"), false)
+            .unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 1);
+        assert_eq!(saved_text.into_inner().as_deref(), Some("Ctrl+Shift+Space"));
+    }
+
+    /// Pressing the new shortcut again while the field records records it,
+    /// instead of starting a rewrite.
+    #[test]
+    fn a_new_shortcut_picked_while_recording_is_saved_and_works_once_recording_ends() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved_text = RefCell::new(None);
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
+
+        pause
+            .change(
+                &hotkeys,
+                saved("Ctrl+Shift+Space"),
+                "Alt+Shift+R",
+                saving(&saved_text),
+            )
+            .unwrap();
+        assert!(!hotkeys.works("Alt+Shift+R"), "still recording");
+        pause
+            .request(&hotkeys, saved("Alt+Shift+R"), false)
+            .unwrap();
 
         assert!(hotkeys.works("Alt+Shift+R"));
         assert!(!hotkeys.works("Ctrl+Shift+Space"));
-        assert_eq!(saved.into_inner().as_deref(), Some("Alt+Shift+R"));
+        assert_eq!(saved_text.into_inner().as_deref(), Some("Alt+Shift+R"));
+    }
+
+    /// As "Reset to default" does.
+    #[test]
+    fn a_new_shortcut_picked_while_not_recording_works_at_once() {
+        let hotkeys = FakeHotkeys::with("Alt+Shift+R");
+        let pause = Pause::new();
+        pause.set_focused(true);
+
+        pause
+            .change(
+                &hotkeys,
+                saved("Alt+Shift+R"),
+                super::DEFAULT_SHORTCUT,
+                |_| Ok::<_, ()>(()),
+            )
+            .unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert!(!hotkeys.works("Alt+Shift+R"));
     }
 
     #[test]
-    fn a_shortcut_picked_while_paused_that_cannot_be_saved_is_dropped_and_resuming_brings_the_old_one_back()
+    fn a_shortcut_picked_while_recording_that_cannot_be_saved_is_dropped_and_ending_recording_brings_the_old_one_back()
      {
         let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
-        pause(&hotkeys, "Ctrl+Shift+Space");
+        let pause = recording(&hotkeys, "Ctrl+Shift+Space");
 
-        let result = change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", |_| Err(()));
-        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
+        let result = pause.change(&hotkeys, saved("Ctrl+Shift+Space"), "Alt+Shift+R", |_| {
+            Err(())
+        });
+        pause
+            .request(&hotkeys, saved("Ctrl+Shift+Space"), false)
+            .unwrap();
 
         assert_eq!(result, Err(ChangeError::Save));
         assert!(hotkeys.works("Ctrl+Shift+Space"));

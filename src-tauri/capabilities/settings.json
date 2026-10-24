@@ -16,7 +16,7 @@
     "allow-pause-shortcut",
     "allow-resume-shortcut",
     "allow-set-start-with-windows",
-    "allow-is-default-shortcut",
+    "allow-default-shortcut",
     "allow-app-version",
     "allow-get-updates-state",
     "allow-check-for-updates",

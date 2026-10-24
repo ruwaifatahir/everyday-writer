@@ -6,14 +6,13 @@
 // press is saved at once. Rust decides whether the press is allowed.
 
 import {
-  DEFAULT_SHORTCUT,
+  defaultShortcut,
   errorMessage,
-  isDefaultShortcut,
   isShortcutWorking,
   pauseShortcut,
   resumeShortcut,
+  type SetShortcutErrorReason,
   type Settings,
-  type ShortcutRefusal,
   setShortcut,
   setStartWithWindows,
 } from "./api";
@@ -26,12 +25,16 @@ function element<T extends HTMLElement>(id: string): T {
 
 const shortcutInput = element<HTMLInputElement>("shortcut");
 const shortcutReset = element<HTMLButtonElement>("shortcut-reset");
+const shortcutWarning = element<HTMLParagraphElement>("shortcut-warning");
 const shortcutStatus = element<HTMLParagraphElement>("shortcut-status");
 const startSwitch = element<HTMLInputElement>("start-with-windows");
 const startStatus = element<HTMLParagraphElement>("startup-status");
 
 /** The shortcut that works now, as saved (`Super` for the Windows key). */
 let savedShortcut = "";
+
+/** What "Reset to default" sets, from Rust. Empty until known. */
+let resetShortcut = "";
 
 /** A save is on its way to Rust; presses wait for it. */
 let saving = false;
@@ -52,11 +55,11 @@ const MODIFIER_CODES = new Set([
 
 const PROMPT = "Press a shortcut…";
 
-/** What each refusal from Rust tells the user. Rust decides; this words it. */
-const REFUSALS: Record<ShortcutRefusal, string> = {
-  notAShortcut: "That key can't be used in a shortcut. Try another.",
+/** What each failure from Rust tells the user. Rust decides; this words it. */
+const REFUSALS: Record<SetShortcutErrorReason, string> = {
+  notAShortcut: "That key can't be used in a shortcut. Pick a new one.",
   noCtrlOrAlt: "Include Ctrl or Alt, as in Ctrl + Shift + K.",
-  win: "Windows keeps the Win key for its own shortcuts. Use Ctrl or Alt.",
+  win: "Windows keeps the Win key for its own shortcuts. Pick a new one with Ctrl or Alt.",
   copyPaste:
     "Everyday Writer presses Ctrl + C and Ctrl + V to copy and paste your text. Pick a new one.",
   taken: "Another app already uses this shortcut. Pick a new one.",
@@ -137,26 +140,43 @@ function renderHeld(event: KeyboardEvent): void {
 /** Offers "Reset to default" only while the saved shortcut isn't the default. */
 async function renderReset(): Promise<void> {
   try {
-    shortcutReset.hidden = await isDefaultShortcut();
+    const reset = await defaultShortcut();
+    resetShortcut = reset.shortcut;
+    shortcutReset.hidden = reset.isSaved;
   } catch {
     // Unknown: don't offer a reset that may change nothing.
     shortcutReset.hidden = true;
   }
 }
 
-// Pause, resume and save run one at a time: async commands can otherwise
-// reach Rust out of order, and a quick focus then blur would leave the
-// shortcut paused.
-let turns: Promise<void> = Promise.resolve();
+// Pause, resume and save reach Rust one at a time and in order: async
+// commands can otherwise overtake each other, and a quick focus then blur
+// would leave Rust holding the pause. Rust also drops the pause whenever the
+// window loses focus or closes, so a late one can't outlast the window.
+let turns: Promise<unknown> = Promise.resolve();
 
-function inTurn(call: () => Promise<void>): Promise<void> {
-  const turn = turns.then(call).catch(() => {
-    // A failed pause keeps the shortcut working, so pressing it won't
-    // record. A failed resume is retried by Rust when the window loses
-    // focus or closes.
-  });
-  turns = turn;
+/** Runs `call` after the calls before it. Rejects as `call` does. */
+function inTurn<T>(call: () => Promise<T>): Promise<T> {
+  const turn = turns.then(call);
+  // The next call waits for this one, whether it worked or not.
+  turns = turn.catch(() => undefined);
   return turn;
+}
+
+/**
+ * Asks Rust to pause or resume. A failure isn't shown: a failed pause keeps
+ * the shortcut working, so pressing it won't record, and a failed resume is
+ * done by Rust anyway when the window loses focus or closes.
+ */
+function requestPause(call: () => Promise<void>): void {
+  inTurn(call).catch(() => undefined);
+}
+
+/** What a successful save says. The Ctrl+Alt advice is only a message. */
+function savedMessage(shortcut: string): string {
+  return usesCtrlAlt(shortcut)
+    ? "Saved. On keyboards with AltGr, Ctrl + Alt also types special characters, so this shortcut may block one."
+    : "Shortcut saved.";
 }
 
 /** Saves `wanted` (as Rust parses it) and says how it went. */
@@ -166,28 +186,22 @@ async function applyShortcut(wanted: string): Promise<void> {
   shortcutReset.disabled = true;
   // Emptied first, so the same message twice is still announced.
   shortcutStatus.textContent = "";
-  await inTurn(async () => {
-    try {
-      await setShortcut(wanted);
-      savedShortcut = wanted;
-      showingSaved = true;
-      shortcutInput.removeAttribute("aria-invalid");
-      show(
-        shortcutStatus,
-        usesCtrlAlt(wanted)
-          ? "Shortcut saved. On keyboards with AltGr, Ctrl + Alt also types special characters, so this shortcut may block one."
-          : "Shortcut saved.",
-        "ok",
-      );
-      await renderReset();
-    } catch (error) {
-      // The previous shortcut still works and recording goes on.
-      show(shortcutStatus, refusalMessage(error), "error");
-    }
-    // A save registers the new shortcut. Pause it too while the field still
-    // records, so pressing it again records instead of starting a rewrite.
-    if (isRecording()) await pauseShortcut();
-  });
+  try {
+    // While the field records, Rust pauses the new shortcut too, so
+    // pressing it again records instead of starting a rewrite.
+    await inTurn(() => setShortcut(wanted));
+    savedShortcut = wanted;
+    showingSaved = true;
+    // The shortcut works now, so a warning from startup no longer applies.
+    shortcutWarning.textContent = "";
+    shortcutInput.removeAttribute("aria-invalid");
+    show(shortcutStatus, savedMessage(wanted), "ok");
+    await renderReset();
+  } catch (error) {
+    // The previous shortcut still works and recording goes on. A warning
+    // from startup stays: the shortcut still isn't working.
+    show(shortcutStatus, refusalMessage(error), "error");
+  }
   saving = false;
   shortcutReset.disabled = false;
   renderField();
@@ -222,15 +236,16 @@ shortcutInput.addEventListener("keyup", (event) => {
 
 // While the field has focus the saved shortcut is paused, so pressing it
 // records it instead of starting a rewrite. Rust also resumes it when the
-// window loses focus or closes, in case a resume here never arrives.
+// window loses focus or closes, in case a resume here never arrives, and
+// pauses again when it regains focus while the field still records.
 shortcutInput.addEventListener("focus", () => {
   showingSaved = false;
   renderField();
-  void inTurn(pauseShortcut);
+  requestPause(pauseShortcut);
 });
 
 function endRecording(): void {
-  void inTurn(resumeShortcut);
+  requestPause(resumeShortcut);
 }
 
 shortcutInput.addEventListener("blur", () => {
@@ -243,7 +258,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 shortcutReset.addEventListener("click", async () => {
-  await applyShortcut(DEFAULT_SHORTCUT);
+  if (resetShortcut) await applyShortcut(resetShortcut);
   // Disabling the button while it saved dropped its focus. Give it back, or
   // once the default is set and the button hides, move on to the next
   // control: the field would start recording.
@@ -288,10 +303,9 @@ export async function initLaunch(
   }
   if (!working) {
     shortcutInput.setAttribute("aria-invalid", "true");
-    show(
-      shortcutStatus,
-      "This shortcut isn't working: another app is using it. Pick a new one.",
-      "error",
-    );
+    // Its own line, so it stays while the field records and refuses
+    // presses, until a new shortcut saves.
+    shortcutWarning.textContent =
+      "This shortcut isn't working: another app is using it. Pick a new one.";
   }
 }
