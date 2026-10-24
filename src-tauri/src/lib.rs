@@ -64,7 +64,7 @@ pub fn run() {
         // Single instance must be registered first, as its docs require.
         // A second launch exits and opens Settings in this one.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            settings_window::open_later(app);
+            settings_window::open_at_later(app, None);
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -111,7 +111,7 @@ pub fn run() {
                 notify_shortcut_failed(app.handle(), error);
             }
             if (opens_settings_at_startup(startup) || registered.is_err())
-                && settings_window::open(app.handle()).is_err()
+                && settings_window::open_at(app.handle(), None).is_err()
             {
                 tracing::warn!("the settings window could not open");
             }

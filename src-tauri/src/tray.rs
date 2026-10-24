@@ -56,7 +56,7 @@ pub fn init(app: &App) -> tauri::Result<()> {
             Some(TrayAction::ShowUpdate) => {
                 settings_window::open_at_later(app, Some(Section::Updates));
             }
-            Some(TrayAction::OpenSettings) => settings_window::open_later(app),
+            Some(TrayAction::OpenSettings) => settings_window::open_at_later(app, None),
             Some(TrayAction::Quit) => app.exit(0),
             None => {}
         })

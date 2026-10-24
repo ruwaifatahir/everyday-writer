@@ -53,15 +53,6 @@ fn page(section: Option<Section>) -> String {
     }
 }
 
-/// Opens the settings window, or brings it to the front if it's open.
-///
-/// # Errors
-///
-/// Returns an error if the window can't be created or shown.
-pub fn open(app: &AppHandle) -> tauri::Result<()> {
-    open_at(app, None)
-}
-
 /// Opens the settings window scrolled to `section`, or brings an open one to
 /// the front and scrolls it there. `None` leaves an open window where it is.
 ///
@@ -89,15 +80,9 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Opens the settings window from a spawned task. Use this from callbacks
-/// that run inside the event loop (the single-instance callback, menu
-/// events): building a window there deadlocks on Windows.
-pub fn open_later(app: &AppHandle) {
-    open_at_later(app, None);
-}
-
-/// [`open_at`] from a spawned task, for the same callbacks as
-/// [`open_later`]: the tray menu and notification clicks.
+/// [`open_at`] from a spawned task. Use this from callbacks that run inside
+/// the event loop (the single-instance callback, menu events, notification
+/// clicks): building a window there deadlocks on Windows.
 pub fn open_at_later(app: &AppHandle, section: Option<Section>) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
