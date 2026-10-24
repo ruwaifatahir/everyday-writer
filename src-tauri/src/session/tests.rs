@@ -410,7 +410,7 @@ async fn replace_into_a_closed_window_copies_the_result_and_shows_a_message() {
     assert_eq!(
         states(&session).last(),
         Some(&PopupState::Message {
-            text: "The original window closed. Press Ctrl+V to paste the rewrite.".to_owned(),
+            text: "The original window closed. Press Ctrl + V to paste the rewrite.".to_owned(),
             action: None,
             copied: true,
         })
@@ -434,7 +434,7 @@ async fn a_failed_replace_copies_the_result_and_says_so() {
     assert_eq!(
         states(&session).last(),
         Some(&PopupState::Message {
-            text: "Couldn't replace your text. Press Ctrl+V to paste the rewrite.".to_owned(),
+            text: "Couldn't replace your text. Press Ctrl + V to paste the rewrite.".to_owned(),
             action: None,
             copied: true,
         })

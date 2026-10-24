@@ -34,7 +34,7 @@ Typos and messy sentences slip into emails, chats and docs. Fixing them usually 
 ## How it works
 
 1. Select text in any app.
-2. Press `Ctrl+Shift+Space` (you can change it).
+2. Press `Ctrl + Shift + Space` (you can change it).
 3. Check the result in the popup and press **Replace** (or Enter).
 
 ## Why Everyday Writer
@@ -49,7 +49,7 @@ Typos and messy sentences slip into emails, chats and docs. Fixing them usually 
 - Your API key is stored in Windows Credential Manager.
 - Your clipboard is put back the way it was.
 - Only the rewrite request (to your provider) and the update check leave your machine.
-- Windows clipboard history (Win+V) may still show the text you rewrite, because the app you copy from adds it there.
+- Windows clipboard history (Win + V) may still show the text you rewrite, because the app you copy from adds it there.
 
 ## Install
 

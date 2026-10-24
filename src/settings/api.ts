@@ -44,14 +44,49 @@ export function saveSettings(newSettings: ProviderSettings): Promise<void> {
   return invoke("save_settings", { newSettings });
 }
 
-/** Rejects with "This shortcut is used by another app. Pick a new one." if Windows refuses it; the old one stays. */
+/** Why `setShortcut` failed; mirrors `SetShortcutError` in `settings_window.rs`. */
+export type SetShortcutErrorReason =
+  | "notAShortcut"
+  | "noCtrlOrAlt"
+  | "win"
+  | "copyPaste"
+  | "taken"
+  | "save";
+
+/** Rejects with a `SetShortcutErrorReason` saying why; the old shortcut stays. */
 export function setShortcut(shortcut: string): Promise<void> {
   return invoke("set_shortcut", { shortcut });
+}
+
+/**
+ * Stops the saved shortcut while the field records, so pressing it reaches
+ * the field. Rust applies it only while this window has focus, and brings
+ * the shortcut back by itself when the window loses focus or closes.
+ */
+export function pauseShortcut(): Promise<void> {
+  return invoke("pause_shortcut");
+}
+
+/** Brings the saved shortcut back after `pauseShortcut`; harmless if it already works. */
+export function resumeShortcut(): Promise<void> {
+  return invoke("resume_shortcut");
 }
 
 /** False when the saved shortcut couldn't be registered at startup. */
 export function isShortcutWorking(): Promise<boolean> {
   return invoke<boolean>("is_shortcut_working");
+}
+
+/** Mirrors `DefaultShortcut` in `settings_window.rs`. */
+export interface DefaultShortcut {
+  /** What "Reset to default" sets with `setShortcut`, as Rust parses it. */
+  shortcut: string;
+  /** Whether the saved shortcut is the default, compared as keys, not text. */
+  isSaved: boolean;
+}
+
+export function defaultShortcut(): Promise<DefaultShortcut> {
+  return invoke<DefaultShortcut>("default_shortcut");
 }
 
 export function setStartWithWindows(enabled: boolean): Promise<void> {

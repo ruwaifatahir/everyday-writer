@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 - 2026-10-24
+
+### Features
+- The shortcut field in Settings now records key presses. Click it and press the keys you want, and the shortcut is saved straight away. There's no **Use shortcut** button any more.
+- While you record, the app's shortcut is paused, so you can record the current one again, such as Ctrl + Shift + Space. It comes back when you leave the field, press Esc or close Settings.
+- **Reset to default** brings back Ctrl + Shift + Space in one click. It shows only when you use a different shortcut.
+- When a shortcut can't be used, Settings says why and keeps recording: it needs Ctrl or Alt, Win can't be used, or the app needs Ctrl + C and Ctrl + V to copy and paste. Ctrl + Alt shortcuts save, with a note that they can clash with AltGr on some keyboards.
+
+### Changes
+- A shortcut with Win saved by an earlier version keeps working until you change it.
+- If another app takes your shortcut while it's paused, a notification tells you to pick a new one.
+- Keys are written the way the shortcut field shows them, such as "Press Ctrl + V".
+
 ## 1.2.0 - 2026-10-24
 
 **The app is now called Everyday Writer.** Whether you update from the app or run the installer, it installs as a new app next to your current copy. Afterwards, uninstall **everyday-writer** from Settings → Apps → Installed apps. Your settings, instruction sets, key and start-with-Windows choice are kept.

@@ -188,9 +188,26 @@ body {
 
 /* Shortcut and startup */
 
+/* Records presses only: no caret or text cursor, and the prompt reads like
+   a placeholder. */
 #shortcut {
   font-weight: var(--weight-strong);
   letter-spacing: 0.01em;
+  cursor: default;
+  caret-color: transparent;
+  user-select: none;
+}
+
+/* Focus means recording, so the ring shows after a click too (a read-only
+   field doesn't match :focus-visible then). */
+#shortcut:focus {
+  outline: var(--border) solid var(--ink);
+  outline-offset: 2px;
+}
+
+#shortcut[data-prompt] {
+  font-weight: inherit;
+  color: var(--ink-soft);
 }
 
 .switch-row {

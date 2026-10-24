@@ -82,7 +82,10 @@ pub fn run() {
             settings_window::test_connection,
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
+            settings_window::pause_shortcut,
+            settings_window::resume_shortcut,
             settings_window::set_start_with_windows,
+            settings_window::default_shortcut,
             live_updates::app_version,
             live_updates::get_updates_state,
             live_updates::check_for_updates,
@@ -181,7 +184,7 @@ fn register_saved_shortcut(app: &App) -> Result<(), ShortcutError> {
 }
 
 /// Tells the user, with a tray notification, that the shortcut doesn't work.
-fn notify_shortcut_failed(app: &AppHandle, error: ShortcutError) {
+pub(crate) fn notify_shortcut_failed(app: &AppHandle, error: ShortcutError) {
     let body = match error {
         ShortcutError::Taken => "Your shortcut is used by another app. Pick a new one in Settings.",
         ShortcutError::Invalid => "Your saved shortcut isn't valid. Pick a new one in Settings.",

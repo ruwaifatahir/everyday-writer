@@ -10,10 +10,12 @@
 )]
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 
 use tauri::window::Color;
-use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+};
 
 use crate::autostart::{self, TauriAutostart};
 use crate::llm::{self, Connection};
@@ -21,7 +23,7 @@ use crate::settings::{
     ApiKey, ApiKeySource, AppSettings, KeyError, KeyringApiKeys, Provider, ProviderKind,
     SaveKeyError, Settings,
 };
-use crate::shortcut::{self, Hotkeys, ShortcutError, TauriHotkeys};
+use crate::shortcut::{self, Hotkeys, TauriHotkeys};
 
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
@@ -89,6 +91,11 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         .center()
         .focused(true)
         .build()?;
+    // Built focused. Its first focus event may be handled before the
+    // listener below is attached.
+    SHORTCUT_PAUSE.set_focused(true);
+    let handle = app.clone();
+    window.on_window_event(move |event| track_focus(&handle, event));
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
         crate::win32::color_title_bar(hwnd, TITLE_BAR, TITLE_TEXT);
@@ -121,12 +128,6 @@ pub enum CommandError {
     /// An empty key was submitted.
     #[error("Enter an API key first.")]
     BlankKey,
-    /// Windows refused the new shortcut. The previous one is kept.
-    #[error("This shortcut is used by another app. Pick a new one.")]
-    ShortcutTaken,
-    /// The new shortcut isn't a usable combination.
-    #[error("Use Ctrl, Alt or Win together with one other key.")]
-    ShortcutInvalid,
     /// Windows refused to change its startup list.
     #[error("Couldn't change the Windows startup setting. Try again.")]
     Autostart,
@@ -172,12 +173,36 @@ impl CommandError {
     }
 }
 
-impl From<shortcut::ChangeError> for CommandError {
+/// Why [`set_shortcut`] didn't change the shortcut. The previous one still
+/// works. Unlike [`CommandError`], it reaches the window as a reason, such as
+/// `"noCtrlOrAlt"`, and Settings words it: Rust judges, the page explains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SetShortcutError {
+    /// The keys don't make a shortcut.
+    NotAShortcut,
+    /// Neither Ctrl nor Alt is held.
+    NoCtrlOrAlt,
+    /// Win is held.
+    Win,
+    /// It is Ctrl+C or Ctrl+V, which the app presses itself.
+    CopyPaste,
+    /// Windows refused it, almost always because another app uses it.
+    Taken,
+    /// The settings file couldn't be written.
+    Save,
+}
+
+impl From<shortcut::ChangeError> for SetShortcutError {
     fn from(error: shortcut::ChangeError) -> Self {
+        use shortcut::{ChangeError, Refusal};
         match error {
-            shortcut::ChangeError::Shortcut(ShortcutError::Taken) => Self::ShortcutTaken,
-            shortcut::ChangeError::Shortcut(ShortcutError::Invalid) => Self::ShortcutInvalid,
-            shortcut::ChangeError::Save => Self::SaveSettings,
+            ChangeError::Refused(Refusal::NotAShortcut) => Self::NotAShortcut,
+            ChangeError::Refused(Refusal::NoCtrlOrAlt) => Self::NoCtrlOrAlt,
+            ChangeError::Refused(Refusal::Win) => Self::Win,
+            ChangeError::Refused(Refusal::CopyPaste) => Self::CopyPaste,
+            ChangeError::Taken => Self::Taken,
+            ChangeError::Save => Self::Save,
         }
     }
 }
@@ -330,31 +355,94 @@ pub fn clear_api_key(
         .map_err(|_| CommandError::KeyStore)
 }
 
-/// Serializes shortcut changes, so two quick changes can't both read the
-/// same previous shortcut.
-static SHORTCUT_CHANGE: Mutex<()> = Mutex::new(());
+/// The saved shortcut's pause while Settings records. It also serializes
+/// every shortcut change (see [`shortcut::Pause`]).
+static SHORTCUT_PAUSE: shortcut::Pause = shortcut::Pause::new();
+
+/// Pauses the saved shortcut while Settings records a new one, so pressing it
+/// reaches the field instead of starting a rewrite. Takes effect only while
+/// the window has focus, so a pause that arrives late can't outlast it.
+#[tauri::command(async)]
+pub fn pause_shortcut(app: AppHandle) {
+    request_pause(&app, true);
+}
+
+/// Brings back the saved shortcut when recording ends. Does nothing if it
+/// already works.
+#[tauri::command(async)]
+pub fn resume_shortcut(app: AppHandle) {
+    request_pause(&app, false);
+}
+
+fn request_pause(app: &AppHandle, recording: bool) {
+    let Some(hotkeys) = app.try_state::<TauriHotkeys>() else {
+        return;
+    };
+    let settled = SHORTCUT_PAUSE.request(hotkeys.inner(), || saved_shortcut(app), recording);
+    report_lost_shortcut(app, settled);
+}
+
+/// Tells Rust's side of the pause that the settings window gained or lost
+/// focus, or closed, then settles the shortcut to match, so it can't stay
+/// paused once the window loses focus or closes, whatever Settings sends.
+///
+/// Losing focus still counts, not only closing: hiding or minimizing the
+/// window has no event of its own but takes its focus. Regaining focus
+/// pauses again if the field still records. On Windows, Tauri reports these
+/// from the webview's own focus, so they track the page, not the frame.
+fn track_focus(app: &AppHandle, event: &WindowEvent) {
+    match event {
+        WindowEvent::Focused(focused) => SHORTCUT_PAUSE.set_focused(*focused),
+        WindowEvent::Destroyed => SHORTCUT_PAUSE.close(),
+        _ => return,
+    }
+    // Off the main thread: the plugin runs each call there and blocks until
+    // it's done, so window events, which run there, must not wait for it.
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(hotkeys) = app.try_state::<TauriHotkeys>() else {
+            return;
+        };
+        let settled = SHORTCUT_PAUSE.settle(hotkeys.inner(), || saved_shortcut(&app));
+        report_lost_shortcut(&app, settled);
+    });
+}
+
+/// The saved shortcut, or nothing before the settings are loaded.
+fn saved_shortcut(app: &AppHandle) -> String {
+    app.try_state::<Arc<AppSettings>>()
+        .map(|settings| settings.settings().shortcut)
+        .unwrap_or_default()
+}
+
+/// If the paused shortcut couldn't come back, says so with a tray
+/// notification, as when it fails at startup.
+fn report_lost_shortcut(app: &AppHandle, settled: Result<(), shortcut::ShortcutError>) {
+    if let Err(error) = settled {
+        tracing::warn!("the paused shortcut couldn't be registered again");
+        crate::notify_shortcut_failed(app, error);
+    }
+}
 
 /// Changes the rewrite shortcut. The new one works right away and is saved;
 /// if Windows refuses it, the previous one keeps working.
 ///
 /// # Errors
 ///
-/// Returns [`CommandError::ShortcutTaken`] if another app holds it,
-/// [`CommandError::ShortcutInvalid`] if it isn't a usable combination and
-/// [`CommandError::SaveSettings`] if it can't be saved.
+/// Returns the [`SetShortcutError`] that says why: a rule for new shortcuts
+/// is broken, another app holds it, or it can't be saved.
 #[tauri::command(async)]
 pub fn set_shortcut(
     settings: State<'_, Arc<AppSettings>>,
     hotkeys: State<'_, TauriHotkeys>,
     shortcut: String,
-) -> Result<(), CommandError> {
-    let _changing = SHORTCUT_CHANGE
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    let current = settings.settings().shortcut;
-    shortcut::change(hotkeys.inner(), &current, &shortcut, |new| {
-        settings.modify(|s| new.clone_into(&mut s.shortcut))
-    })?;
+) -> Result<(), SetShortcutError> {
+    SHORTCUT_PAUSE.change(
+        hotkeys.inner(),
+        || settings.settings().shortcut,
+        &shortcut,
+        |new| settings.modify(|s| new.clone_into(&mut s.shortcut)),
+    )?;
     Ok(())
 }
 
@@ -366,6 +454,27 @@ pub fn is_shortcut_working(
     hotkeys: State<'_, TauriHotkeys>,
 ) -> bool {
     shortcut::parse(&settings.settings().shortcut).is_ok_and(|saved| hotkeys.is_registered(saved))
+}
+
+/// The default shortcut, for "Reset to default" to set through
+/// [`set_shortcut`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultShortcut {
+    /// As Rust parses it, such as `Ctrl+Shift+Space`.
+    shortcut: &'static str,
+    /// Whether the saved shortcut is already the default.
+    is_saved: bool,
+}
+
+/// The default shortcut and whether it is the saved one, so Settings can
+/// offer to reset it.
+#[tauri::command(async)]
+pub fn default_shortcut(settings: State<'_, Arc<AppSettings>>) -> DefaultShortcut {
+    DefaultShortcut {
+        shortcut: shortcut::DEFAULT_SHORTCUT,
+        is_saved: shortcut::is_default(&settings.settings().shortcut),
+    }
 }
 
 /// Turns start-with-Windows on or off.
@@ -388,7 +497,7 @@ pub fn set_start_with_windows(
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandError, Section, page};
+    use super::{CommandError, DefaultShortcut, Section, SetShortcutError, page};
     use crate::llm::RewriteError;
     use crate::settings::ProviderKind;
 
@@ -407,6 +516,39 @@ mod tests {
         let json = serde_json::to_string(&CommandError::BlankKey).unwrap();
 
         assert_eq!(json, r#""Enter an API key first.""#);
+    }
+
+    /// `DefaultShortcut` in `src/settings/api.ts` mirrors this shape.
+    #[test]
+    fn the_default_shortcut_reaches_the_window_with_whether_it_is_saved() {
+        let default = DefaultShortcut {
+            shortcut: crate::shortcut::DEFAULT_SHORTCUT,
+            is_saved: true,
+        };
+
+        let json = serde_json::to_string(&default).unwrap();
+
+        assert_eq!(json, r#"{"shortcut":"Ctrl+Shift+Space","isSaved":true}"#);
+    }
+
+    /// `SetShortcutErrorReason` in `src/settings/api.ts` mirrors these names.
+    #[test]
+    fn a_refused_shortcut_reaches_the_window_as_its_reason() {
+        use crate::shortcut::{ChangeError, Refusal};
+
+        let reasons = [
+            (ChangeError::Refused(Refusal::NotAShortcut), "notAShortcut"),
+            (ChangeError::Refused(Refusal::NoCtrlOrAlt), "noCtrlOrAlt"),
+            (ChangeError::Refused(Refusal::Win), "win"),
+            (ChangeError::Refused(Refusal::CopyPaste), "copyPaste"),
+            (ChangeError::Taken, "taken"),
+            (ChangeError::Save, "save"),
+        ];
+        for (error, reason) in reasons {
+            let json = serde_json::to_string(&SetShortcutError::from(error)).unwrap();
+
+            assert_eq!(json, format!("\"{reason}\""));
+        }
     }
 
     #[test]
