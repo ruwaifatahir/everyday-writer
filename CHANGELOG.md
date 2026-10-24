@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 - 2026-10-24
 
 **The app is now called Everyday Writer.** Whether you update from the app or run the installer, it installs as a new app next to your current copy. Afterwards, uninstall **everyday-writer** from Settings → Apps → Installed apps. Your settings, instruction sets, key and start-with-Windows choice are kept.
 
