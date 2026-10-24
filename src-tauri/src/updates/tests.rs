@@ -134,11 +134,17 @@ impl BusyGate for FakeGate {
 #[derive(Default)]
 struct FakeNotifier {
     shown: Mutex<Vec<String>>,
+    /// The versions "Updated to" notifications were asked for.
+    updated: Mutex<Vec<String>>,
 }
 
 impl Notifier for FakeNotifier {
     fn update_available(&self, version: &str) {
         self.shown.lock().unwrap().push(version.to_owned());
+    }
+
+    fn updated_to(&self, version: &str) {
+        self.updated.lock().unwrap().push(version.to_owned());
     }
 }
 
@@ -162,7 +168,16 @@ impl FakeMemory {
         Self(Mutex::new(Remembered {
             auto_check,
             last_notified_version: last_notified_version.map(str::to_owned),
+            last_run_version: None,
         }))
+    }
+
+    /// Memory of a previous run of `version` (`None`: no run recorded),
+    /// with automatic checks off so only what happens at start shows.
+    fn last_run(version: Option<&str>) -> Self {
+        let memory = Self::new(false, None);
+        memory.0.lock().unwrap().last_run_version = version.map(str::to_owned);
+        memory
     }
 }
 
@@ -173,6 +188,10 @@ impl UpdateMemory for FakeMemory {
 
     fn remember_notified(&self, version: &str) {
         self.0.lock().unwrap().last_notified_version = Some(version.to_owned());
+    }
+
+    fn remember_run(&self, version: &str) {
+        self.0.lock().unwrap().last_run_version = Some(version.to_owned());
     }
 }
 
@@ -192,6 +211,7 @@ fn controller_remembering(answer: Answer, memory: FakeMemory) -> Controller {
 
 fn controller_from(source: FakeSource, gate: FakeGate, memory: FakeMemory) -> Controller {
     UpdateController::new(
+        RUNNING,
         source,
         FakeNotifier::default(),
         FakeView::default(),
@@ -260,6 +280,9 @@ async fn after(secs: u64) {
 
 const DAY: u64 = 24 * 60 * 60;
 
+/// The version the tests' app runs.
+const RUNNING: &str = "1.1.0";
+
 fn checks(controller: &Controller) -> usize {
     controller.source.checks.load(Ordering::Relaxed)
 }
@@ -274,6 +297,14 @@ fn states(controller: &Controller) -> Vec<UpdatesState> {
 
 fn notifications(controller: &Controller) -> Vec<String> {
     controller.notifier.shown.lock().unwrap().clone()
+}
+
+fn updated_notifications(controller: &Controller) -> Vec<String> {
+    controller.notifier.updated.lock().unwrap().clone()
+}
+
+fn last_run(controller: &Controller) -> Option<String> {
+    controller.memory.recall().last_run_version
 }
 
 fn available(version: &str) -> UpdatesState {
@@ -682,5 +713,65 @@ async fn turning_automatic_checks_off_keeps_the_known_update() {
 
     assert_eq!(controller.state(), available("1.1.0"));
     assert_eq!(states(&controller), [available("1.1.0")]);
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn starting_a_newer_version_says_updated_to_it_once() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Nothing,
+        FakeMemory::last_run(Some("1.0.0")),
+    ));
+
+    let schedule = start(&controller);
+    after(DAY).await;
+
+    assert_eq!(updated_notifications(&controller), ["1.1.0"]);
+    assert_eq!(last_run(&controller).as_deref(), Some(RUNNING));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_normal_restart_of_the_same_version_says_nothing() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Nothing,
+        FakeMemory::last_run(Some(RUNNING)),
+    ));
+
+    let schedule = start(&controller);
+    after(1).await;
+
+    assert_eq!(updated_notifications(&controller), Vec::<String>::new());
+    assert_eq!(last_run(&controller).as_deref(), Some(RUNNING));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_first_run_says_nothing_and_remembers_the_version() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Nothing,
+        FakeMemory::last_run(None),
+    ));
+
+    let schedule = start(&controller);
+    after(1).await;
+
+    assert_eq!(updated_notifications(&controller), Vec::<String>::new());
+    assert_eq!(last_run(&controller).as_deref(), Some(RUNNING));
+    schedule.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn going_back_to_an_older_version_says_nothing() {
+    let controller = Arc::new(controller_remembering(
+        Answer::Nothing,
+        FakeMemory::last_run(Some("1.10.0")),
+    ));
+
+    let schedule = start(&controller);
+    after(1).await;
+
+    assert_eq!(updated_notifications(&controller), Vec::<String>::new());
+    assert_eq!(last_run(&controller).as_deref(), Some(RUNNING));
     schedule.abort();
 }

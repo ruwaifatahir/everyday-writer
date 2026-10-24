@@ -171,6 +171,7 @@ mod tests {
 
         assert!(loaded.auto_check);
         assert_eq!(loaded.last_notified_version, None);
+        assert_eq!(loaded.last_run_version, None);
     }
 
     #[test]
@@ -179,6 +180,7 @@ mod tests {
         let saved = Settings {
             auto_check: false,
             last_notified_version: Some("1.1.0".to_owned()),
+            last_run_version: Some("1.0.0".to_owned()),
             ..custom_settings()
         };
 
