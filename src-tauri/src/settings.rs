@@ -81,6 +81,11 @@ pub struct Settings {
     pub shortcut: String,
     /// Whether the app starts when the user signs in to Windows.
     pub start_with_windows: bool,
+    /// Whether the app checks for updates by itself. On unless turned off.
+    pub auto_check: bool,
+    /// The newest version an update notification was shown for, so each
+    /// version is announced only once.
+    pub last_notified_version: Option<String>,
 }
 
 impl Default for Settings {
@@ -91,6 +96,8 @@ impl Default for Settings {
             custom_base_url: String::new(),
             shortcut: crate::shortcut::DEFAULT_SHORTCUT.to_owned(),
             start_with_windows: true,
+            auto_check: true,
+            last_notified_version: None,
             instruction_sets: InstructionSets::default(),
         }
     }
