@@ -86,7 +86,7 @@ pnpm tauri build --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'
 
 ### Steps
 
-1. Bump `version` to the same value in all three manifests: `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. Run `cargo check --manifest-path src-tauri/Cargo.toml` so `Cargo.lock` picks up the new version.
+1. Bump `version` to the same value in all three manifests: `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. Run `cargo check --manifest-path src-tauri/Cargo.toml` so `Cargo.lock` picks up the new version. In `CHANGELOG.md`, rename `## Unreleased` to the new version and date.
 2. Land the bump on `main` through a pull request.
 3. Tag the merged commit on `main` and push the tag:
 
@@ -98,9 +98,10 @@ pnpm tauri build --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'
 
 4. Watch the run: `gh run watch`. The first job fails if the tag (minus the `v`) differs from any manifest version. Delete the tag (`git push origin :refs/tags/v0.2.0` and `git tag -d v0.2.0`), fix the version, and tag again.
 5. Open the draft release on GitHub and check it has the `*_x64-setup.exe` installer, its `*_x64-setup.exe.sig` and `latest.json` (its `version` is the new one, and `platforms.windows-x86_64` has a `signature` and a `url`).
-6. Write the notes and publish.
+6. Before publishing, prove the real update path: update an installed older build to this version and run the rest of [docs/manual-test-checklist.md](docs/manual-test-checklist.md). A draft can't be fetched by an installed copy, so the "Updates" section there uses a pre-release test tag of the same commit and an older build pointed at it. Record the run in the checklist's results table. Don't publish if any update case fails: once a broken updater ships, users must reinstall by hand.
+7. Paste that version's `CHANGELOG.md` notes into the release and publish.
 
-To dry-run the pipeline without a real version, push a test tag such as `v1.1.0-rc.1` from a throwaway branch whose three manifests say `1.1.0-rc.1` (the version job checks they match). Check the draft has the three files from step 5, then delete it as below. Never publish it: a published release that isn't marked pre-release becomes `latest` and goes to every user.
+To dry-run the pipeline without a real version, push a test tag such as `v1.1.0-rc.1` from a throwaway branch whose three manifests say `1.1.0-rc.1` (the version job checks they match). Check the draft has the three files from step 5, then delete it as below. Only publish it with **Set as a pre-release** ticked, as the update test in step 6 does: a published release that isn't marked pre-release becomes `latest` and goes to every user.
 
 To throw away a draft and its tag: `gh release delete v0.2.0 --yes --cleanup-tag`, then `git tag -d v0.2.0`.
 
