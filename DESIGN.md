@@ -186,6 +186,21 @@ included; inputs, the result, and status and error lines stay selectable.
 Scrollbars are the thin system bar in `GrayText`. Settings closes on Esc or
 Ctrl+W, asking first about unsaved edits.
 
+## Logo
+
+A geometric lowercase "e" on a squircle tile: flat, two colors, no outline.
+
+- `design/logo/everyday-writer-ink.svg`: cream `e` on an ink tile. The app
+  icon everywhere: tray, title bars, taskbar, installer, Start menu.
+- `design/logo/everyday-writer-cream.svg`: ink `e` on a cream tile. The
+  alternate, kept for later and not used in the app yet.
+
+The tail of the `e` is cut square across the stroke, and the crossbar sits
+just above centre. Every file in `src-tauri/icons/` is generated from the ink
+SVG, so never edit them by hand. After changing the SVG, run
+`pnpm tauri icon design/logo/everyday-writer-ink.svg -o src-tauri/icons`
+and delete the `android/`, `ios/` and `64x64.png` outputs.
+
 ## Do
 
 - Keep lavender for the single primary action in a view.
