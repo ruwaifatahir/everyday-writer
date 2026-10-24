@@ -11,8 +11,6 @@
 
 <p align="center">
   <a href="https://github.com/ruwaifatahir/everyday-writer/releases/latest"><strong>Download for Windows</strong></a>
-  ·
-  <a href="docs/PRD.md">All features</a>
   <br><br>
   <a href="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml"><img src="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
