@@ -30,6 +30,10 @@ pub const LABEL: &str = "settings";
 /// so the window never flashes white before the page loads.
 const BACKGROUND: Color = Color(0xff, 0xff, 0xeb, 0xff);
 
+/// The title bar matches the page: `--cream` behind `--ink` text.
+const TITLE_BAR: u32 = 0xff_ff_eb;
+const TITLE_TEXT: u32 = 0x1a_1a_1a;
+
 /// Asks an open settings window to scroll to a section. The payload is the
 /// section's id in `settings.html`.
 const SCROLL_EVENT: &str = "settings-scroll-to";
@@ -75,7 +79,7 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         }
         return Ok(());
     }
-    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
+    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page(section).into()))
         .title("everyday-writer settings")
         .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
@@ -85,6 +89,10 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         .center()
         .focused(true)
         .build()?;
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        crate::win32::color_title_bar(hwnd, TITLE_BAR, TITLE_TEXT);
+    }
     Ok(())
 }
 

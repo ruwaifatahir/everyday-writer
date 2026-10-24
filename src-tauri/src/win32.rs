@@ -1,5 +1,6 @@
-//! Safe wrappers over the few Win32 calls the text bridge needs: the
-//! foreground window, held modifier keys and synthetic key presses.
+//! Safe wrappers over the few Win32 calls the app needs: the foreground
+//! window, held modifier keys and synthetic key presses for the text bridge,
+//! and the settings window's title bar colors.
 //!
 //! The only module with `unsafe`. Each wrapper allows it locally and
 //! documents every block with a `// SAFETY:` comment.
@@ -7,7 +8,10 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{COLORREF, HWND};
+use windows::Win32::Graphics::Dwm::{
+    DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DWMWINDOWATTRIBUTE, DwmSetWindowAttribute,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT,
     KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LCONTROL,
@@ -240,4 +244,26 @@ fn send(inputs: &[INPUT]) -> bool {
     // element, as SendInput requires.
     let sent = unsafe { SendInput(inputs, size) };
     usize::try_from(sent).is_ok_and(|sent| sent == inputs.len())
+}
+
+/// Paints a window's title bar `caption` with `text` on it, each as
+/// `0xRRGGBB`. Windows 11 only: Windows 10 rejects the colors and keeps its
+/// own, which is fine, so failures are ignored.
+pub fn color_title_bar(window: HWND, caption: u32, text: u32) {
+    set_color(window, DWMWA_CAPTION_COLOR, caption);
+    set_color(window, DWMWA_TEXT_COLOR, text);
+}
+
+/// Sets one DWM color attribute, converting `0xRRGGBB` to a COLORREF
+/// (`0x00BBGGRR`).
+#[expect(unsafe_code, reason = "Win32 FFI: DwmSetWindowAttribute")]
+fn set_color(window: HWND, attribute: DWMWINDOWATTRIBUTE, rgb: u32) {
+    let color = COLORREF(((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff));
+    let Ok(size) = u32::try_from(size_of::<COLORREF>()) else {
+        return;
+    };
+    // SAFETY: `color` lives for the whole call and `size` is its size, which
+    // is what both color attributes expect. A bad window handle only makes
+    // the call return an error.
+    let _ = unsafe { DwmSetWindowAttribute(window, attribute, (&raw const color).cast(), size) };
 }

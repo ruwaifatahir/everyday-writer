@@ -51,9 +51,11 @@ tauri-plugin-updater = { version = "2.14.0", default-features = false, features 
 windows-native-keyring-store = { version = "1.1.0", default-features = false }
 # The text bridge: clipboard access (safe API) plus SendInput, key state and
 # the foreground window. Both are already in the graph through Tauri.
+# `Win32_Graphics_Dwm` colors the settings window's title bar.
 clipboard-win = { version = "5.4.3", default-features = false }
 windows = { version = "0.62.2", default-features = false, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
