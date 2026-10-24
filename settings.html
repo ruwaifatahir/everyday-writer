@@ -151,6 +151,14 @@
         <h2 id="updates-title">Updates</h2>
       </header>
       <p class="app-version" id="app-version"></p>
+      <label class="switch-row" for="auto-check">
+        <span class="switch-text">
+          <span class="label">Check for updates automatically</span>
+          <span class="hint">Once a day. Nothing installs until you choose.</span>
+        </span>
+        <input type="checkbox" role="switch" aria-checked="true" class="switch" id="auto-check" checked />
+      </label>
+      <p class="hint field-status" id="auto-check-status" role="status" aria-live="polite"></p>
       <div class="updates-check">
         <button type="button" class="button quiet" id="updates-check">Check for updates</button>
         <p class="hint field-status" id="updates-status" role="status" aria-live="polite"></p>

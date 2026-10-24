@@ -26,6 +26,8 @@ export interface Settings {
   shortcut: string;
   /** Change it with `setStartWithWindows`. */
   startWithWindows: boolean;
+  /** Change it with `setAutoCheck`. */
+  autoCheck: boolean;
 }
 
 /** What the Save button saves. The rest has its own commands. */
@@ -96,6 +98,11 @@ export function getUpdatesState(): Promise<UpdatesState> {
 /** Starts a check; the answer arrives through `onUpdatesState`. */
 export function checkForUpdates(): Promise<void> {
   return invoke("check_for_updates");
+}
+
+/** Saves the choice and starts or stops automatic checks at once. */
+export function setAutoCheck(enabled: boolean): Promise<void> {
+  return invoke("set_auto_check", { enabled });
 }
 
 export function onUpdatesState(
