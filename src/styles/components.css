@@ -1,0 +1,473 @@
+/* Shared controls: text roles, buttons, keyboard hints, badges, icon
+   buttons, inputs, switch, radio, cards, the waveform. Both windows import
+   this, so the popup and Settings read as one product. Import after
+   tokens.css and base.css. Separation is 2px borders and fill changes;
+   nothing here casts a shadow. */
+
+/* Text roles */
+
+.label {
+  padding: 0;
+  font-size: var(--text-body);
+  line-height: 20px;
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 18px;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+:is(.status, .field-status)[data-kind="ok"] {
+  color: var(--forest);
+}
+
+:is(.status, .field-status)[data-kind="error"] {
+  color: var(--ember-ink);
+}
+
+/* One focus ring everywhere: ink, offset, a real outline so Windows high
+   contrast still draws it. */
+
+:is(.button, .icon-button, .switch, input, textarea):focus-visible {
+  outline: var(--border) solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Buttons. Primary is lavender; secondary is cream; both carry the 2px ink
+   border. Quiet is a ghost for in-row actions and underlines on hover. */
+
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  height: var(--control-md);
+  padding: 0 var(--space-16);
+  font: inherit;
+  font-size: var(--text-body);
+  line-height: 1;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  color: var(--ink);
+  background: transparent;
+  border: var(--border) solid transparent;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  cursor: default;
+}
+
+.button.primary,
+.button.secondary {
+  border-color: var(--ink);
+}
+
+.button.primary {
+  min-width: 88px;
+  background: var(--lavender);
+}
+
+.button.primary:hover:not(:disabled) {
+  background: var(--lavender-press);
+}
+
+.button.secondary {
+  background: var(--cream);
+}
+
+.button.secondary:hover:not(:disabled) {
+  background: var(--fill-hover);
+}
+
+.button.secondary:active:not(:disabled) {
+  background: var(--fill-press);
+}
+
+/* Disabled: the outline goes stone and the fill drops, so a waiting
+   button reads as not yet, not as a washed-out color. */
+.button:is(.primary, .secondary):disabled {
+  color: var(--fog);
+  background: transparent;
+  border-color: var(--stone);
+}
+
+.button.quiet {
+  height: var(--control-sm);
+  padding: 0 var(--space-8);
+  font-size: 14px;
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  transition:
+    text-decoration-color var(--motion-fast) var(--ease),
+    background-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+
+.button.quiet:hover:not(:disabled) {
+  text-decoration-color: currentColor;
+}
+
+.button.quiet:active:not(:disabled) {
+  background: var(--fill-hover);
+}
+
+.button.danger {
+  color: var(--ember-ink);
+}
+
+/* Second click to confirm: the ember pill, so it can't be missed. */
+.button.danger.confirming,
+.button.danger.confirming:hover:not(:disabled) {
+  padding: 0 var(--space-12);
+  color: var(--ink);
+  text-decoration-color: transparent;
+  background: var(--ember);
+  border-color: var(--ink);
+  border-radius: var(--radius-pill);
+}
+
+.button.with-icon {
+  gap: var(--space-6);
+}
+
+.icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Keyboard hints: a small dark chamber. */
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 var(--space-6);
+  font: inherit;
+  font-size: var(--text-micro);
+  line-height: 1;
+  font-weight: var(--weight-medium);
+  color: var(--cream);
+  background: var(--ink);
+  border-radius: var(--radius-chip);
+}
+
+.button.primary kbd {
+  margin-right: calc(var(--space-6) * -1);
+}
+
+.button:disabled kbd {
+  background: var(--stone);
+}
+
+/* Badges: pills. Forest for done, ember for active, stone for neutral. */
+
+.badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-6);
+  height: 26px;
+  padding: 0 var(--space-12);
+  font-size: var(--text-caption);
+  line-height: 1;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--stone);
+  border-radius: var(--radius-pill);
+}
+
+/* Icon buttons */
+
+.icon-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.icon-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.icon-button:hover {
+  background: var(--fill-hover);
+}
+
+.icon-button:active {
+  background: var(--fill-press);
+}
+
+.icon-button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Text inputs and textareas */
+
+input[type="text"],
+input[type="url"],
+input[type="password"],
+textarea {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 var(--space-12);
+  font: inherit;
+  color: var(--ink);
+  background: var(--cream);
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-control);
+  transition:
+    border-color var(--motion-fast) var(--ease),
+    background-color var(--motion-fast) var(--ease);
+}
+
+textarea {
+  height: auto;
+  padding: var(--space-10) var(--space-12);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-soft);
+}
+
+input[aria-invalid="true"] {
+  border-color: var(--ember-ink);
+}
+
+/* The model field's dropdown arrow, from its datalist. */
+input[list]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+input[list]:hover::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+
+/* Switch: a cream track with an ink border; on fills lavender. */
+
+.switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  background: var(--cream);
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background-color var(--motion-normal) var(--ease);
+}
+
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--fog);
+  border-radius: var(--radius-pill);
+  transition:
+    transform var(--motion-normal) var(--ease),
+    background-color var(--motion-normal) var(--ease);
+}
+
+.switch:hover:not(:disabled) {
+  background: var(--fill-hover);
+}
+
+.switch:checked,
+.switch:checked:hover:not(:disabled) {
+  background: var(--lavender);
+}
+
+.switch:checked::before {
+  background: var(--ink);
+  transform: translateX(18px);
+}
+
+.switch:disabled {
+  cursor: default;
+  border-color: var(--stone);
+}
+
+/* Radio: an ink ring with an ink dot. */
+
+input[type="radio"] {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  background: var(--cream);
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+input[type="radio"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: var(--ink);
+  border-radius: var(--radius-pill);
+  transform: scale(0);
+  transition: transform var(--motion-normal) var(--ease);
+}
+
+input[type="radio"]:checked::before {
+  transform: scale(1);
+}
+
+/* Cards: cream on cream, held by a 2px stone outline. Interactive things
+   inside carry the ink border, so the card recedes and the controls lead.
+   .panel-foot closes a card with its actions, right-aligned. */
+
+.panel {
+  background: var(--cream);
+  border: var(--border) solid var(--stone);
+  border-radius: var(--radius-card);
+}
+
+.panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-12) var(--space-12) var(--space-16);
+  border-top: var(--border) solid var(--stone);
+}
+
+/* Waveform: Wispr's visualizer. A cream pill, ink bars that breathe while
+   the app works. Markup: .wave > span x7. */
+
+.wave {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 var(--space-16);
+  background: var(--cream);
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-pill);
+}
+
+.wave span {
+  width: 4px;
+  height: 22px;
+  background: var(--ink);
+  border-radius: var(--radius-pill);
+  transform: scaleY(var(--rest));
+  animation: wave 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  animation-delay: var(--delay);
+}
+
+.wave span:nth-child(1) {
+  --rest: 0.36;
+  --peak: 0.62;
+  --delay: -0.9s;
+}
+
+.wave span:nth-child(2) {
+  --rest: 0.5;
+  --peak: 0.95;
+  --delay: -0.3s;
+}
+
+.wave span:nth-child(3) {
+  --rest: 0.42;
+  --peak: 0.78;
+  --delay: -0.65s;
+}
+
+.wave span:nth-child(4) {
+  --rest: 0.6;
+  --peak: 1;
+  --delay: -0.1s;
+}
+
+.wave span:nth-child(5) {
+  --rest: 0.38;
+  --peak: 0.84;
+  --delay: -0.5s;
+}
+
+.wave span:nth-child(6) {
+  --rest: 0.52;
+  --peak: 0.7;
+  --delay: -0.8s;
+}
+
+.wave span:nth-child(7) {
+  --rest: 0.36;
+  --peak: 0.58;
+  --delay: -0.2s;
+}
+
+@keyframes wave {
+  to {
+    transform: scaleY(var(--peak));
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wave span {
+    animation: none;
+  }
+}

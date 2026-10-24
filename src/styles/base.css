@@ -1,0 +1,81 @@
+/* Shared reset and document defaults for every window. Import after
+   fonts.css and tokens.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: var(--leading);
+  font-weight: var(--weight-regular);
+  font-synthesis: none;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--cream);
+  caret-color: var(--ink);
+  accent-color: var(--ink);
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--ink);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+/* Headings are Garamond at weight 400: they lead by size, never by bold. */
+h1,
+h2 {
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  text-wrap: balance;
+}
+
+/* Each window fades in once its first state is drawn (main.ts sets
+   data-ready), so it never flashes an empty frame. */
+body {
+  margin: 0;
+  opacity: 0;
+  transition: opacity var(--motion-normal) var(--ease);
+}
+
+body[data-ready] {
+  opacity: 1;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--stone);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--fog);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-normal: 0ms;
+  }
+}

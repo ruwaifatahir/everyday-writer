@@ -1,0 +1,65 @@
+/* Design tokens. One cream theme for every window, after Wispr Flow;
+   DESIGN.md is the source of truth, keep the two in step. --cream is also
+   the native window background in popup.rs and settings_window.rs. */
+
+:root {
+  color-scheme: light;
+
+  /* Palette */
+  --cream: #ffffeb; /* the canvas: every window, card and secondary button */
+  --ink: #1a1a1a; /* text, every 2px border, the dark chamber fill */
+  --stone: #e4e4d0; /* dividers, card outlines, the segmented track */
+  --fog: #8a8a80; /* non-text marks only: below 4.5:1 on cream */
+  --ink-soft: #5f5f56; /* hints and secondary text, 6.4:1 on cream */
+  --lavender: #f0d7ff; /* the primary action, and nothing else */
+  --lavender-press: #e4c2fa;
+  --forest: #034f46; /* success: badges, ok status, the saved-key mark */
+  --ember: #ffa946; /* active: the active set, a confirming delete */
+  --ember-ink: #8a3d00; /* error text and invalid borders, 7.5:1 on cream */
+
+  --fill-hover: rgb(26 26 26 / 0.05);
+  --fill-press: rgb(26 26 26 / 0.09);
+  --selection: #f0d7ff;
+  --scrim: rgb(26 26 26 / 0.32);
+
+  /* Type */
+  --font-ui: "Figtree", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-serif: "EB Garamond", Georgia, serif;
+  --text-micro: 12px;
+  --text-caption: 13px;
+  --text-body: 15px;
+  --leading: 1.4;
+  --text-heading: 24px; /* Garamond, section headings and dialogs */
+  --text-title: 40px; /* Garamond, the page title */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+
+  /* Spacing: 4px base */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-40: 40px;
+
+  /* Geometry. Wispr's web radii, proportioned to a 400px window. */
+  --border: 2px;
+  --control-sm: 30px;
+  --control-md: 36px;
+  --radius-chip: 6px; /* kbd and dark square badges */
+  --radius-control: 12px; /* buttons, inputs */
+  --radius-card: 18px; /* settings cards, dialogs */
+  --radius-window: 8px; /* matches the Windows 11 corner on the popup */
+  --radius-pill: 999px;
+
+  /* Motion: quick, exponential ease-out */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 120ms;
+  --motion-normal: 220ms;
+}

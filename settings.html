@@ -15,75 +15,84 @@
         <p>Choose the AI that rewrites your text.</p>
       </header>
 
-      <fieldset class="field">
-        <legend class="label">Provider</legend>
-        <div class="segmented" role="radiogroup">
-          <label><input type="radio" name="provider" value="openai" checked /><span>OpenAI</span></label>
-          <label><input type="radio" name="provider" value="anthropic" /><span>Anthropic</span></label>
-          <label><input type="radio" name="provider" value="gemini" /><span>Gemini</span></label>
-          <label><input type="radio" name="provider" value="openrouter" /><span>OpenRouter</span></label>
-          <label><input type="radio" name="provider" value="ollama" /><span>Ollama</span></label>
-          <label><input type="radio" name="provider" value="custom" /><span>Custom</span></label>
-        </div>
-        <p class="hint" id="provider-hint" hidden>Uses Ollama on this computer at localhost:11434. No key needed.</p>
-      </fieldset>
+      <div class="panel">
+        <div class="panel-body">
+          <fieldset class="field">
+            <legend class="label">Provider</legend>
+            <div class="segmented" role="radiogroup">
+              <label><input type="radio" name="provider" value="openai" checked /><span>OpenAI</span></label>
+              <label><input type="radio" name="provider" value="anthropic" /><span>Anthropic</span></label>
+              <label><input type="radio" name="provider" value="gemini" /><span>Gemini</span></label>
+              <label><input type="radio" name="provider" value="openrouter" /><span>OpenRouter</span></label>
+              <label><input type="radio" name="provider" value="ollama" /><span>Ollama</span></label>
+              <label><input type="radio" name="provider" value="custom" /><span>Custom</span></label>
+            </div>
+            <p class="hint" id="provider-hint" hidden>Uses Ollama on this computer at localhost:11434. No key needed.</p>
+          </fieldset>
 
-      <div class="field" id="base-url-field" hidden>
-        <label class="label" for="base-url">Base URL</label>
-        <input
-          id="base-url"
-          name="customBaseUrl"
-          type="url"
-          inputmode="url"
-          spellcheck="false"
-          placeholder="http://localhost:1234/v1"
-          aria-describedby="base-url-hint"
-        />
-        <p class="hint" id="base-url-hint">Any service that speaks the OpenAI chat API, such as LM Studio or Vercel AI Gateway.</p>
+          <div class="field" id="base-url-field" hidden>
+            <label class="label" for="base-url">Base URL</label>
+            <input
+              id="base-url"
+              name="customBaseUrl"
+              type="url"
+              inputmode="url"
+              spellcheck="false"
+              placeholder="http://localhost:1234/v1"
+              aria-describedby="base-url-hint"
+            />
+            <p class="hint" id="base-url-hint">Any service that speaks the OpenAI chat API, such as LM Studio or Vercel AI Gateway.</p>
+          </div>
+
+          <div class="field">
+            <label class="label" for="model">Model</label>
+            <input
+              id="model"
+              name="model"
+              type="text"
+              list="model-options"
+              spellcheck="false"
+              aria-describedby="model-hint"
+            />
+            <datalist id="model-options"></datalist>
+            <p class="hint" id="model-hint" aria-live="polite">Pick from the list or type any model name.</p>
+          </div>
+
+          <div class="field" id="key-field">
+            <label class="label" for="key" id="key-label">API key</label>
+
+            <div class="key-saved" id="key-saved" hidden>
+              <svg class="key-icon" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+              </svg>
+              <span class="key-saved-text" id="key-saved-text">Key saved</span>
+              <button type="button" class="button quiet" id="key-replace">Replace</button>
+              <button type="button" class="button quiet danger" id="key-clear">Clear</button>
+            </div>
+
+            <div class="key-entry" id="key-entry">
+              <input
+                id="key"
+                name="key"
+                type="password"
+                spellcheck="false"
+                autocomplete="off"
+                aria-describedby="key-hint"
+              />
+              <button type="button" class="button secondary" id="key-cancel" hidden>Cancel</button>
+            </div>
+            <p class="hint" id="key-hint">Stored in Windows Credential Manager, never in a file.</p>
+          </div>
+        </div>
+
+        <footer class="actions panel-foot">
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+          <button type="submit" class="button primary" id="save">Save</button>
+        </footer>
       </div>
 
-      <div class="field">
-        <label class="label" for="model">Model</label>
-        <input
-          id="model"
-          name="model"
-          type="text"
-          list="model-options"
-          spellcheck="false"
-          aria-describedby="model-hint"
-        />
-        <datalist id="model-options"></datalist>
-        <p class="hint" id="model-hint" aria-live="polite">Pick from the list or type any model name.</p>
-      </div>
-
-      <div class="field" id="key-field">
-        <label class="label" for="key" id="key-label">API key</label>
-
-        <div class="key-saved" id="key-saved" hidden>
-          <svg class="key-icon" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="3" y="7" width="10" height="7" rx="1.5" />
-            <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-          </svg>
-          <span class="key-saved-text" id="key-saved-text">Key saved</span>
-          <button type="button" class="button quiet" id="key-replace">Replace</button>
-          <button type="button" class="button quiet danger" id="key-clear">Clear</button>
-        </div>
-
-        <div class="key-entry" id="key-entry">
-          <input
-            id="key"
-            name="key"
-            type="password"
-            spellcheck="false"
-            autocomplete="off"
-            aria-describedby="key-hint"
-          />
-          <button type="button" class="button quiet" id="key-cancel" hidden>Cancel</button>
-        </div>
-        <p class="hint" id="key-hint">Stored in Windows Credential Manager, never in a file.</p>
-      </div>
-
-      <p class="hint" id="clipboard-note">Windows clipboard history (Win+V) may show text you rewrite.</p>
+      <p class="hint note" id="clipboard-note">Windows clipboard history (Win+V) may show text you rewrite.</p>
 
       <section class="group" id="launch" aria-labelledby="launch-title">
         <header class="group-head">
@@ -91,54 +100,55 @@
           <p>These apply right away.</p>
         </header>
 
-        <div class="field">
-          <label class="label" for="shortcut">Shortcut</label>
-          <div class="shortcut-entry">
-            <input
-              id="shortcut"
-              type="text"
-              spellcheck="false"
-              autocomplete="off"
-              aria-describedby="shortcut-hint shortcut-status"
-            />
-            <button type="button" class="button quiet" id="shortcut-apply" hidden>Use this</button>
+        <div class="panel rows">
+          <div class="field row">
+            <label class="label" for="shortcut">Shortcut</label>
+            <div class="shortcut-entry">
+              <input
+                id="shortcut"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                aria-describedby="shortcut-hint shortcut-status"
+              />
+              <button type="button" class="button secondary" id="shortcut-apply" hidden>Use this</button>
+            </div>
+            <p class="hint" id="shortcut-hint">Press the keys, or type them like Ctrl+Alt+R. Use Ctrl, Alt or Win.</p>
+            <p class="hint field-status" id="shortcut-status" role="status" aria-live="polite"></p>
           </div>
-          <p class="hint" id="shortcut-hint">Press the keys, or type them like Ctrl+Alt+R. Use Ctrl, Alt or Win.</p>
-          <p class="hint field-status" id="shortcut-status" role="status" aria-live="polite"></p>
+
+          <div class="row">
+            <label class="switch-row" for="start-with-windows">
+              <span class="switch-text">
+                <span class="label">Start with Windows</span>
+                <span class="hint">Opens in the tray when you sign in.</span>
+              </span>
+              <input type="checkbox" role="switch" aria-checked="false" class="switch" id="start-with-windows" />
+            </label>
+            <p class="hint field-status" id="startup-status" role="status" aria-live="polite"></p>
+          </div>
         </div>
-
-        <label class="switch-row" for="start-with-windows">
-          <span class="switch-text">
-            <span class="label">Start with Windows</span>
-            <span class="hint">Opens in the tray when you sign in.</span>
-          </span>
-          <input type="checkbox" role="switch" aria-checked="false" class="switch" id="start-with-windows" />
-        </label>
-        <p class="hint field-status" id="startup-status" role="status" aria-live="polite"></p>
       </section>
-
-      <footer class="actions">
-        <p class="status" id="status" role="status" aria-live="polite"></p>
-        <button type="submit" class="button primary" id="save">Save</button>
-      </footer>
     </form>
 
     <!-- Instruction sets. Each change saves right away, so this section has
          no Save button of its own. Rendered by src/settings/instruction-sets.ts. -->
-    <section class="sets" aria-labelledby="sets-title">
-      <header class="sets-head">
+    <section class="group sets" aria-labelledby="sets-title">
+      <header class="group-head">
         <h2 id="sets-title">Instruction sets</h2>
         <p>The shortcut follows the active set. Pick one, or edit it to write like you.</p>
       </header>
 
-      <ul class="set-list" id="set-list" aria-labelledby="sets-title"></ul>
+      <div class="panel">
+        <ul class="set-list" id="set-list" aria-labelledby="sets-title"></ul>
 
-      <div class="sets-actions">
-        <button type="button" class="button quiet with-icon" id="set-add">
-          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
-          Add instruction set
-        </button>
-        <button type="button" class="button quiet" id="sets-restore">Restore default templates</button>
+        <div class="sets-actions panel-foot">
+          <button type="button" class="button quiet with-icon" id="set-add">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
+            Add instruction set
+          </button>
+          <button type="button" class="button quiet" id="sets-restore">Restore default templates</button>
+        </div>
       </div>
       <p class="status" id="sets-status" role="status" aria-live="polite"></p>
     </section>
@@ -146,23 +156,31 @@
     <!-- Updates. Outside the provider form: nothing here waits for Save.
          Rendered by src/settings/updates.ts. The tray and update notifications
          open the window scrolled here (settings_window::Section::Updates). -->
-    <section class="updates" id="updates" aria-labelledby="updates-title">
-      <header class="sets-head">
+    <section class="group updates" id="updates" aria-labelledby="updates-title">
+      <header class="group-head">
         <h2 id="updates-title">Updates</h2>
       </header>
-      <p class="app-version" id="app-version"></p>
-      <label class="switch-row" for="auto-check">
-        <span class="switch-text">
-          <span class="label">Check for updates automatically</span>
-          <span class="hint">Once a day. Nothing installs until you choose.</span>
-        </span>
-        <input type="checkbox" role="switch" aria-checked="true" class="switch" id="auto-check" checked />
-      </label>
-      <p class="hint field-status" id="auto-check-status" role="status" aria-live="polite"></p>
-      <div class="updates-check">
-        <button type="button" class="button quiet" id="updates-check">Check for updates</button>
-        <p class="hint field-status" id="updates-status" role="status" aria-live="polite"></p>
-        <button type="button" class="button primary" id="updates-install" hidden>Update now</button>
+
+      <div class="panel rows">
+        <div class="row">
+          <div class="updates-check">
+            <p class="app-version" id="app-version"></p>
+            <button type="button" class="button secondary" id="updates-check">Check for updates</button>
+            <button type="button" class="button primary" id="updates-install" hidden>Update now</button>
+          </div>
+          <p class="hint field-status" id="updates-status" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="row">
+          <label class="switch-row" for="auto-check">
+            <span class="switch-text">
+              <span class="label">Check for updates automatically</span>
+              <span class="hint">Once a day. Nothing installs until you choose.</span>
+            </span>
+            <input type="checkbox" role="switch" aria-checked="true" class="switch" id="auto-check" checked />
+          </label>
+          <p class="hint field-status" id="auto-check-status" role="status" aria-live="polite"></p>
+        </div>
       </div>
     </section>
 
@@ -182,7 +200,7 @@
         <div class="set-editor-actions">
           <button type="button" class="button quiet danger" data-action="delete">Delete</button>
           <span class="spacer"></span>
-          <button type="button" class="button quiet" data-action="cancel">Cancel</button>
+          <button type="button" class="button secondary" data-action="cancel">Cancel</button>
           <button type="submit" class="button primary">Save set</button>
         </div>
       </form>
@@ -196,7 +214,7 @@
           Sets you wrote yourself stay as they are.
         </p>
         <div class="confirm-actions">
-          <button type="submit" class="button quiet" value="cancel" autofocus>Cancel</button>
+          <button type="submit" class="button secondary" value="cancel" autofocus>Cancel</button>
           <button type="submit" class="button primary" value="restore">Restore</button>
         </div>
       </form>
@@ -211,8 +229,8 @@
           The app restarts to finish the update. Changes you haven't saved will be lost.
         </p>
         <div class="confirm-actions">
-          <button type="submit" class="button quiet" value="cancel">Cancel</button>
-          <button type="submit" class="button quiet" value="discard">Discard</button>
+          <button type="submit" class="button secondary" value="cancel">Cancel</button>
+          <button type="submit" class="button secondary" value="discard">Discard</button>
           <button type="submit" class="button primary" value="save" autofocus>Save</button>
         </div>
       </form>

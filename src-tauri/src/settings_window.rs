@@ -11,7 +11,8 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::window::Color;
+use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder};
 
 use crate::autostart::{self, TauriAutostart};
 use crate::llm::{self, ModelList};
@@ -23,6 +24,10 @@ use crate::shortcut::{self, Hotkeys, ShortcutError, TauriHotkeys};
 
 /// Label of the settings window. The `settings` capability is granted to it.
 pub const LABEL: &str = "settings";
+
+/// The page background (`--cream` in `src/styles/tokens.css`), painted natively
+/// so the window never flashes white before the page loads.
+const BACKGROUND: Color = Color(0xff, 0xff, 0xeb, 0xff);
 
 /// Asks an open settings window to scroll to a section. The payload is the
 /// section's id in `settings.html`.
@@ -73,6 +78,8 @@ pub fn open_at(app: &AppHandle, section: Option<Section>) -> tauri::Result<()> {
         .title("everyday-writer settings")
         .inner_size(440.0, 720.0)
         .min_inner_size(380.0, 560.0)
+        .theme(Some(Theme::Light))
+        .background_color(BACKGROUND)
         .maximizable(false)
         .center()
         .focused(true)

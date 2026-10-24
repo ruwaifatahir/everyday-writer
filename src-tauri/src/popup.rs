@@ -14,9 +14,10 @@ mod placement;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use tauri::window::Color;
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, Theme, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 
 use crate::live_rewriter::LiveRewriter;
@@ -25,6 +26,10 @@ use crate::settings::{AppSettings, KeyringApiKeys};
 use crate::settings_window;
 use crate::text_bridge::WindowsTextBridge;
 use placement::{GAP, Rect, place_near_cursor};
+
+/// The popup page background (`--cream` in `src/styles/tokens.css`),
+/// painted natively so the window never flashes white before the page loads.
+const BACKGROUND: Color = Color(0xff, 0xff, 0xeb, 0xff);
 
 /// Label of the popup window. The `popup` capability is granted to it.
 pub const LABEL: &str = "popup";
@@ -59,6 +64,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .title("everyday-writer")
         .inner_size(WIDTH, HEIGHT)
         .decorations(false)
+        .theme(Some(Theme::Light))
+        .background_color(BACKGROUND)
         .resizable(false)
         .maximizable(false)
         .minimizable(false)
