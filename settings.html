@@ -201,5 +201,21 @@
         </div>
       </form>
     </dialog>
+
+    <!-- Shown by Update now when the provider form has unsaved edits.
+         See src/settings/unsaved-changes.ts. Esc is Cancel. -->
+    <dialog class="confirm" id="unsaved-dialog" aria-labelledby="unsaved-title" aria-describedby="unsaved-body">
+      <form method="dialog">
+        <h2 id="unsaved-title">Save your changes before updating?</h2>
+        <p id="unsaved-body">
+          The app restarts to finish the update. Changes you haven't saved will be lost.
+        </p>
+        <div class="confirm-actions">
+          <button type="submit" class="button quiet" value="cancel">Cancel</button>
+          <button type="submit" class="button quiet" value="discard">Discard</button>
+          <button type="submit" class="button primary" value="save" autofocus>Save</button>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>

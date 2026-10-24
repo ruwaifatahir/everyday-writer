@@ -56,6 +56,17 @@ autoCheckSwitch.addEventListener("change", async () => {
   }
 });
 
+/** Runs before Update now; resolving false stops it. */
+let confirmUpdateNow: () => Promise<boolean> = () => Promise.resolve(true);
+
+/**
+ * Sets the check Update now runs first, such as asking about unsaved
+ * Settings changes. The update only starts if it resolves true.
+ */
+export function beforeUpdateNow(confirm: () => Promise<boolean>): void {
+  confirmUpdateNow = confirm;
+}
+
 /** The status line for each state; `kind` colours it. */
 function statusFor(state: UpdatesState): {
   text: string;
@@ -120,9 +131,15 @@ export async function initUpdates(): Promise<void> {
   });
   updateNowButton.addEventListener("click", () => {
     updateNowButton.disabled = true;
-    updateNow().catch(() => {
-      updateNowButton.disabled = false;
-    });
+    confirmUpdateNow()
+      .then((go) => {
+        if (go) return updateNow();
+        updateNowButton.disabled = false;
+        updateNowButton.focus();
+      })
+      .catch(() => {
+        updateNowButton.disabled = false;
+      });
   });
   try {
     // Listen first, so a state sent while the getter runs isn't missed, and

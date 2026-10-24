@@ -81,6 +81,11 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S9 | Built-in suggested model names | Still current for each provider |
 | S10 | Settings holds only provider, model, key, shortcut, instruction sets and start with Windows | Nothing else |
 | S11 | Look of the settings window and popup | Modern, minimal, clean |
+| S12 | With an update offered, change the model (don't save), click Update now, then press Esc; repeat and click Cancel | Prompt "Save your changes before updating?" with Save, Discard and Cancel, Save focused; Esc and Cancel close it, no update starts, the form still shows the edit |
+| S13 | Same, choose Save | "Saved", then the update starts; after the restart the new model is kept |
+| S14 | Same, but empty the model field first, choose Save | The usual "Enter a model name." error; no update starts |
+| S15 | Same, choose Discard | The update starts without saving; after the restart the old model is back |
+| S16 | Type a new key without saving, click Update now; then Save, and click Update now again | First click asks; with nothing unsaved it updates right away with no prompt |
 
 ## Instruction sets
 
@@ -134,7 +139,7 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 | P1–P9 | | |
 | R1–R5 | | |
 | K1–K10 | | |
-| S1–S11 | | |
+| S1–S16 | | |
 | I1–I7 | | |
 | T1–T5 | | |
 | L1–L6 | | |
