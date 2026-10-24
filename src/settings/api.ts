@@ -14,6 +14,8 @@ export type ProviderKind =
 
 export interface ModelList {
   names: string[];
+  /** Names to list first, under Recommended. */
+  recommended: string[];
   /** False when these are built-in suggestions because the list couldn't be fetched. */
   fromProvider: boolean;
 }
@@ -74,6 +76,18 @@ export function listModels(
   return invoke<ModelList>("list_models", { provider, customBaseUrl });
 }
 
+/**
+ * Checks that `provider` accepts a key without spending tokens: `key` if
+ * one was typed, otherwise the saved one. Resolves to how many models it
+ * offers; rejects with a message to show as is.
+ */
+export function testConnection(
+  provider: ProviderKind,
+  customBaseUrl: string,
+  key: string | null,
+): Promise<number> {
+  return invoke<number>("test_connection", { provider, customBaseUrl, key });
+}
 export function clearApiKey(provider: ProviderKind): Promise<void> {
   return invoke("clear_api_key", { provider });
 }

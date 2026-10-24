@@ -12,6 +12,7 @@ fn main() {
             "save_api_key",
             "clear_api_key",
             "list_models",
+            "test_connection",
             "set_shortcut",
             "is_shortcut_working",
             "set_start_with_windows",

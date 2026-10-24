@@ -1,8 +1,8 @@
 // Settings window: provider, model, Custom base URL and the provider's key.
 //
 // The saved key is never shown: the window only learns whether one exists,
-// and offers Replace or Clear. A typed key is sent once, on Save, and the
-// field is emptied right after.
+// and offers Test and Change. A typed key is sent on Test and on Save, and
+// the field is emptied right after saving.
 
 import "../shared/native-feel";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -17,7 +17,9 @@ import {
   type Settings,
   saveApiKey,
   saveSettings,
+  testConnection,
 } from "./api";
+import { type Option, Select, Suggest } from "./combobox";
 import { clearFieldError, showFieldError } from "./field-error";
 import {
   initInstructionSets,
@@ -47,6 +49,37 @@ const PROVIDER_NAMES: Record<ProviderKind, string> = {
   custom: "Custom",
 };
 
+/** The provider list: the hosted services, then the two you run yourself. */
+const PROVIDER_OPTIONS: Option[] = [
+  { value: "openai", label: "OpenAI", icon: "logo-openai" },
+  { value: "anthropic", label: "Anthropic", icon: "logo-anthropic" },
+  { value: "gemini", label: "Gemini", icon: "logo-gemini" },
+  { value: "openrouter", label: "OpenRouter", icon: "logo-openrouter" },
+  {
+    value: "ollama",
+    label: "Ollama",
+    icon: "logo-ollama",
+    detail: "On this PC",
+    divided: true,
+  },
+  {
+    value: "custom",
+    label: "Custom",
+    icon: "logo-custom",
+    detail: "OpenAI-compatible",
+  },
+];
+
+/** Where each provider hands out keys, named under the key field. */
+const KEY_PAGES: Record<ProviderKind, string> = {
+  openai: "Create one at platform.openai.com/api-keys.",
+  anthropic: "Create one at console.anthropic.com/settings/keys.",
+  gemini: "Create one at aistudio.google.com/apikey.",
+  openrouter: "Create one at openrouter.ai/settings/keys.",
+  ollama: "",
+  custom: "Only if your server asks for one.",
+};
+
 // Example names only, shown as placeholders.
 const MODEL_EXAMPLES: Record<ProviderKind, string> = {
   openai: "e.g. gpt-4.1-mini",
@@ -73,26 +106,42 @@ const baseUrlField = element<HTMLDivElement>("base-url-field");
 const baseUrlInput = element<HTMLInputElement>("base-url");
 const providerHint = element<HTMLParagraphElement>("provider-hint");
 const modelInput = element<HTMLInputElement>("model");
-const modelOptions = element<HTMLDataListElement>("model-options");
 const modelHint = element<HTMLParagraphElement>("model-hint");
 const keyField = element<HTMLDivElement>("key-field");
 const keyLabel = element<HTMLLabelElement>("key-label");
 const keySaved = element<HTMLDivElement>("key-saved");
-const keySavedText = element<HTMLSpanElement>("key-saved-text");
 const keyEntry = element<HTMLDivElement>("key-entry");
 const keyInput = element<HTMLInputElement>("key");
-const keyReplace = element<HTMLButtonElement>("key-replace");
-const keyClear = element<HTMLButtonElement>("key-clear");
+const keyChange = element<HTMLButtonElement>("key-change");
+const keyTestSaved = element<HTMLButtonElement>("key-test-saved");
+const keyTest = element<HTMLButtonElement>("key-test");
 const keyCancel = element<HTMLButtonElement>("key-cancel");
+const keyRemove = element<HTMLButtonElement>("key-remove");
+const keyStatus = element<HTMLParagraphElement>("key-status");
+const keyHint = element<HTMLParagraphElement>("key-hint");
 const saveButton = element<HTMLButtonElement>("save");
 const status = element<HTMLParagraphElement>("status");
+
+const providerPicker = new Select(
+  element<HTMLButtonElement>("provider"),
+  "Providers",
+  () => changeProvider(),
+);
+providerPicker.setOptions(PROVIDER_OPTIONS);
+providerPicker.set("openai");
+
+const modelPicker = new Suggest(
+  modelInput,
+  element<HTMLButtonElement>("model-toggle"),
+  "Models",
+);
 
 /** What the window shows, apart from the plain text fields. */
 const view = {
   provider: "openai" as ProviderKind,
   keySaved: false,
   replacingKey: false,
-  confirmingClear: false,
+  confirmingRemove: false,
 };
 
 /** The form as last loaded or saved; undefined if loading failed. */
@@ -127,13 +176,6 @@ function clearStatus(): void {
   clearFieldError(baseUrlInput);
 }
 
-function selectedProvider(): ProviderKind {
-  const checked = form.querySelector<HTMLInputElement>(
-    'input[name="provider"]:checked',
-  );
-  return (checked?.value ?? "openai") as ProviderKind;
-}
-
 function renderProvider(): void {
   const custom = view.provider === "custom";
   const ollama = view.provider === "ollama";
@@ -159,27 +201,25 @@ async function loadModels(): Promise<void> {
   const name = PROVIDER_NAMES[provider];
   const baseUrl = baseUrlInput.value.trim();
   if (provider === "custom" && !isHttpUrl(baseUrl)) {
-    modelOptions.replaceChildren();
+    modelPicker.setNames([], []);
     modelHint.textContent =
       "Add the base URL to see its models, or type a model name.";
     return;
   }
   modelHint.textContent = `Loading ${name} models…`;
   let names: string[] = [];
+  let recommended: string[] = [];
   let fromProvider = false;
   try {
-    ({ names, fromProvider } = await listModels(provider, baseUrl));
+    ({ names, recommended, fromProvider } = await listModels(
+      provider,
+      baseUrl,
+    ));
   } catch {
     // Treated like any other failure: no list, typing still works.
   }
   if (request !== modelRequest) return;
-  modelOptions.replaceChildren(
-    ...names.map((model) => {
-      const option = document.createElement("option");
-      option.value = model;
-      return option;
-    }),
-  );
+  modelPicker.setNames(names, fromProvider ? recommended : []);
   if (fromProvider) {
     modelHint.textContent = `${names.length} ${name} models. Pick one or type any name.`;
   } else if (names.length > 0) {
@@ -190,18 +230,70 @@ async function loadModels(): Promise<void> {
   }
 }
 
+/**
+ * Saved: one line saying where the key is, with Test and Change. Entering
+ * a key: the field with Test, plus Cancel and Remove key when it replaces
+ * a saved one.
+ */
 function renderKey(): void {
   const name = PROVIDER_NAMES[view.provider];
   const showSaved = view.keySaved && !view.replacingKey;
   keySaved.hidden = !showSaved;
   keyEntry.hidden = showSaved;
   keyCancel.hidden = !view.replacingKey;
-  keySavedText.textContent = "Key saved";
-  keyClear.textContent = view.confirmingClear ? "Confirm clear" : "Clear";
-  keyClear.classList.toggle("confirming", view.confirmingClear);
+  keyRemove.hidden = !view.replacingKey;
+  keyRemove.textContent = view.confirmingRemove
+    ? "Confirm remove"
+    : "Remove key";
+  keyRemove.classList.toggle("confirming", view.confirmingRemove);
+  keyHint.textContent = showSaved
+    ? ""
+    : `${KEY_PAGES[view.provider]} Kept in Windows Credential Manager, never in a file.`.trim();
   keyInput.placeholder = keyIsOptional(view.provider)
     ? "Leave empty for local servers"
     : `Paste your ${name} key`;
+}
+
+function showKeyStatus(message: string, kind?: "error"): void {
+  keyStatus.textContent = message;
+  if (kind) keyStatus.dataset.kind = kind;
+  else delete keyStatus.dataset.kind;
+}
+
+/** Counts key tests, so a slow answer for an old provider or key is dropped. */
+let keyTestRequest = 0;
+
+/**
+ * Tests the typed key, or the saved one if none is typed, against the
+ * provider as it is set in the form. Spends no tokens.
+ */
+async function testKey(button: HTMLButtonElement): Promise<void> {
+  const request = ++keyTestRequest;
+  const provider = view.provider;
+  const typed = keyInput.value.trim();
+  const key = keyEntry.hidden || typed === "" ? null : typed;
+  if (key === null && !view.keySaved && !keyIsOptional(provider)) {
+    showKeyStatus("Paste a key to test it.", "error");
+    keyInput.focus();
+    return;
+  }
+  button.disabled = true;
+  showKeyStatus(`Testing with ${PROVIDER_NAMES[provider]}…`);
+  try {
+    const count = await testConnection(
+      provider,
+      baseUrlInput.value.trim(),
+      key,
+    );
+    if (request !== keyTestRequest) return;
+    const models = count === 1 ? "1 model" : `${count} models`;
+    showKeyStatus(`Works. ${models} available.`);
+  } catch (error) {
+    if (request !== keyTestRequest) return;
+    showKeyStatus(errorMessage(error), "error");
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function loadKeyState(): Promise<void> {
@@ -217,8 +309,10 @@ async function loadKeyState(): Promise<void> {
 
 function resetKeyEntry(): void {
   view.replacingKey = false;
-  view.confirmingClear = false;
+  view.confirmingRemove = false;
   keyInput.value = "";
+  keyTestRequest++;
+  showKeyStatus("");
 }
 
 function isHttpUrl(url: string): boolean {
@@ -280,43 +374,41 @@ async function save(): Promise<boolean> {
   }
 }
 
-async function clearKey(): Promise<void> {
-  if (!view.confirmingClear) {
-    view.confirmingClear = true;
+async function removeKey(): Promise<void> {
+  if (!view.confirmingRemove) {
+    view.confirmingRemove = true;
     renderKey();
     return;
   }
-  keyClear.disabled = true;
+  keyRemove.disabled = true;
   try {
     await clearApiKey(view.provider);
     view.keySaved = false;
     resetKeyEntry();
     renderKey();
-    showStatus("Key cleared", "ok");
+    showStatus("Key removed", "ok");
     keyInput.focus();
   } catch (error) {
-    view.confirmingClear = false;
+    view.confirmingRemove = false;
     renderKey();
     showStatus(errorMessage(error), "error");
   } finally {
-    keyClear.disabled = false;
+    keyRemove.disabled = false;
   }
 }
 
-form.addEventListener("change", (event) => {
-  const target = event.target as HTMLInputElement;
-  if (target === baseUrlInput) {
-    void loadModels();
-    return;
-  }
-  if (target.name !== "provider") return;
-  view.provider = selectedProvider();
+function changeProvider(): void {
+  view.provider = providerPicker.value as ProviderKind;
   resetKeyEntry();
   clearStatus();
   renderProvider();
   renderKey();
   void loadKeyState();
   void loadModels();
+}
+
+form.addEventListener("change", (event) => {
+  if (event.target === baseUrlInput) void loadModels();
 });
 
 form.addEventListener("input", (event) => {
@@ -328,9 +420,10 @@ form.addEventListener("submit", (event) => {
   void save();
 });
 
-keyReplace.addEventListener("click", () => {
+keyChange.addEventListener("click", () => {
   view.replacingKey = true;
-  view.confirmingClear = false;
+  view.confirmingRemove = false;
+  showKeyStatus("");
   renderKey();
   keyInput.focus();
 });
@@ -338,15 +431,30 @@ keyReplace.addEventListener("click", () => {
 keyCancel.addEventListener("click", () => {
   resetKeyEntry();
   renderKey();
+  keyChange.focus();
 });
 
-keyClear.addEventListener("click", () => {
-  void clearKey();
+keyTestSaved.addEventListener("click", () => {
+  void testKey(keyTestSaved);
 });
 
-keyClear.addEventListener("blur", () => {
-  if (!view.confirmingClear) return;
-  view.confirmingClear = false;
+keyTest.addEventListener("click", () => {
+  void testKey(keyTest);
+});
+
+// A new key is untested; an old result would describe the wrong key.
+keyInput.addEventListener("input", () => {
+  keyTestRequest++;
+  showKeyStatus("");
+});
+
+keyRemove.addEventListener("click", () => {
+  void removeKey();
+});
+
+keyRemove.addEventListener("blur", () => {
+  if (!view.confirmingRemove) return;
+  view.confirmingRemove = false;
   renderKey();
 });
 
@@ -427,10 +535,7 @@ async function init(): Promise<void> {
     modelInput.value = settings.model;
     baseUrlInput.value = settings.customBaseUrl;
     savedForm = currentForm();
-    const radio = form.querySelector<HTMLInputElement>(
-      `input[name="provider"][value="${settings.provider}"]`,
-    );
-    if (radio) radio.checked = true;
+    providerPicker.set(settings.provider);
   } catch (error) {
     showStatus(errorMessage(error), "error");
   }

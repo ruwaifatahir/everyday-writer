@@ -26,6 +26,8 @@ const OPENAI_URL: &str = "https://api.openai.com/v1/";
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/";
 const GEMINI_URL: &str = "https://generativelanguage.googleapis.com/v1beta/";
 const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/";
+/// Describes the key it is called with; 401 if `OpenRouter` doesn't know it.
+const OPENROUTER_KEY_URL: &str = "https://openrouter.ai/api/v1/key";
 /// Ollama's native API, not its `/v1` OpenAI-compatible one.
 const OLLAMA_URL: &str = "http://localhost:11434/";
 
@@ -108,23 +110,85 @@ impl<K: ApiKeySource + 'static> Rewriter for GenaiRewriter<K> {
 /// saved key from `keys`. Falls back to [`suggested_models`] when the list
 /// can't be fetched, for any reason, or is empty.
 pub async fn model_list<K: ApiKeySource + 'static>(provider: &Provider, keys: Arc<K>) -> ModelList {
-    let fetched = async {
-        let (kind, endpoint) = adapter_and_endpoint(provider)?;
-        let auth = read_auth(provider, keys).await?;
-        model_names_at(kind, endpoint, auth).await
-    };
-    match fetched.await {
+    let suggested = suggested_models(provider.kind());
+    match model_names(provider, keys).await {
         Ok(names) if !names.is_empty() => ModelList {
+            recommended: listed_suggestions(suggested, &names),
             names,
             from_provider: true,
         },
-        _ => ModelList {
-            names: suggested_models(provider.kind())
-                .iter()
-                .map(|&name| name.to_owned())
-                .collect(),
-            from_provider: false,
-        },
+        _ => {
+            let names: Vec<String> = suggested.iter().map(|&name| name.to_owned()).collect();
+            ModelList {
+                recommended: names.clone(),
+                names,
+                from_provider: false,
+            }
+        }
+    }
+}
+
+/// The `suggested` names the provider actually lists, in suggestion order.
+fn listed_suggestions(suggested: &[&str], names: &[String]) -> Vec<String> {
+    suggested
+        .iter()
+        .filter(|&&name| names.iter().any(|listed| listed == name))
+        .map(|&name| name.to_owned())
+        .collect()
+}
+
+/// Checks that `provider` answers and accepts the key from `keys`, without
+/// spending tokens: it lists the models, and for `OpenRouter`, whose list is
+/// public, first asks about the key itself. Returns how many models the
+/// provider offers.
+///
+/// # Errors
+///
+/// Returns the [`RewriteError`] a rewrite would hit: a missing or rejected
+/// key, an unusable base URL, or a network or provider failure.
+pub async fn check_connection<K: ApiKeySource + 'static>(
+    provider: &Provider,
+    keys: Arc<K>,
+) -> Result<usize, RewriteError> {
+    if matches!(provider, Provider::OpenRouter) {
+        let auth = read_auth(provider, Arc::clone(&keys)).await?;
+        check_openrouter_key(OPENROUTER_KEY_URL, &auth).await?;
+    }
+    Ok(model_names(provider, keys).await?.len())
+}
+
+/// The model names `provider` lists, read with the key from `keys`.
+async fn model_names<K: ApiKeySource + 'static>(
+    provider: &Provider,
+    keys: Arc<K>,
+) -> Result<Vec<String>, RewriteError> {
+    let (kind, endpoint) = adapter_and_endpoint(provider)?;
+    let auth = read_auth(provider, keys).await?;
+    model_names_at(kind, endpoint, auth).await
+}
+
+/// Asks `OpenRouter` about the key at `url` (its `/key` endpoint), which
+/// answers 401 for a key it doesn't know. Only the status is read.
+async fn check_openrouter_key(url: &str, auth: &AuthData) -> Result<(), RewriteError> {
+    let key = auth
+        .single_key_value()
+        .map_err(|_| RewriteError::MissingApiKey)?;
+    let client = reqwest::Client::builder()
+        .timeout(LIST_TIMEOUT)
+        .connect_timeout(LIST_CONNECT_TIMEOUT)
+        .build()
+        .map_err(|_| RewriteError::Other)?;
+    let response = client
+        .get(url)
+        .bearer_auth(key)
+        .send()
+        .await
+        .map_err(|_| RewriteError::Network)?;
+    match response.status().as_u16() {
+        200..=299 => Ok(()),
+        401 | 403 => Err(RewriteError::Unauthorized),
+        429 => Err(RewriteError::RateLimited),
+        status => Err(RewriteError::Provider { status }),
     }
 }
 
@@ -257,7 +321,10 @@ mod tests {
     use genai::adapter::AdapterKind;
     use genai::resolver::{AuthData, Endpoint};
 
-    use super::{GenaiRewriter, adapter_and_endpoint, model_list, model_names_at};
+    use super::{
+        GenaiRewriter, adapter_and_endpoint, check_connection, check_openrouter_key,
+        listed_suggestions, model_list, model_names_at,
+    };
     use crate::llm::{RewriteError, Rewriter};
     use crate::settings::{ApiKey, ApiKeySource, KeyError, ModelSettings, Provider};
 
@@ -596,6 +663,80 @@ mod tests {
         assert_eq!(received.body["model"], "openai/gpt-4.1-mini");
     }
 
+    #[test]
+    fn recommended_models_are_the_suggestions_the_provider_lists() {
+        let names = [
+            "gpt-4.1".to_owned(),
+            "gpt-5-mini".to_owned(),
+            "o3".to_owned(),
+        ];
+
+        let recommended = listed_suggestions(&["gpt-5-mini", "gpt-4.1-mini", "gpt-4.1"], &names);
+
+        assert_eq!(
+            recommended,
+            vec!["gpt-5-mini".to_owned(), "gpt-4.1".to_owned()]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_connection_check_counts_the_models_listed_with_the_key() {
+        let (base_url, server) = serve_once(
+            200,
+            r#"{"object":"list","data":[{"id":"a","object":"model"},{"id":"b","object":"model"}]}"#,
+        );
+
+        let count = check_connection(&Provider::Custom { base_url }, Arc::new(key())).await;
+
+        let received = server.join().unwrap();
+        assert_eq!(count, Ok(2));
+        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
+    }
+
+    #[tokio::test]
+    async fn the_connection_check_reports_a_rejected_key() {
+        let (base_url, server) = serve_once(401, r#"{"error":"bad key"}"#);
+
+        let result = check_connection(&Provider::Custom { base_url }, Arc::new(key())).await;
+
+        server.join().unwrap();
+        assert_eq!(result, Err(RewriteError::Unauthorized));
+    }
+
+    #[tokio::test]
+    async fn the_connection_check_needs_a_key_where_one_is_required() {
+        let result = check_connection(&Provider::Anthropic, Arc::new(TestKeys(Ok(None)))).await;
+
+        assert_eq!(result, Err(RewriteError::MissingApiKey));
+    }
+
+    #[tokio::test]
+    async fn openrouter_is_asked_about_the_key_itself() {
+        let (base_url, server) = serve_once(200, r#"{"data":{}}"#);
+
+        let result = check_openrouter_key(
+            &format!("{base_url}/key"),
+            &AuthData::from_single("test-key"),
+        )
+        .await;
+
+        let received = server.join().unwrap();
+        assert_eq!(result, Ok(()));
+        assert_eq!(received.request_line, "GET /v1/key HTTP/1.1");
+        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
+    }
+
+    #[tokio::test]
+    async fn openrouter_rejecting_the_key_maps_to_unauthorized() {
+        let (base_url, server) = serve_once(401, r#"{"error":{}}"#);
+
+        let result =
+            check_openrouter_key(&format!("{base_url}/key"), &AuthData::from_single("bad")).await;
+
+        server.join().unwrap();
+        assert_eq!(result, Err(RewriteError::Unauthorized));
+    }
+
     /// `http://host:port/v1` -> `http://host:port/`.
     fn server_root(base_url: &str) -> String {
         base_url.trim_end_matches("v1").to_owned()
@@ -669,6 +810,7 @@ mod tests {
         assert!(!list.from_provider);
         assert!(list.names.iter().any(|name| name == "gpt-4.1-mini"));
         assert!(list.names.iter().all(|name| name.starts_with("gpt-")));
+        assert_eq!(list.recommended, list.names);
     }
 
     #[tokio::test]

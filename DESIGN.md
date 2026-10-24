@@ -64,11 +64,11 @@ and the Settings title bar matches. Change both sides together.
 |---|---|
 | `cream` | Every surface: page, cards, inputs, secondary buttons |
 | `ink` | Text, every 2px border, `kbd` fill, focus ring |
-| `stone` | Card outlines, row rules, segmented track |
+| `stone` | Card outlines, row rules, the saved-key box, the active list option |
 | `ink-soft` | Hints and secondary text (6.4:1 on cream) |
 | `fog` | Non-text: the off switch knob; the reading band's resting text |
 | `lavender` | Primary buttons and the on switch. Nothing else |
-| `forest` | Success: ok status, saved key |
+| `forest` | Success: ok status, done badges |
 | `ember` | Active: the active instruction set, a confirming delete |
 | `ember-ink` | Error text, invalid borders, danger buttons |
 
@@ -87,8 +87,8 @@ leads by size, never by bold.
 
 Wispr's 32–80px card radii and 20px body are web scale. Here: buttons and
 inputs 12px radius (Wispr's own value), cards and dialogs 18px, badges and
-switches full pills, `kbd` 6px, the segmented track 16px (12px plus its
-4px inset). Every border is 2px. Controls are 36px tall,
+switches full pills, `kbd` 6px, picker list rows 8px inside their 12px
+list. Every border is 2px. Controls are 36px tall,
 quiet buttons 30px, inputs 40px.
 
 ## Surfaces and depth
@@ -122,8 +122,20 @@ border or a fill change:
   wide band of `ink` sweeping across it every 1.6s after a 0.4s wait.
   Plain `ink-soft` under reduced motion. It replaces any spinner or
   skeleton.
-- **Segmented** picker: stone track, the chosen option a cream tile with
-  the ink border.
+- **Picker** (`combobox.ts`): a 40px field like any input, with an
+  `ink-soft` chevron. Its list is a cream card with the ink border and 12px
+  radius, in the top layer, at most 320px tall. Rows are 36px; the
+  keyboard's active row is `stone`, hover is the hover fill, the chosen
+  one carries a check. Group headings are 12px/500 `ink-soft`; a stone
+  rule divides blocks. The provider picker is select-only, with logos; the
+  model picker is a text field that filters its list, lists Recommended
+  first, and offers `Use "name"` when nothing matches.
+- **Provider logos**: monochrome `ink` marks from Simple Icons (CC0),
+  inlined as an SVG sprite in `settings.html`. Never in brand colors.
+- **Saved key**: one line in a 2px stone box, "Saved in Windows Credential
+  Manager" in ink, with quiet Test and Change. No icon, no color. Test
+  results are a plain caption under the field: `ink-soft` when it works,
+  `ember-ink` when it doesn't.
 - **Switch**: cream track with ink border and fog knob; on is lavender with
   an ink knob. **Radio**: ink ring, ink dot.
 - **kbd**: ink chip, cream text. The `Esc` hint in the popup footer uses a
@@ -153,7 +165,7 @@ border or a fill change:
 popup result fades in over 220ms where the selection was. Popup
 messages rise 4px as they appear, and so do the Settings
 parts that swap in (the saved-key row, the key entry, the base URL field,
-status and error lines). The Active badge fades in from 95% over 120ms.
+status and error lines). Picker lists drop in 4px over 120ms. The Active badge fades in from 95% over 120ms.
 Dialogs scale in from 98% over 220ms while the scrim fades in; they leave
 over 120ms, fading and dropping 4px (`transition-behavior: allow-discrete`
 with `@starting-style`). The popup window itself opens and closes

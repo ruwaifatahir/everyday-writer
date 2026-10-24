@@ -308,16 +308,184 @@ input[aria-invalid="true"] {
   border-color: var(--ember-ink);
 }
 
-/* The model field's dropdown arrow, from its datalist. */
-input[list]::-webkit-calendar-picker-indicator {
-  opacity: 0.6;
+/* Pickers (combobox.ts). The field looks like any input; the list is a
+   cream card with the ink border, in the top layer, no shadow. */
+
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.combo-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--space-10) 0 var(--space-12);
+  font: inherit;
+  color: var(--ink);
+  text-align: start;
+  background: var(--cream);
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-control);
+  cursor: default;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.combo-field:hover,
+.combo-toggle:hover {
+  background: var(--fill-hover);
+}
+
+.combo-field:focus-visible {
+  outline: var(--border) solid var(--ink);
+  outline-offset: 2px;
+}
+
+.combo-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combo-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.combo-chevron,
+.combo-check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.combo-chevron {
+  color: var(--ink-soft);
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+[aria-expanded="true"] .combo-chevron,
+[aria-expanded="true"] + .combo-toggle .combo-chevron {
+  transform: rotate(180deg);
+}
+
+/* The model field keeps room on the right for its arrow button. */
+.combo-input {
+  position: relative;
+}
+
+.combo-input input {
+  padding-right: 40px;
+}
+
+.combo-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
   cursor: default;
 }
 
-input[list]:hover::-webkit-calendar-picker-indicator {
-  opacity: 1;
+.combo-list {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--ink);
+  background: var(--cream);
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-control);
+  scrollbar-width: thin;
+  animation: drop var(--motion-fast) var(--ease);
 }
 
+.combo-list[data-side="above"] {
+  animation-name: lift;
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes lift {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.combo-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: 36px;
+  padding: var(--space-6) var(--space-8);
+  border-radius: 8px;
+  cursor: default;
+}
+
+.combo-option:hover {
+  background: var(--fill-hover);
+}
+
+.combo-option[data-active] {
+  background: var(--stone);
+}
+
+.combo-option[aria-selected="true"] {
+  font-weight: var(--weight-medium);
+}
+
+.combo-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.combo-detail {
+  flex: none;
+  font-size: var(--text-caption);
+  color: var(--ink-soft);
+}
+
+.combo-group {
+  padding: var(--space-8) var(--space-8) var(--space-4);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--ink-soft);
+}
+
+.combo-divider {
+  height: var(--border);
+  margin: var(--space-4) var(--space-4);
+  background: var(--stone);
+}
+
+.combo-note {
+  padding: var(--space-8);
+  font-size: var(--text-caption);
+  color: var(--ink-soft);
+}
 /* Switch: a cream track with an ink border; on fills lavender. */
 
 .switch {
@@ -433,6 +601,18 @@ input[type="radio"]:checked::before {
 
 /* Reduced motion: the same entrances as plain fades, no travel. */
 @media (prefers-reduced-motion: reduce) {
+  @keyframes drop {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes lift {
+    from {
+      opacity: 0;
+    }
+  }
+
   @keyframes rise {
     from {
       opacity: 0;

@@ -12,7 +12,7 @@ use std::future::Future;
 
 use serde::Serialize;
 
-pub use genai_rewriter::{GenaiRewriter, model_list};
+pub use genai_rewriter::{GenaiRewriter, check_connection, model_list};
 
 use crate::settings::ProviderKind;
 
@@ -23,14 +23,17 @@ use crate::settings::ProviderKind;
 pub struct ModelList {
     /// Model names exactly as the provider expects them.
     pub names: Vec<String>,
+    /// The built-in suggestions found in `names`, listed first in the
+    /// dropdown.
+    pub recommended: Vec<String>,
     /// `true` if the names came from the provider, `false` if they are the
     /// built-in suggestions because the list couldn't be fetched.
     pub from_provider: bool,
 }
 
-/// A short built-in list of model names per provider, shown when the
-/// provider's own list can't be fetched. Custom has none: its models depend
-/// entirely on the server.
+/// A short built-in list of model names per provider: recommended at the top
+/// of the provider's list, and shown alone when that list can't be fetched.
+/// Custom has none: its models depend entirely on the server.
 pub fn suggested_models(provider: ProviderKind) -> &'static [&'static str] {
     match provider {
         ProviderKind::OpenAi => &["gpt-5-mini", "gpt-4.1-mini", "gpt-4.1"],

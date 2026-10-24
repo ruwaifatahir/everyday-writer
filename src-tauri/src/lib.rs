@@ -79,6 +79,7 @@ pub fn run() {
             settings_window::save_api_key,
             settings_window::clear_api_key,
             settings_window::list_models,
+            settings_window::test_connection,
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
             settings_window::set_start_with_windows,

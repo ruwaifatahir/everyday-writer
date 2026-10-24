@@ -121,6 +121,41 @@ pub enum CommandError {
     /// Windows refused to change its startup list.
     #[error("Couldn't change the Windows startup setting. Try again.")]
     Autostart,
+    /// A key test found no key to send.
+    #[error("Enter a key to test.")]
+    NoKeyToTest,
+    /// A key test had no usable Custom base URL.
+    #[error("Enter a base URL starting with http:// or https://.")]
+    InvalidBaseUrl,
+    /// The provider rejected the key.
+    #[error("The provider rejected this key. Check it and try again.")]
+    KeyRejected,
+    /// The provider is rate limiting; the key itself may be fine.
+    #[error("The provider is busy right now. Try again shortly.")]
+    RateLimited,
+    /// The provider couldn't be reached.
+    #[error("Couldn't reach the provider. Check your connection.")]
+    Unreachable,
+    /// The provider answered with another error.
+    #[error("The provider returned an error. Try again later.")]
+    ProviderFailed,
+}
+
+impl From<llm::RewriteError> for CommandError {
+    fn from(error: llm::RewriteError) -> Self {
+        use llm::RewriteError;
+        match error {
+            RewriteError::MissingApiKey => Self::NoKeyToTest,
+            RewriteError::KeyStore => Self::KeyStore,
+            RewriteError::InvalidSettings(_) => Self::InvalidBaseUrl,
+            RewriteError::Unauthorized => Self::KeyRejected,
+            RewriteError::RateLimited => Self::RateLimited,
+            RewriteError::Network => Self::Unreachable,
+            RewriteError::Provider { .. } | RewriteError::EmptyResponse | RewriteError::Other => {
+                Self::ProviderFailed
+            }
+        }
+    }
 }
 
 impl From<shortcut::ChangeError> for CommandError {
@@ -218,12 +253,53 @@ pub async fn list_models(
     }
 }
 
+/// Checks that `provider` accepts a key, at `custom_base_url` for Custom,
+/// without spending tokens (see [`llm::check_connection`]). Uses `key` if
+/// one was typed, otherwise the saved key where
+/// [`Settings::may_send_saved_key`] allows. Returns how many models the
+/// provider offers.
+///
+/// # Errors
+///
+/// Returns a [`CommandError`] saying why the provider couldn't be used.
+#[tauri::command]
+pub async fn test_connection(
+    app: AppHandle,
+    provider: ProviderKind,
+    custom_base_url: String,
+    key: Option<String>,
+) -> Result<usize, CommandError> {
+    let target = Provider::from_kind(provider, &custom_base_url);
+    let checked = match key.filter(|key| !key.trim().is_empty()) {
+        Some(key) => llm::check_connection(&target, Arc::new(TypedKey(ApiKey::new(key)))).await,
+        None if app
+            .state::<Arc<AppSettings>>()
+            .settings()
+            .may_send_saved_key(&target) =>
+        {
+            let keys = app.state::<KeyringApiKeys>().inner().clone();
+            llm::check_connection(&target, Arc::new(keys)).await
+        }
+        None => llm::check_connection(&target, Arc::new(NoKey)).await,
+    };
+    checked.map_err(CommandError::from)
+}
+
 /// A key source with no keys, for endpoints the saved key must not reach.
 struct NoKey;
 
 impl ApiKeySource for NoKey {
     fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
         Ok(None)
+    }
+}
+
+/// The key typed in Settings and not saved yet, for [`test_connection`].
+struct TypedKey(ApiKey);
+
+impl ApiKeySource for TypedKey {
+    fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
+        Ok(Some(self.0.clone()))
     }
 }
 
