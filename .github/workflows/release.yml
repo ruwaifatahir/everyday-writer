@@ -1,4 +1,5 @@
-# Push a `v*` tag to build the NSIS installer and attach it to a draft GitHub Release.
+# Push a `v*` tag to build the signed NSIS installer and attach it, its update signature (`.sig`)
+# and `latest.json` to a draft GitHub Release.
 # Steps for cutting a release are in CONTRIBUTING.md.
 name: Release
 
@@ -63,14 +64,34 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
-      # Bundle targets come from tauri.conf.json (NSIS only). No updater or code signing yet.
+      # Installed copies refuse unsigned updates, so every release must be signed.
+      # Fail here, before the long build, if a secret is missing. Key setup is in CONTRIBUTING.md.
+      - name: Require update signing secrets
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] || [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
+            echo "::error::Repo secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD must both be set. See 'Update signing key' in CONTRIBUTING.md."
+            exit 1
+          fi
+
+      # Bundle targets come from tauri.conf.json (NSIS only). Its `createUpdaterArtifacts` makes the
+      # build sign the installer (`.sig`); the action then uploads `latest.json` pointing at it.
+      # No Windows code signing yet.
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
           releaseBody: "Draft release. Download the installer from the assets below."
+          # Users get an update only once the draft is published: `releases/latest` skips drafts.
           releaseDraft: true
           prerelease: false
-          uploadUpdaterJson: false
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          updaterJsonPreferNsis: true
