@@ -6,7 +6,9 @@
 // so the field never sees it pressed.
 
 import {
+  DEFAULT_SHORTCUT,
   errorMessage,
+  isDefaultShortcut,
   isShortcutWorking,
   type Settings,
   setShortcut,
@@ -21,6 +23,7 @@ function element<T extends HTMLElement>(id: string): T {
 
 const shortcutInput = element<HTMLInputElement>("shortcut");
 const shortcutApply = element<HTMLButtonElement>("shortcut-apply");
+const shortcutReset = element<HTMLButtonElement>("shortcut-reset");
 const shortcutStatus = element<HTMLParagraphElement>("shortcut-status");
 const startSwitch = element<HTMLInputElement>("start-with-windows");
 const startStatus = element<HTMLParagraphElement>("startup-status");
@@ -100,21 +103,35 @@ function resetShortcut(): void {
   renderShortcut();
 }
 
-async function applyShortcut(): Promise<void> {
-  const wanted = toSaved(shortcutInput.value);
+/** Offers "Reset to default" only while the saved shortcut isn't the default. */
+async function renderReset(): Promise<void> {
+  try {
+    shortcutReset.hidden = await isDefaultShortcut();
+  } catch {
+    // Unknown: don't offer a reset that may change nothing.
+    shortcutReset.hidden = true;
+  }
+}
+
+async function applyShortcut(
+  wanted = toSaved(shortcutInput.value),
+): Promise<void> {
   if (wanted === savedShortcut) return;
   shortcutApply.disabled = true;
+  shortcutReset.disabled = true;
   try {
     await setShortcut(wanted);
     savedShortcut = wanted;
     resetShortcut();
     show(shortcutStatus, "Shortcut changed.", "ok");
+    await renderReset();
   } catch (error) {
     // The previous shortcut still works, so show it again.
     resetShortcut();
     show(shortcutStatus, errorMessage(error, "change the shortcut"), "error");
   } finally {
     shortcutApply.disabled = false;
+    shortcutReset.disabled = false;
   }
 }
 
@@ -151,6 +168,10 @@ shortcutApply.addEventListener("click", () => {
   void applyShortcut();
 });
 
+shortcutReset.addEventListener("click", () => {
+  void applyShortcut(DEFAULT_SHORTCUT);
+});
+
 startSwitch.addEventListener("change", async () => {
   const enabled = startSwitch.checked;
   startSwitch.disabled = true;
@@ -178,6 +199,7 @@ export async function initLaunch(
     startSwitch.checked = settings.startWithWindows;
   }
   resetShortcut();
+  void renderReset();
   let working = true;
   try {
     working = await isShortcutWorking();

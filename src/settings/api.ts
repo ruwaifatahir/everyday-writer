@@ -54,6 +54,14 @@ export function isShortcutWorking(): Promise<boolean> {
   return invoke<boolean>("is_shortcut_working");
 }
 
+/** The shortcut "Reset to default" sets. Matches `DEFAULT_SHORTCUT` in Rust. */
+export const DEFAULT_SHORTCUT = "Ctrl+Shift+Space";
+
+/** Whether the saved shortcut is the default, compared as keys, not text. */
+export function isDefaultShortcut(): Promise<boolean> {
+  return invoke<boolean>("is_default_shortcut");
+}
+
 export function setStartWithWindows(enabled: boolean): Promise<void> {
   return invoke("set_start_with_windows", { enabled });
 }
