@@ -19,7 +19,7 @@
         <div class="panel-body">
           <fieldset class="field">
             <legend class="label">Provider</legend>
-            <div class="segmented" role="radiogroup">
+            <div class="segmented">
               <label><input type="radio" name="provider" value="openai" checked /><span>OpenAI</span></label>
               <label><input type="radio" name="provider" value="anthropic" /><span>Anthropic</span></label>
               <label><input type="radio" name="provider" value="gemini" /><span>Gemini</span></label>
@@ -39,8 +39,9 @@
               inputmode="url"
               spellcheck="false"
               placeholder="http://localhost:1234/v1"
-              aria-describedby="base-url-hint"
+              aria-describedby="base-url-error base-url-hint"
             />
+            <p class="field-error" id="base-url-error"></p>
             <p class="hint" id="base-url-hint">Any service that speaks the OpenAI chat API, such as LM Studio or Vercel AI Gateway.</p>
           </div>
 
@@ -52,8 +53,9 @@
               type="text"
               list="model-options"
               spellcheck="false"
-              aria-describedby="model-hint"
+              aria-describedby="model-error model-hint"
             />
+            <p class="field-error" id="model-error"></p>
             <datalist id="model-options"></datalist>
             <p class="hint" id="model-hint" aria-live="polite">Pick from the list or type any model name.</p>
           </div>
@@ -123,7 +125,8 @@
                 <span class="label">Start with Windows</span>
                 <span class="hint">Opens in the tray when you sign in.</span>
               </span>
-              <input type="checkbox" role="switch" aria-checked="false" class="switch" id="start-with-windows" />
+              <!-- biome-ignore lint/a11y/useAriaPropsForRole: a checkbox exposes its own checked state; a manual aria-checked can only drift from it -->
+              <input type="checkbox" role="switch" class="switch" id="start-with-windows" />
             </label>
             <p class="hint field-status" id="startup-status" role="status" aria-live="polite"></p>
           </div>
@@ -140,7 +143,7 @@
       </header>
 
       <div class="panel">
-        <ul class="set-list" id="set-list" aria-labelledby="sets-title"></ul>
+        <div class="set-list" id="set-list" role="radiogroup" aria-labelledby="sets-title"></div>
 
         <div class="sets-actions panel-foot">
           <button type="button" class="button quiet with-icon" id="set-add">
@@ -177,7 +180,8 @@
               <span class="label">Check for updates automatically</span>
               <span class="hint">Once a day. Nothing installs until you choose.</span>
             </span>
-            <input type="checkbox" role="switch" aria-checked="true" class="switch" id="auto-check" checked />
+            <!-- biome-ignore lint/a11y/useAriaPropsForRole: a checkbox exposes its own checked state; a manual aria-checked can only drift from it -->
+            <input type="checkbox" role="switch" class="switch" id="auto-check" checked />
           </label>
           <p class="hint field-status" id="auto-check-status" role="status" aria-live="polite"></p>
         </div>
@@ -186,16 +190,29 @@
 
     <template id="set-editor-template">
       <form class="set-editor" novalidate autocomplete="off">
-        <label class="field">
-          <span class="label">Name</span>
-          <input type="text" name="name" maxlength="60" spellcheck="false" required />
-        </label>
         <div class="field">
-          <label class="field">
-            <span class="label">Instructions</span>
-            <textarea name="instructions" rows="7" spellcheck="true"></textarea>
-          </label>
-          <p class="hint">Say what a rewrite should do, in your own words. The app always replies with only the rewritten text.</p>
+          <label class="label" for="set-name">Name</label>
+          <input
+            type="text"
+            id="set-name"
+            name="name"
+            maxlength="60"
+            spellcheck="false"
+            required
+            aria-describedby="set-name-error"
+          />
+          <p class="field-error" id="set-name-error"></p>
+        </div>
+        <div class="field">
+          <label class="label" for="set-instructions">Instructions</label>
+          <textarea
+            id="set-instructions"
+            name="instructions"
+            rows="7"
+            spellcheck="true"
+            aria-describedby="set-instructions-hint"
+          ></textarea>
+          <p class="hint" id="set-instructions-hint">Say what a rewrite should do, in your own words. The app always replies with only the rewritten text.</p>
         </div>
         <div class="set-editor-actions">
           <button type="button" class="button quiet danger" data-action="delete">Delete</button>

@@ -4,6 +4,8 @@
 // and offers Replace or Clear. A typed key is sent once, on Save, and the
 // field is emptied right after.
 
+import "../shared/native-feel";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   clearApiKey,
   errorMessage,
@@ -16,9 +18,20 @@ import {
   saveApiKey,
   saveSettings,
 } from "./api";
-import { initInstructionSets } from "./instruction-sets";
+import { clearFieldError, showFieldError } from "./field-error";
+import {
+  initInstructionSets,
+  isEditingSet,
+  leaveEditor,
+} from "./instruction-sets";
 import { initLaunch } from "./launch";
-import { askToSaveBeforeUpdating, hasUnsavedChanges } from "./unsaved-changes";
+import {
+  askToSave,
+  askToSaveBeforeUpdating,
+  BEFORE_CLOSING,
+  hasUnsavedChanges,
+  isDialogOpen,
+} from "./unsaved-changes";
 import {
   beforeUpdateNow,
   initUpdates,
@@ -110,9 +123,8 @@ function showStatus(message: string, kind: "ok" | "error"): void {
 function clearStatus(): void {
   window.clearTimeout(statusTimer);
   status.textContent = "";
-  for (const input of [modelInput, baseUrlInput]) {
-    input.removeAttribute("aria-invalid");
-  }
+  clearFieldError(modelInput);
+  clearFieldError(baseUrlInput);
 }
 
 function selectedProvider(): ProviderKind {
@@ -213,7 +225,10 @@ function isHttpUrl(url: string): boolean {
   return /^https?:\/\/\S+$/i.test(url);
 }
 
-/** Checks the form and marks the first problem. Returns the settings if valid. */
+/**
+ * Checks the form and shows the first problem under its field. Returns the
+ * settings if valid.
+ */
 function readForm(): ProviderSettings | undefined {
   const settings: ProviderSettings = {
     provider: view.provider,
@@ -221,15 +236,16 @@ function readForm(): ProviderSettings | undefined {
     customBaseUrl: baseUrlInput.value.trim(),
   };
   if (settings.provider === "custom" && !isHttpUrl(settings.customBaseUrl)) {
-    baseUrlInput.setAttribute("aria-invalid", "true");
+    showFieldError(
+      baseUrlInput,
+      "Enter a base URL starting with http:// or https://.",
+    );
     baseUrlInput.focus();
-    showStatus("Enter a base URL starting with http:// or https://.", "error");
     return undefined;
   }
   if (settings.model === "") {
-    modelInput.setAttribute("aria-invalid", "true");
+    showFieldError(modelInput, "Enter a model name.");
     modelInput.focus();
-    showStatus("Enter a model name.", "error");
     return undefined;
   }
   return settings;
@@ -304,7 +320,7 @@ form.addEventListener("change", (event) => {
 });
 
 form.addEventListener("input", (event) => {
-  (event.target as HTMLElement).removeAttribute("aria-invalid");
+  if (event.target instanceof HTMLInputElement) clearFieldError(event.target);
 });
 
 form.addEventListener("submit", (event) => {
@@ -352,6 +368,55 @@ beforeUpdateNow(async () => {
     case "cancel":
       return false;
   }
+});
+
+/** True while a close is asking about unsaved changes. */
+let closing = false;
+
+/**
+ * Closes the window, like Esc or Ctrl+W in a native dialog. An open set
+ * editor with edits, then unsaved provider edits, are asked about first.
+ */
+async function closeWindow(): Promise<void> {
+  if (closing) return;
+  closing = true;
+  try {
+    if (!(await leaveEditor())) return;
+    if (hasUnsavedChanges(savedForm, currentForm(), keyInput.value)) {
+      switch (await askToSave(BEFORE_CLOSING)) {
+        case "save":
+          if (!(await save())) {
+            status.scrollIntoView({ block: "nearest" });
+            return;
+          }
+          break;
+        case "discard":
+          break;
+        case "cancel":
+          return;
+      }
+    }
+    await getCurrentWindow().close();
+  } catch {
+    // The window stays open; the title bar still closes it.
+  } finally {
+    closing = false;
+  }
+}
+
+// Bubble phase, so fields that use these keys themselves (the shortcut
+// field records combinations, Esc resets it) get them first and cancel them.
+// Dialogs and the set editor handle Esc on their own.
+document.addEventListener("keydown", (event) => {
+  if (event.defaultPrevented || event.repeat || isDialogOpen()) return;
+  const ctrlW =
+    event.code === "KeyW" &&
+    event.ctrlKey &&
+    !(event.altKey || event.shiftKey || event.metaKey);
+  const esc = event.key === "Escape" && !isEditingSet();
+  if (!(ctrlW || esc)) return;
+  event.preventDefault();
+  void closeWindow();
 });
 
 async function init(): Promise<void> {

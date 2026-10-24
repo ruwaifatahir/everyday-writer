@@ -42,40 +42,43 @@ h2 {
 }
 
 /* Each window fades in once its first state is drawn (main.ts sets
-   data-ready), so it never flashes an empty frame. */
+   data-ready), so it never flashes an empty frame. Like a native window,
+   chrome text can't be selected and the pointer stays an arrow; text you
+   may want to copy opts back in. */
 body {
   margin: 0;
   opacity: 0;
   transition: opacity var(--motion-normal) var(--ease);
+  user-select: none;
+  cursor: default;
 }
 
 body[data-ready] {
   opacity: 1;
 }
 
-::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+input,
+textarea,
+.selectable {
+  user-select: text;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+input:not([type="radio"], [type="checkbox"]),
+textarea,
+.selectable {
+  cursor: text;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--stone);
-  background-clip: padding-box;
-  border: 3px solid transparent;
-  border-radius: var(--radius-pill);
+/* Windows' own thin scrollbar, in system colors. */
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: GrayText transparent;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background-color: var(--fog);
-}
-
+/* Reduced motion keeps the fades and drops the travel: entrances become a
+   short opacity change, nothing slides or scales. */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --motion-fast: 0ms;
-    --motion-normal: 0ms;
+    --motion-normal: var(--motion-fast);
   }
 }

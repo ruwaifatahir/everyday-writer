@@ -6,6 +6,7 @@
 // (last set, active after delete); this file only shows what Rust returns.
 
 import { errorMessage } from "./api";
+import { clearFieldError, showFieldError } from "./field-error";
 import {
   addInstructionSet,
   deleteInstructionSet,
@@ -17,6 +18,7 @@ import {
   restoreStarterTemplates,
   setActiveInstructionSet,
 } from "./instruction-sets-api";
+import { askToSave, LEAVING_SET_EDITOR } from "./unsaved-changes";
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -24,7 +26,7 @@ function element<T extends HTMLElement>(id: string): T {
   return found as T;
 }
 
-const list = element<HTMLUListElement>("set-list");
+const list = element<HTMLDivElement>("set-list");
 const addButton = element<HTMLButtonElement>("set-add");
 const restoreButton = element<HTMLButtonElement>("sets-restore");
 const restoreDialog = element<HTMLDialogElement>("restore-dialog");
@@ -38,6 +40,8 @@ const view = {
   library: { sets: [], active: -1 } as InstructionSets,
   editing: null as Editing,
   draft: { name: "", instructions: "" },
+  /** The draft as the editor opened, to tell whether it changed. */
+  original: { name: "", instructions: "" },
   confirmingDelete: false,
 };
 
@@ -93,8 +97,8 @@ function editorFor(editing: Exclude<Editing, null>): HTMLFormElement {
 function rowFor(
   set: InstructionSets["sets"][number],
   activeId: InstructionSetId,
-): HTMLLIElement {
-  const row = document.createElement("li");
+): HTMLDivElement {
+  const row = document.createElement("div");
   row.className = "set-row";
   row.dataset.id = String(set.id);
   const active = set.id === activeId;
@@ -137,7 +141,7 @@ function render(): void {
   const { sets, active } = view.library;
   const rows = sets.map((set) => rowFor(set, active));
   if (view.editing === "new") {
-    const row = document.createElement("li");
+    const row = document.createElement("div");
     row.className = "set-row new";
     row.append(editorFor("new"));
     rows.push(row);
@@ -161,7 +165,7 @@ function apply(library: InstructionSets): void {
   const previous = view.library;
   view.library = library;
   if (view.editing !== null && sameShape(previous, library)) {
-    for (const row of list.querySelectorAll<HTMLLIElement>(".set-row")) {
+    for (const row of list.querySelectorAll<HTMLDivElement>(".set-row")) {
       const active = row.dataset.id === String(library.active);
       row.toggleAttribute("data-active", active);
       const radio = row.querySelector<HTMLInputElement>('input[type="radio"]');
@@ -190,6 +194,7 @@ function openEditor(editing: Exclude<Editing, null>): void {
     name: set?.name ?? "",
     instructions: set?.instructions ?? "",
   };
+  view.original = { ...view.draft };
   clearStatus();
   render();
   list
@@ -201,6 +206,14 @@ function closeEditor(): void {
   view.editing = null;
   view.confirmingDelete = false;
   view.draft = { name: "", instructions: "" };
+  view.original = { name: "", instructions: "" };
+}
+
+function draftChanged(): boolean {
+  return (
+    view.draft.name !== view.original.name ||
+    view.draft.instructions !== view.original.instructions
+  );
 }
 
 /** Closes the editor and puts focus back where the user started. */
@@ -232,16 +245,17 @@ async function run(
   }
 }
 
-async function saveEditor(form: HTMLFormElement): Promise<void> {
+/** Saves the open editor. Resolves false if it was invalid or failed. */
+async function saveEditor(form: HTMLFormElement): Promise<boolean> {
   const editing = view.editing;
-  if (editing === null) return;
+  if (editing === null) return false;
   const nameInput = form.elements.namedItem("name") as HTMLInputElement;
   const name = view.draft.name.trim();
   if (name === "") {
-    nameInput.setAttribute("aria-invalid", "true");
+    clearStatus();
+    showFieldError(nameInput, "Give the instruction set a name.");
     nameInput.focus();
-    showStatus("Give the instruction set a name.", "error");
-    return;
+    return false;
   }
   const submit = form.querySelector<HTMLButtonElement>('[type="submit"]');
   if (submit) submit.disabled = true;
@@ -259,9 +273,11 @@ async function saveEditor(form: HTMLFormElement): Promise<void> {
         : editing;
     showStatus(editing === "new" ? "Instruction set added" : "Saved", "ok");
     finishEditing(focusId);
+    return true;
   } catch (error) {
     showStatus(errorMessage(error), "error");
     if (submit) submit.disabled = false;
+    return false;
   }
 }
 
@@ -304,7 +320,7 @@ list.addEventListener("input", (event) => {
   const target = event.target as HTMLInputElement | HTMLTextAreaElement;
   if (target.name === "name") view.draft.name = target.value;
   if (target.name === "instructions") view.draft.instructions = target.value;
-  target.removeAttribute("aria-invalid");
+  clearFieldError(target);
 });
 
 list.addEventListener("click", (event) => {
@@ -314,7 +330,7 @@ list.addEventListener("click", (event) => {
   if (!button) return;
   switch (button.dataset.action) {
     case "edit": {
-      const row = button.closest<HTMLLIElement>(".set-row");
+      const row = button.closest<HTMLDivElement>(".set-row");
       openEditor(Number(row?.dataset.id));
       break;
     }
@@ -346,8 +362,7 @@ list.addEventListener("submit", (event) => {
 list.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || view.editing === null) return;
   event.preventDefault();
-  const editing = view.editing;
-  finishEditing(typeof editing === "number" ? editing : undefined);
+  void leaveEditor();
 });
 
 addButton.addEventListener("click", () => {
@@ -369,6 +384,39 @@ restoreDialog.addEventListener("close", () => {
     restoreButton.focus(),
   );
 });
+
+/** Whether the editor is open. It handles Esc itself. */
+export function isEditingSet(): boolean {
+  return view.editing !== null;
+}
+
+/**
+ * Closes the editor, asking first if its draft changed: Save keeps it only
+ * if the save worked, Discard drops it, Cancel stays. Resolves true once the
+ * editor is closed (or wasn't open).
+ */
+export async function leaveEditor(): Promise<boolean> {
+  const editing = view.editing;
+  if (editing === null) return true;
+  const focusId = typeof editing === "number" ? editing : undefined;
+  if (!draftChanged()) {
+    clearStatus();
+    finishEditing(focusId);
+    return true;
+  }
+  switch (await askToSave(LEAVING_SET_EDITOR)) {
+    case "save": {
+      const form = list.querySelector<HTMLFormElement>(".set-editor");
+      return form ? saveEditor(form) : false;
+    }
+    case "discard":
+      clearStatus();
+      finishEditing(focusId);
+      return true;
+    case "cancel":
+      return false;
+  }
+}
 
 /** Loads the sets and follows changes made elsewhere, such as the tray. */
 export async function initInstructionSets(): Promise<void> {

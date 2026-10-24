@@ -14,11 +14,6 @@ body {
   overflow: hidden;
 }
 
-body {
-  user-select: none;
-  cursor: default;
-}
-
 /* The radius matches the corner Windows 11 rounds the window to, so the
    border follows it instead of being clipped. */
 .popup {
@@ -89,6 +84,7 @@ body {
 /* Body: the waveform, the result, or a message */
 
 .body {
+  position: relative;
   min-height: 0;
   padding: 0 var(--space-8) var(--space-12) var(--space-16);
 }
@@ -121,6 +117,22 @@ body {
   animation: rise var(--motion-normal) var(--ease);
 }
 
+/* Focusable so the keyboard can scroll it; Enter there is still Replace.
+   The fade mask would clip an outline on the text itself, so the ring is
+   drawn on the body around it. */
+.result:focus-visible {
+  outline: none;
+}
+
+.body:has(> .result:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: -4px 6px 4px 6px;
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-control);
+  pointer-events: none;
+}
+
 .message {
   display: flex;
   flex-direction: column;
@@ -137,6 +149,14 @@ body {
   line-height: 1.25;
   color: var(--ink);
   text-wrap: pretty;
+}
+
+/* The fix-it link under a message is the compact size, so a two-line
+   message, the button and its focus ring all clear the footer rule. */
+.message .button {
+  height: var(--control-sm);
+  padding: 0 var(--space-12);
+  font-size: 14px;
 }
 
 /* Action bar: the same two actions every time */

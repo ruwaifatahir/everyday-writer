@@ -30,6 +30,34 @@
   color: var(--ember-ink);
 }
 
+/* A field's own error, under it and named by its aria-describedby. */
+.field-error {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 18px;
+  font-weight: var(--weight-medium);
+  color: var(--ember-ink);
+  text-wrap: pretty;
+  animation: rise var(--motion-normal) var(--ease);
+}
+
+.field-error:empty {
+  display: none;
+}
+
+/* Read by screen readers, not drawn. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* One focus ring everywhere: ink, offset, a real outline so Windows high
    contrast still draws it. */
 
@@ -58,7 +86,7 @@
   background: transparent;
   border: var(--border) solid transparent;
   border-radius: var(--radius-control);
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   transition:
     background-color var(--motion-fast) var(--ease),
@@ -69,10 +97,6 @@
 
 .button:active:not(:disabled) {
   transform: translateY(1px);
-}
-
-.button:disabled {
-  cursor: default;
 }
 
 .button.primary,
@@ -102,9 +126,10 @@
 }
 
 /* Disabled: the outline goes stone and the fill drops, so a waiting
-   button reads as not yet, not as a washed-out color. */
+   button reads as not yet, not as a washed-out color. The label stays
+   ink-soft (6.4:1), legible but plainly not ready. */
 .button:is(.primary, .secondary):disabled {
-  color: var(--fog);
+  color: var(--ink-soft);
   background: transparent;
   border-color: var(--stone);
 }
@@ -133,6 +158,10 @@
 
 .button.danger {
   color: var(--ember-ink);
+}
+
+.button.quiet:disabled {
+  color: var(--ink-soft);
 }
 
 /* Second click to confirm: the ember pill, so it can't be missed. */
@@ -183,6 +212,7 @@ kbd {
 }
 
 .button:disabled kbd {
+  color: var(--ink-soft);
   background: var(--stone);
 }
 
@@ -217,7 +247,7 @@ kbd {
   background: transparent;
   border: 0;
   border-radius: var(--radius-pill);
-  cursor: pointer;
+  cursor: default;
   transition: background-color var(--motion-fast) var(--ease);
 }
 
@@ -281,7 +311,7 @@ input[aria-invalid="true"] {
 /* The model field's dropdown arrow, from its datalist. */
 input[list]::-webkit-calendar-picker-indicator {
   opacity: 0.6;
-  cursor: pointer;
+  cursor: default;
 }
 
 input[list]:hover::-webkit-calendar-picker-indicator {
@@ -300,7 +330,7 @@ input[list]:hover::-webkit-calendar-picker-indicator {
   background: var(--cream);
   border: var(--border) solid var(--ink);
   border-radius: var(--radius-pill);
-  cursor: pointer;
+  cursor: default;
   transition: background-color var(--motion-normal) var(--ease);
 }
 
@@ -350,7 +380,7 @@ input[type="radio"] {
   background: var(--cream);
   border: var(--border) solid var(--ink);
   border-radius: var(--radius-pill);
-  cursor: pointer;
+  cursor: default;
 }
 
 input[type="radio"]::before {
@@ -466,7 +496,32 @@ input[type="radio"]:checked::before {
   }
 }
 
+/* A badge that appears, such as Active moving to another set. */
+@keyframes badge-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Reduced motion: the same entrances as plain fades, no travel. */
 @media (prefers-reduced-motion: reduce) {
+  @keyframes rise {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes badge-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .button:active:not(:disabled) {
+    transform: none;
+  }
+
   .wave span {
     animation: none;
   }

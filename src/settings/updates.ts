@@ -32,23 +32,17 @@ const updateNowButton = element<HTMLButtonElement>("updates-install");
 const autoCheckSwitch = element<HTMLInputElement>("auto-check");
 const autoCheckStatus = element<HTMLParagraphElement>("auto-check-status");
 
-function setAutoCheckSwitch(on: boolean): void {
-  autoCheckSwitch.checked = on;
-  autoCheckSwitch.setAttribute("aria-checked", String(on));
-}
-
 // Applies right away, like "Start with Windows". A known update stays
 // offered when this is turned off.
 autoCheckSwitch.addEventListener("change", async () => {
   const enabled = autoCheckSwitch.checked;
-  setAutoCheckSwitch(enabled);
   autoCheckSwitch.disabled = true;
   autoCheckStatus.textContent = "";
   delete autoCheckStatus.dataset.kind;
   try {
     await setAutoCheck(enabled);
   } catch (error) {
-    setAutoCheckSwitch(!enabled);
+    autoCheckSwitch.checked = !enabled;
     autoCheckStatus.textContent = errorMessage(error);
     autoCheckStatus.dataset.kind = "error";
   } finally {
@@ -169,7 +163,7 @@ export async function initUpdates(): Promise<void> {
     // The section still shows the version and the button.
   }
   try {
-    setAutoCheckSwitch((await getSettings()).autoCheck);
+    autoCheckSwitch.checked = (await getSettings()).autoCheck;
   } catch {
     // The switch keeps its default (on), which is also the setting's.
   }

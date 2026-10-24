@@ -204,6 +204,16 @@ body {
   color: var(--forest);
 }
 
+/* Swapped in as the provider, the key or a status changes: each rises in
+   (`rise` replays whenever the element goes from hidden to shown). */
+.key-saved,
+.key-entry,
+#base-url-field,
+#provider-hint,
+.field-status {
+  animation: rise var(--motion-normal) var(--ease);
+}
+
 /* Provider footer: status line and Save */
 
 .status {
@@ -220,6 +230,12 @@ body {
   display: none;
 }
 
+/* Results and errors can be copied, like a native dialog's message. */
+:is(.status, .field-status, .field-error, .app-version) {
+  user-select: text;
+  cursor: text;
+}
+
 /* Shortcut and startup */
 
 #shortcut {
@@ -232,7 +248,6 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-16);
-  cursor: pointer;
 }
 
 .switch-text {
@@ -277,7 +292,6 @@ body {
   gap: var(--space-12);
   min-width: 0;
   align-self: stretch;
-  cursor: pointer;
 }
 
 .set-name {
@@ -307,6 +321,7 @@ body {
 
 .set-row[data-active] .set-badge {
   display: inline-block;
+  animation: badge-in var(--motion-fast) var(--ease);
 }
 
 /* Inline editor, opened under a set or at the end for a new one. */
@@ -393,19 +408,59 @@ body {
   overflow: hidden;
 }
 
-.confirm[open] {
-  animation: dialog-in var(--motion-normal) var(--ease);
+/* In: rises 8px and scales from 98% over 220ms. Out: fades and drops 4px
+   over 120ms; allow-discrete keeps it in the top layer until it is done.
+   The scrim fades with it. */
+.confirm,
+.confirm::backdrop {
+  opacity: 0;
+  transition:
+    opacity var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease),
+    overlay var(--motion-fast) var(--ease) allow-discrete,
+    display var(--motion-fast) var(--ease) allow-discrete;
 }
 
-@keyframes dialog-in {
-  from {
+.confirm {
+  transform: translateY(4px);
+}
+
+.confirm[open],
+.confirm[open]::backdrop {
+  opacity: 1;
+  transition-duration: var(--motion-normal);
+}
+
+.confirm[open] {
+  transform: none;
+}
+
+@starting-style {
+  .confirm[open] {
     opacity: 0;
     transform: translateY(8px) scale(0.98);
+  }
+
+  .confirm[open]::backdrop {
+    opacity: 0;
   }
 }
 
 .confirm::backdrop {
   background: var(--scrim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm,
+  .confirm[open] {
+    transform: none;
+  }
+
+  @starting-style {
+    .confirm[open] {
+      transform: none;
+    }
+  }
 }
 
 .confirm form {

@@ -39,6 +39,8 @@ const MODIFIER_CODES = new Set([
   "MetaRight",
 ]);
 
+const EDITING_CODES = new Set(["KeyA", "KeyC", "KeyV", "KeyX", "KeyY", "KeyZ"]);
+
 /** `Super` is what Rust parses; people know the key as Win. */
 function toDisplay(shortcut: string): string {
   return shortcut.replace(/\bsuper\b/gi, "Win");
@@ -57,6 +59,13 @@ function keyName(code: string): string {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);
   return code;
+}
+
+/** Ctrl+A, C, V, X, Y, Z and Ctrl+Shift+Z: select all, clipboard, undo, redo. */
+function isEditingKey(event: KeyboardEvent): boolean {
+  if (!event.ctrlKey || event.altKey || event.metaKey) return false;
+  if (event.shiftKey) return event.code === "KeyZ";
+  return EDITING_CODES.has(event.code);
 }
 
 /** A pressed combination, or undefined while only modifiers are down. */
@@ -121,8 +130,10 @@ shortcutInput.addEventListener("keydown", (event) => {
     resetShortcut();
     return;
   }
-  // A combination with Ctrl, Alt or Win is recorded; plain keys type.
+  // A combination with Ctrl, Alt or Win is recorded; plain keys type, and
+  // so do the editing keys, so the typed text can be edited.
   if (!(event.ctrlKey || event.altKey || event.metaKey)) return;
+  if (isEditingKey(event)) return;
   const pressed = combination(event);
   if (!pressed) return;
   event.preventDefault();
@@ -140,20 +151,14 @@ shortcutApply.addEventListener("click", () => {
   void applyShortcut();
 });
 
-function setSwitch(on: boolean): void {
-  startSwitch.checked = on;
-  startSwitch.setAttribute("aria-checked", String(on));
-}
-
 startSwitch.addEventListener("change", async () => {
   const enabled = startSwitch.checked;
-  setSwitch(enabled);
   startSwitch.disabled = true;
   startStatus.textContent = "";
   try {
     await setStartWithWindows(enabled);
   } catch (error) {
-    setSwitch(!enabled);
+    startSwitch.checked = !enabled;
     show(startStatus, errorMessage(error), "error");
   } finally {
     startSwitch.disabled = false;
@@ -166,7 +171,7 @@ export async function initLaunch(
 ): Promise<void> {
   if (settings) {
     savedShortcut = settings.shortcut;
-    setSwitch(settings.startWithWindows);
+    startSwitch.checked = settings.startWithWindows;
   }
   resetShortcut();
   let working = true;

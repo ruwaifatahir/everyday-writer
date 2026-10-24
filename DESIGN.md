@@ -48,7 +48,8 @@ One theme: cream. No dark mode, no per-window variants.
   never load fonts from a CDN.
 - `src/styles/tokens.css`: every color, size, radius and duration.
 - `src/styles/base.css`: reset, document defaults, serif headings,
-  selection, scrollbars, fade-in on `body[data-ready]`, reduced motion.
+  selection, no-select chrome, scrollbars, fade-in on `body[data-ready]`,
+  reduced motion.
 - `src/styles/components.css`: buttons, `kbd`, `.badge`, icon buttons,
   inputs, switch, radio, `.panel` / `.panel-foot`, `.wave`, text roles.
 - `src/popup/popup.css` and `src/settings/settings.css`: layout only.
@@ -65,7 +66,7 @@ and the Settings title bar matches. Change both sides together.
 | `ink` | Text, every 2px border, `kbd` fill, focus ring |
 | `stone` | Card outlines, row rules, segmented track, neutral pill |
 | `ink-soft` | Hints and secondary text (6.4:1 on cream) |
-| `fog` | Non-text only: off switch knob, disabled labels |
+| `fog` | Non-text only: the off switch knob |
 | `lavender` | Primary buttons and the on switch. Nothing else |
 | `forest` | Success: the popup's "Rewritten" pill, ok status, saved key |
 | `ember` | Active: the active instruction set, a confirming delete |
@@ -108,7 +109,9 @@ border or a fill change:
 
 - **Primary** button: lavender, ink border, ink text. One per view.
 - **Secondary** button: cream, ink border. Disabled primary and secondary
-  drop to a stone outline with fog text (not a faded color).
+  drop to a stone outline with `ink-soft` text, and a disabled `kbd` is a
+  stone chip with `ink-soft` text: legible, plainly not ready, never a
+  faded color. A disabled quiet button is `ink-soft` too.
 - **Quiet** button: no border, underline on hover; `.danger` is ember-ink;
   `.confirming` turns it into an ember pill with an ink border.
 - **Badge** (`.badge`, `.set-badge`, the popup state): full pill, 13px/500.
@@ -124,7 +127,12 @@ border or a fill change:
 - **kbd**: ink chip, cream text. The `Esc` hint in the popup footer uses a
   stone chip so only the Enter key on Replace is dark.
 - **Focus**: one rule, a 2px ink outline offset 2px, on every control. A
-  real outline, so Windows high contrast still draws it.
+  real outline, so Windows high contrast still draws it. The popup's
+  result fades at its foot, which would clip an outline, so its ring is a
+  2px ink border drawn around the text area instead.
+- **Field errors**: under the field, 13px/500 `ember-ink`, named by the
+  field's `aria-describedby`; the field border turns `ember-ink`. The
+  footer status line is for save results, not validation.
 
 ## Popup states
 
@@ -133,13 +141,33 @@ border or a fill change:
 - Result: forest "Rewritten" pill with a check, the text in Figtree 15px,
   Replace focused. Long text fades into the footer rule and scrolls.
 - Message: stone "Not rewritten" pill, the message in Garamond 20px, and
-  an outlined Open Settings button when there is something to fix.
+  an outlined Open Settings button at the compact 30px size when there is
+  something to fix, so a two-line message still clears the footer.
 
 ## Motion
 
 120ms for state changes, 220ms for entrances, exponential ease-out. Results,
-messages and the result pill rise 4px as they appear; dialogs scale in from
-98%. Under reduced motion all durations go to zero and the waveform stops.
+messages and the result pill rise 4px as they appear, and so do the Settings
+parts that swap in (the saved-key row, the key entry, the base URL field,
+status and error lines). The Active badge fades in from 95% over 120ms.
+Dialogs scale in from 98% over 220ms while the scrim fades in; they leave
+over 120ms, fading and dropping 4px (`transition-behavior: allow-discrete`
+with `@starting-style`). The popup window itself opens and closes
+instantly.
+
+Under reduced motion nothing travels: every entrance becomes a 120ms
+opacity fade, buttons don't press down, and the waveform stops.
+
+## Native behavior
+
+Both windows act like desktop windows, not web pages
+(`src/shared/native-feel.ts`): browser keys (reload, print, find, view
+source, history, and dev tools in release builds) do nothing, and the
+WebView menu only opens on text fields and the popup result. Chrome text
+can't be selected and the pointer stays an arrow everywhere, buttons
+included; inputs, the result, and status and error lines stay selectable.
+Scrollbars are the thin system bar in `GrayText`. Settings closes on Esc or
+Ctrl+W, asking first about unsaved edits.
 
 ## Do
 
