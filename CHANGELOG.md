@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-10-24
 
 **Updating from 1.0.0:** version 1.0.0 can't update itself. Download this version's installer below and run it over your current copy, once. Your settings, instruction sets, key and start-with-Windows choice are kept, and from now on the app updates itself.
 
