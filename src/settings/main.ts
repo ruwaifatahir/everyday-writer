@@ -168,14 +168,27 @@ function currentForm(): ProviderSettings {
 
 let statusTimer: number | undefined;
 
-function showStatus(message: string, kind: "ok" | "error"): void {
+function showStatus(message: string, kind: "ok" | "error" | "unsaved"): void {
   window.clearTimeout(statusTimer);
-  status.textContent = message;
+  // The line is read aloud on change; the same text again stays quiet.
+  if (status.textContent !== message) status.textContent = message;
   status.dataset.kind = kind;
   if (kind === "ok") {
-    statusTimer = window.setTimeout(() => {
-      status.textContent = "";
-    }, 2500);
+    statusTimer = window.setTimeout(renderUnsaved, 2500);
+  }
+}
+
+/**
+ * Says "Unsaved changes" while the form differs from what was saved, and
+ * clears the line once it doesn't. A load error stays: with nothing loaded
+ * there is nothing to compare against.
+ */
+function renderUnsaved(): void {
+  if (hasUnsavedChanges(savedForm, currentForm(), keyInput.value)) {
+    showStatus("Unsaved changes", "unsaved");
+  } else if (savedForm) {
+    window.clearTimeout(statusTimer);
+    status.textContent = "";
   }
 }
 
@@ -345,9 +358,21 @@ function readForm(): ProviderSettings | undefined {
 
 /** Saves the form. Resolves false if it was invalid or couldn't be saved. */
 async function save(): Promise<boolean> {
+  // Without a loaded form there's nothing to compare, so it always saves.
+  if (
+    savedForm &&
+    !hasUnsavedChanges(savedForm, currentForm(), keyInput.value)
+  ) {
+    clearStatus();
+    showStatus("Saved.", "ok");
+    return true;
+  }
   clearStatus();
   const settings = readForm();
-  if (!settings) return false;
+  if (!settings) {
+    renderUnsaved();
+    return false;
+  }
   // Ollama never sends a key, so none is saved for it.
   const key = settings.provider === "ollama" ? "" : keyInput.value.trim();
   saveButton.disabled = true;
@@ -402,11 +427,13 @@ function changeProvider(): void {
   // A name from the old provider won't work on the new one.
   modelInput.value = suggestedFor(view.provider)[0] ?? "";
   renderModel();
+  renderUnsaved();
   void loadKeyState();
 }
 
 form.addEventListener("input", (event) => {
   if (event.target instanceof HTMLInputElement) clearFieldError(event.target);
+  renderUnsaved();
 });
 
 form.addEventListener("submit", (event) => {
@@ -425,6 +452,7 @@ keyChange.addEventListener("click", () => {
 keyCancel.addEventListener("click", () => {
   resetKeyEntry();
   renderKey();
+  renderUnsaved();
   keyChange.focus();
 });
 
