@@ -22,7 +22,7 @@ Record each run in the results table at the end: date, build, Windows version an
 | C4 | Use a shortcut with Alt (set it in Settings), rewrite; repeat with a Win shortcut saved by an earlier version | No Start menu, colour filter, menu bar or other Windows shortcut fires |
 | C5 | Press the shortcut with nothing selected (Notepad, empty) | No popup and no sound |
 | C6 | Select over 5,000 characters, press the shortcut | "Too long" message; nothing is sent |
-| C7 | Windows Terminal with no selection | Note what happens: Ctrl+C may interrupt the running command (known gap) |
+| C7 | Windows Terminal with no selection | Note what happens: Ctrl + C may interrupt the running command (known gap) |
 | C8 | An app running as administrator | Note the result: Windows blocks our key presses, so it looks like "nothing selected" (known gap) |
 
 ## Popup
@@ -46,7 +46,7 @@ Record each run in the results table at the end: date, build, Windows version an
 | R1 | Replace (button) in Notepad | Selection replaced by the result |
 | R2 | Replace with Enter in Word, a Chrome text field, Slack and Windows Terminal | Selection replaced in each |
 | R3 | After Replace | Focus is back in the original window; typing continues there |
-| R4 | Close the original window, then Replace | Result copied; the popup is headed "Copied" and says "The original window closed. Press Ctrl+V to paste the rewrite." |
+| R4 | Close the original window, then Replace | Result copied; the popup is headed "Copied" and says "The original window closed. Press Ctrl + V to paste the rewrite." |
 | R5 | Replace on a read-only Chrome page | Nothing harmful happens; Copy still works |
 
 ## Clipboard preservation
@@ -61,10 +61,10 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | K4 | Files **cut** in Explorer | Pasting still moves them (not copies) |
 | K5 | Formatted text copied from Word | Pastes into Word with its formatting |
 | K6 | HTML copied from Chrome | Pastes into Word or Gmail with its formatting |
-| K7 | Empty clipboard (Win+V > Clear all) | Clipboard is empty again afterwards |
-| K8 | After a rewrite, open Win+V | No entry for the result or for the restored clipboard. The target app's own copy of the selection may appear (known gap) |
+| K7 | Empty clipboard (Win + V > Clear all) | Clipboard is empty again afterwards |
+| K8 | After a rewrite, open Win + V | No entry for the result or for the restored clipboard. The target app's own copy of the selection may appear (known gap) |
 | K9 | Run a clipboard manager (e.g. Ditto) and rewrite | Capture and Replace still work; no entry for our writes |
-| K10 | Rewrite and choose Copy in the popup, then open Win+V | No history entry for the copied result |
+| K10 | Rewrite and choose Copy in the popup, then open Win + V | No history entry for the copied result |
 
 ## Settings and providers
 
@@ -121,25 +121,28 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | L4 | After install | Start with Windows is on; turning it off removes the startup entry |
 | L5 | Launch the app a second time | Settings opens in the running app; no second copy |
 | L6 | Idle for a few minutes | Near-zero CPU in Task Manager; small memory use |
-| L7 | With another shortcut set, click **Reset to default** | Ctrl+Shift+Space works and stays after a restart; the old one stops; the button hides, and stays hidden when Settings reopens |
-| L8 | Let another app hold Ctrl+Shift+Space, then click **Reset to default** | "Another app already uses this shortcut. Pick a new one."; the current shortcut keeps working and the button stays |
+| L7 | With another shortcut set, click **Reset to default** | Ctrl + Shift + Space works and stays after a restart; the old one stops; the button hides, and stays hidden when Settings reopens |
+| L8 | Let another app hold Ctrl + Shift + Space, then click **Reset to default** | "Another app already uses this shortcut. Pick a new one."; the current shortcut keeps working and the button stays |
 | L9 | Click the shortcut field and press the current shortcut | The field records and saves it; no rewrite starts. Once you leave the field it works |
 | L10 | Click the shortcut field, then press Esc, Tab away or switch to another app; press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
 | L11 | Click the shortcut field, close Settings with the title bar, press the shortcut on a selection | The rewrite starts: the saved shortcut is back |
 | L12 | Click the shortcut field, type letters and spaces, try to paste | Nothing is typed or pasted; the field shows "Press a shortcut…" or the saved shortcut, never typed text |
 | L13 | Click the shortcut field, hold Ctrl, add Shift, then let go | The field shows "Ctrl + …", then "Ctrl + Shift + …", then "Press a shortcut…" again |
 | L14 | In the shortcut field, hold a new combination down for a few seconds | It saves once; auto-repeat records nothing more |
-| L15 | In the shortcut field, press Shift+K, then K on its own | "Include Ctrl or Alt, as in Ctrl + Shift + K." each time; the old shortcut is kept and the field keeps recording, so the next press is taken |
-| L16 | Tab into the shortcut field, then press Tab and Shift+Tab | Focus moves to the next or previous control; Tab is never recorded |
+| L15 | In the shortcut field, press Shift + K, then K on its own | "Include Ctrl or Alt, as in Ctrl + Shift + K." each time; the old shortcut is kept and the field keeps recording, so the next press is taken |
+| L16 | Tab into the shortcut field, then press Tab and Shift + Tab | Focus moves to the next or previous control; Tab is never recorded |
 | L17 | With Narrator on, focus the shortcut field and press a new combination | It is read as a shortcut field with its hint; "Shortcut saved." is announced |
 | L18 | Look at the shortcut section | The hint reads "Click the field, then press Ctrl or Alt with one other key, adding Shift if you like. Nothing happens? Another app may be using that shortcut."; there is no **Use shortcut** button, and Enter on its own isn't applied |
-| L19 | Start with a shortcut another app holds, open Settings, click the field | "This shortcut isn't working…" shows under the field and stays while it records |
+| L19 | Start with a shortcut another app holds, open Settings, click the field and press Shift + K | "This shortcut isn't working…" shows under the field and stays while it records; the refusal shows below it without replacing it. Once a new shortcut saves, the warning goes |
 | L20 | In the shortcut field, press a new combination, then press it again without leaving | The second press is recorded, no rewrite starts; once you leave the field the new shortcut works |
 | L21 | With the keyboard, press **Reset to default** | Once it saves, focus moves to **Start with Windows**, not the shortcut field, so recording doesn't start |
-| L22 | In the shortcut field, press Win+Alt+K (or any Win combination that reaches the field) | "Windows keeps the Win key for its own shortcuts. Use Ctrl or Alt."; the old shortcut is kept and the field keeps recording |
-| L23 | In the shortcut field, press Ctrl+C, then Ctrl+V | "Everyday Writer presses Ctrl + C and Ctrl + V to copy and paste your text. Pick a new one." each time; the old shortcut is kept and the field keeps recording. Ctrl+Shift+C saves |
-| L24 | In the shortcut field, press Ctrl+Alt+K | It saves and works; the status reads "Shortcut saved. On keyboards with AltGr, Ctrl + Alt also types special characters, so this shortcut may block one." |
-| L25 | With Win+Shift+R saved by an earlier version (edit `shortcut` in the settings file), start the app and open Settings | Win+Shift+R rewrites, and the field shows "Win + Shift + R"; clicking the field and leaving it keeps it working; picking a new shortcut replaces it |
+| L22 | In the shortcut field, press Win + Alt + K (or any Win combination that reaches the field) | "Windows keeps the Win key for its own shortcuts. Pick a new one with Ctrl or Alt."; the old shortcut is kept and the field keeps recording |
+| L23 | In the shortcut field, press Ctrl + C, then Ctrl + V | "Everyday Writer presses Ctrl + C and Ctrl + V to copy and paste your text. Pick a new one." each time; the old shortcut is kept and the field keeps recording. Ctrl + Shift + C saves |
+| L24 | In the shortcut field, press Ctrl + Alt + K | It saves and works; the status reads "Saved. On keyboards with AltGr, Ctrl + Alt also types special characters, so this shortcut may block one." |
+| L25 | With Win + Shift + R saved by an earlier version (set `shortcut` to `Super+Shift+R` in the settings file), start the app and open Settings | Win + Shift + R rewrites, and the field shows "Win + Shift + R"; clicking the field and leaving it keeps it working; picking a new shortcut replaces it |
+| L26 | Click the shortcut field, press a new combination and at once close Settings with the title bar, so it closes during the save; press the new shortcut on a selection | The rewrite starts: the shortcut isn't left paused, however late the save finishes |
+| L27 | Click the shortcut field, switch to another app and back, then press the current shortcut | The field records it; no rewrite starts. Leave the field and it works again |
+| L28 | Click the shortcut field, let another app take the saved shortcut while it records (for example AutoHotkey), then leave the field | A tray notification says another app uses your shortcut; Settings still shows the shortcut |
 
 ## Updates
 

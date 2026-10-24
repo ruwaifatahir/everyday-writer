@@ -34,9 +34,9 @@ After:
 **Using it**
 
 - Works in any app where you can select text.
-- One shortcut, which you can change. The default is `Ctrl+Shift+Space`.
+- One shortcut, which you can change. The default is `Ctrl + Shift + Space`.
 - To change it, click the shortcut field in Settings and press the keys. The field only records key presses, and a new shortcut is saved the moment you press it, with no extra button. While the field records, the current shortcut pauses so you can record it again. Esc cancels and keeps the old one.
-- A new shortcut needs Ctrl or Alt and may add Shift, plus one other key. Win can't be used, because Windows keeps most Win combinations for itself. Ctrl+C and Ctrl+V can't be used, because the app presses them to copy your selection and paste the result. Ctrl+Alt works, with a warning that it can clash with AltGr on some keyboards.
+- A new shortcut needs Ctrl or Alt and may add Shift, plus one other key. Win can't be used, because Windows keeps most Win combinations for itself. Ctrl + C and Ctrl + V can't be used, because the app presses them to copy your selection and paste the result. Ctrl + Alt works, with a warning that it can clash with AltGr on some keyboards.
 - A refused shortcut gets a one-line reason under the field, and the field keeps recording. A Win shortcut saved by an earlier version keeps working until you change it.
 - The popup opens right away near your mouse, fully on that screen, and shows a small animation while the AI works.
 - The popup shows the result exactly as it came back, with three buttons: **Replace** (Enter), **Copy** and **✕** (Esc). The buttons are always the same, even if nothing changed.
@@ -108,7 +108,7 @@ Instructions are the heart of the app. They decide what the rewrite does.
 - The app runs fully on your computer. No server of ours is involved: updates come straight from the project's GitHub page.
 - Your text goes only to the AI provider you chose, using your own key.
 - The app never stores your text, logs it or sends it anywhere else.
-- If you use Windows clipboard history (Win+V), the text you rewrite may appear there.
+- If you use Windows clipboard history (Win + V), the text you rewrite may appear there.
 - Your key is kept safely by Windows, never in a plain file.
 - No tracking and no analytics.
 - The update check is a plain download of a public file from GitHub. It sends no ID, no app version and nothing about your settings or text. GitHub sees your IP address, as with any website visit. Turn off **Check for updates automatically** and the app only contacts GitHub when you ask it to check or update.
