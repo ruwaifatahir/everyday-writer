@@ -19,6 +19,12 @@
       "skillPath": "skills/engineering/ask-matt/SKILL.md",
       "computedHash": "9eead017d1708983aea08e98edc915defe7bf23719ac053ca98ab53dc518bd52"
     },
+    "better-writing": {
+      "source": "jakubkrehel/skills",
+      "sourceType": "github",
+      "skillPath": "skills/better-writing/SKILL.md",
+      "computedHash": "ce45d0cb11dea15e38ebb87fd8ac26944aef9ea30db0a644a91506aa70b571bc"
+    },
     "code-review": {
       "source": "mattpocock/skills",
       "sourceType": "github",
