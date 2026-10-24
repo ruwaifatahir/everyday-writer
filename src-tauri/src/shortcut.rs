@@ -77,7 +77,8 @@ pub trait Hotkeys {
 /// user without a working one: `new` is registered first, then saved with
 /// `save`, and only then is `current` released. Picking the shortcut that's
 /// already in use is a no-op, unless it isn't registered (it failed at
-/// startup), in which case it is tried again.
+/// startup or is paused), in which case it is tried again. A paused
+/// `current` has nothing to release.
 ///
 /// # Errors
 ///
@@ -106,6 +107,30 @@ pub fn change<E>(
         hotkeys.unregister(current_shortcut);
     }
     Ok(())
+}
+
+/// Pauses the `saved` shortcut while Settings records a new one, so pressing
+/// it reaches the field instead of starting a rewrite. [`resume`] brings it
+/// back. Does nothing if `saved` isn't a valid shortcut.
+pub fn pause(hotkeys: &impl Hotkeys, saved: &str) {
+    if let Ok(saved) = parse(saved) {
+        hotkeys.unregister(saved);
+    }
+}
+
+/// Brings back the `saved` shortcut after [`pause`]. Does nothing if it
+/// already works, so it is safe to call whenever recording might have ended.
+///
+/// # Errors
+///
+/// Returns [`ShortcutError::Invalid`] if `saved` isn't a valid shortcut and
+/// [`ShortcutError::Taken`] if another app took it while it was paused.
+pub fn resume(hotkeys: &impl Hotkeys, saved: &str) -> Result<(), ShortcutError> {
+    let saved = parse(saved)?;
+    if hotkeys.is_registered(saved) {
+        return Ok(());
+    }
+    hotkeys.register(saved)
 }
 
 /// The real global shortcuts, through the Tauri plugin. Each press calls
@@ -156,7 +181,7 @@ mod tests {
 
     use tauri_plugin_global_shortcut::Shortcut;
 
-    use super::{ChangeError, Hotkeys, ShortcutError, change, is_default, parse};
+    use super::{ChangeError, Hotkeys, ShortcutError, change, is_default, parse, pause, resume};
 
     /// Global shortcuts in memory. `taken` are held by "another app".
     #[derive(Default)]
@@ -370,5 +395,75 @@ mod tests {
         assert!(is_default("shift+control+space"));
         assert!(!is_default("Alt+Shift+R"));
         assert!(!is_default("Ctrl+Banana"));
+    }
+
+    #[test]
+    fn pausing_frees_the_shortcut() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+
+        pause(&hotkeys, "Ctrl+Shift+Space");
+
+        assert!(!hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 0);
+    }
+
+    #[test]
+    fn resuming_brings_the_paused_shortcut_back_and_twice_is_harmless() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        pause(&hotkeys, "Ctrl+Shift+Space");
+
+        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
+        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 1);
+    }
+
+    #[test]
+    fn recording_the_paused_shortcut_again_saves_it_and_leaves_it_working() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved = RefCell::new(None);
+        pause(&hotkeys, "Ctrl+Shift+Space");
+
+        change(
+            &hotkeys,
+            "Ctrl+Shift+Space",
+            "Ctrl+Shift+Space",
+            saving(&saved),
+        )
+        .unwrap();
+        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
+
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 1);
+        assert_eq!(saved.into_inner().as_deref(), Some("Ctrl+Shift+Space"));
+    }
+
+    #[test]
+    fn a_new_shortcut_picked_while_paused_works_and_is_saved() {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        let saved = RefCell::new(None);
+        pause(&hotkeys, "Ctrl+Shift+Space");
+
+        change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", saving(&saved)).unwrap();
+        resume(&hotkeys, "Alt+Shift+R").unwrap();
+
+        assert!(hotkeys.works("Alt+Shift+R"));
+        assert!(!hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(saved.into_inner().as_deref(), Some("Alt+Shift+R"));
+    }
+
+    #[test]
+    fn a_shortcut_picked_while_paused_that_cannot_be_saved_is_dropped_and_resuming_brings_the_old_one_back()
+     {
+        let hotkeys = FakeHotkeys::with("Ctrl+Shift+Space");
+        pause(&hotkeys, "Ctrl+Shift+Space");
+
+        let result = change(&hotkeys, "Ctrl+Shift+Space", "Alt+Shift+R", |_| Err(()));
+        resume(&hotkeys, "Ctrl+Shift+Space").unwrap();
+
+        assert_eq!(result, Err(ChangeError::Save));
+        assert!(hotkeys.works("Ctrl+Shift+Space"));
+        assert_eq!(hotkeys.count(), 1);
     }
 }

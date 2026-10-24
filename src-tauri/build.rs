@@ -15,6 +15,8 @@ fn main() {
             "test_connection",
             "set_shortcut",
             "is_shortcut_working",
+            "pause_shortcut",
+            "resume_shortcut",
             "set_start_with_windows",
             "is_default_shortcut",
             "app_version",

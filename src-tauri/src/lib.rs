@@ -82,6 +82,8 @@ pub fn run() {
             settings_window::test_connection,
             settings_window::set_shortcut,
             settings_window::is_shortcut_working,
+            settings_window::pause_shortcut,
+            settings_window::resume_shortcut,
             settings_window::set_start_with_windows,
             settings_window::is_default_shortcut,
             live_updates::app_version,

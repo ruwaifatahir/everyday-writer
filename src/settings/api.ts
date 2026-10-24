@@ -49,6 +49,16 @@ export function setShortcut(shortcut: string): Promise<void> {
   return invoke("set_shortcut", { shortcut });
 }
 
+/** Stops the saved shortcut while the field records, so pressing it reaches the field. */
+export function pauseShortcut(): Promise<void> {
+  return invoke("pause_shortcut");
+}
+
+/** Brings the saved shortcut back after `pauseShortcut`; harmless if it already works. */
+export function resumeShortcut(): Promise<void> {
+  return invoke("resume_shortcut");
+}
+
 /** False when the saved shortcut couldn't be registered at startup. */
 export function isShortcutWorking(): Promise<boolean> {
   return invoke<boolean>("is_shortcut_working");
