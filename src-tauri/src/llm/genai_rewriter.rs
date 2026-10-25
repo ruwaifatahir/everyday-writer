@@ -57,7 +57,7 @@ impl<K: ApiKeySource + 'static> GenaiRewriter<K> {
             return Err(RewriteError::InvalidSettings(InvalidSetting::Model));
         }
         let (kind, endpoint) = adapter_and_endpoint(&settings.provider)?;
-        let client = client(REQUEST_TIMEOUT, CONNECT_TIMEOUT)?;
+        let client = client()?;
         let options = thinking_for(settings.provider.kind(), model)
             .map(|thinking| thinking_options(&settings.provider, thinking));
         Ok(Self {
@@ -126,10 +126,10 @@ fn thinking_options(provider: &Provider, thinking: Thinking) -> ChatOptions {
     ChatOptions::default().with_reasoning_effort(effort)
 }
 
-fn client(timeout: Duration, connect_timeout: Duration) -> Result<Client, RewriteError> {
+fn client() -> Result<Client, RewriteError> {
     let web_config = WebConfig::default()
-        .with_timeout(timeout)
-        .with_connect_timeout(connect_timeout);
+        .with_timeout(REQUEST_TIMEOUT)
+        .with_connect_timeout(CONNECT_TIMEOUT);
     Client::builder()
         .with_web_config(web_config)
         .build()
