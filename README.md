@@ -51,7 +51,7 @@ Typos and messy sentences slip into emails, chats and docs. Fixing them usually 
 
 ## Install
 
-Download the installer from [Releases](https://github.com/ruwaifatahir/everyday-writer/releases/latest) and run it. It isn't code-signed yet, so Windows SmartScreen may warn on first run.
+Download an installer from [Releases](https://github.com/ruwaifatahir/everyday-writer/releases/latest) and run it: `x64` for most PCs, `arm64` for ARM laptops like Snapdragon. It isn't code-signed yet, so Windows SmartScreen may warn on first run.
 
 ## Updates
 

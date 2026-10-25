@@ -39,3 +39,7 @@ _Avoid_: Default model, recommended model
 **Update**:
 A newer published version of the app that an installed copy can move to.
 _Avoid_: Upgrade, new release, patch
+
+**Build**:
+The installer for one kind of PC, x64 or ARM64. Every release publishes one Build for each.
+_Avoid_: Version, edition, flavour
