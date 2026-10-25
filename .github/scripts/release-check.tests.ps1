@@ -88,3 +88,5 @@ if ($failed -gt 0) {
   exit 1
 }
 Write-Output "all $($cases.Count) cases passed"
+# The cases above leave $LASTEXITCODE at 1; exit explicitly so a dot-sourced run (CI's pwsh step) succeeds.
+exit 0
