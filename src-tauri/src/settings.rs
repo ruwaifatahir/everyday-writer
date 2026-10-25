@@ -150,19 +150,6 @@ impl Settings {
             model: self.model.trim().to_owned(),
         }
     }
-
-    /// Whether the saved key for `provider` may be sent to it. The fixed
-    /// endpoints always qualify. Custom qualifies only at the saved base URL,
-    /// so a URL typed but not saved never receives the saved key.
-    pub fn may_send_saved_key(&self, provider: &Provider) -> bool {
-        match provider {
-            Provider::Custom { base_url } => {
-                let saved = self.custom_base_url.trim();
-                !saved.is_empty() && base_url.trim() == saved
-            }
-            _ => true,
-        }
-    }
 }
 
 /// The LLM provider the user picked. Never inferred from the model name.
@@ -388,15 +375,7 @@ mod tests {
     use keyring_core::api::CredentialStoreApi;
     use keyring_core::{Entry, mock};
 
-    use super::{ApiKey, ApiKeySource, KeyStore, KeyringApiKeys, Provider, ProviderKind, Settings};
-
-    fn saved_custom(base_url: &str) -> Settings {
-        Settings {
-            provider: ProviderKind::Custom,
-            custom_base_url: base_url.to_owned(),
-            ..Settings::default()
-        }
-    }
+    use super::{ApiKey, ApiKeySource, KeyStore, KeyringApiKeys, Provider, ProviderKind};
 
     #[test]
     fn custom_is_named_your_server_in_messages() {
@@ -412,38 +391,6 @@ mod tests {
         let subject = ProviderKind::OpenAi.display_subject();
 
         assert_eq!((name, subject), ("OpenAI", "OpenAI"));
-    }
-
-    #[test]
-    fn the_saved_key_may_go_to_a_fixed_provider_endpoint() {
-        let saved = saved_custom("https://saved.example/v1");
-
-        assert!(saved.may_send_saved_key(&Provider::from_kind(ProviderKind::OpenAi, "")));
-    }
-
-    #[test]
-    fn the_saved_custom_key_may_go_to_the_saved_base_url() {
-        let saved = saved_custom("https://saved.example/v1");
-
-        let target = Provider::from_kind(ProviderKind::Custom, " https://saved.example/v1 ");
-
-        assert!(saved.may_send_saved_key(&target));
-    }
-
-    #[test]
-    fn the_saved_custom_key_never_goes_to_an_unsaved_base_url() {
-        let saved = saved_custom("https://saved.example/v1");
-
-        let target = Provider::from_kind(ProviderKind::Custom, "https://attacker.example/v1");
-
-        assert!(!saved.may_send_saved_key(&target));
-    }
-
-    #[test]
-    fn the_saved_custom_key_never_goes_anywhere_without_a_saved_base_url() {
-        let saved = saved_custom("");
-
-        assert!(!saved.may_send_saved_key(&Provider::from_kind(ProviderKind::Custom, "")));
     }
 
     #[test]

@@ -10,7 +10,7 @@ mod genai_rewriter;
 
 use std::future::Future;
 
-pub use genai_rewriter::{Connection, GenaiRewriter, check_connection};
+pub use genai_rewriter::GenaiRewriter;
 
 use crate::settings::ProviderKind;
 

@@ -21,11 +21,8 @@ use tauri::{
 };
 
 use crate::autostart::{self, TauriAutostart};
-use crate::llm::{self, Connection};
-use crate::settings::{
-    ApiKey, ApiKeySource, AppSettings, KeyError, KeyringApiKeys, Provider, ProviderKind,
-    SaveKeyError, Settings,
-};
+use crate::llm;
+use crate::settings::{ApiKey, AppSettings, ProviderKind, SaveKeyError, Settings};
 use crate::shortcut::{self, Hotkeys, TauriHotkeys};
 use reveal::Reveal;
 
@@ -186,46 +183,6 @@ pub enum CommandError {
     /// Windows refused to change its startup list.
     #[error("Couldn't change the Windows startup setting. Try again.")]
     Autostart,
-    /// A key test found no key to send.
-    #[error("Enter an API key first.")]
-    NoKeyToTest,
-    /// A key test had no model to check.
-    #[error("Choose a model first.")]
-    NoModel,
-    /// A key test had no usable Custom base URL.
-    #[error("Enter a base URL starting with http:// or https://.")]
-    InvalidBaseUrl,
-    /// The provider rejected the key.
-    #[error("{} rejected this API key. Check it and try again.", .0.display_subject())]
-    KeyRejected(ProviderKind),
-    /// The provider is rate limiting; the key itself may be fine.
-    #[error("{} is busy. Wait a moment and try again.", .0.display_subject())]
-    RateLimited(ProviderKind),
-    /// The provider couldn't be reached.
-    #[error("Couldn't reach {}. Check your connection and try again.", .0.display_name())]
-    Unreachable(ProviderKind),
-    /// The provider answered with another error.
-    #[error("{} returned an error. Try again.", .0.display_subject())]
-    ProviderFailed(ProviderKind),
-}
-
-impl CommandError {
-    /// The key test's error for `error`, naming `provider` as the popup does.
-    fn from_rewrite(error: llm::RewriteError, provider: ProviderKind) -> Self {
-        use llm::{InvalidSetting, RewriteError};
-        match error {
-            RewriteError::MissingApiKey => Self::NoKeyToTest,
-            RewriteError::KeyStore => Self::KeyStore,
-            RewriteError::InvalidSettings(InvalidSetting::Model) => Self::NoModel,
-            RewriteError::InvalidSettings(InvalidSetting::BaseUrl) => Self::InvalidBaseUrl,
-            RewriteError::Unauthorized => Self::KeyRejected(provider),
-            RewriteError::RateLimited => Self::RateLimited(provider),
-            RewriteError::Network => Self::Unreachable(provider),
-            RewriteError::Provider { .. } | RewriteError::EmptyResponse | RewriteError::Other => {
-                Self::ProviderFailed(provider)
-            }
-        }
-    }
 }
 
 /// Why [`set_shortcut`] didn't change the shortcut. The previous one still
@@ -340,59 +297,6 @@ pub fn suggested_models() -> HashMap<ProviderKind, Vec<&'static str>> {
             (provider, names)
         })
         .collect()
-}
-
-/// Checks that `provider` accepts a key, at `custom_base_url` for Custom,
-/// without spending tokens (see [`llm::check_connection`]), and whether it
-/// offers `model`. Uses `key` if one was typed, otherwise the saved key
-/// where [`Settings::may_send_saved_key`] allows.
-///
-/// # Errors
-///
-/// Returns a [`CommandError`] saying why the provider couldn't be used.
-#[tauri::command]
-pub async fn test_connection(
-    app: AppHandle,
-    provider: ProviderKind,
-    custom_base_url: String,
-    key: Option<String>,
-    model: String,
-) -> Result<Connection, CommandError> {
-    let target = Provider::from_kind(provider, &custom_base_url);
-    let model = Some(model.as_str());
-    let checked = match key.filter(|key| !key.trim().is_empty()) {
-        Some(key) => {
-            llm::check_connection(&target, Arc::new(TypedKey(ApiKey::new(key))), model).await
-        }
-        None if app
-            .state::<Arc<AppSettings>>()
-            .settings()
-            .may_send_saved_key(&target) =>
-        {
-            let keys = app.state::<KeyringApiKeys>().inner().clone();
-            llm::check_connection(&target, Arc::new(keys), model).await
-        }
-        None => llm::check_connection(&target, Arc::new(NoKey), model).await,
-    };
-    checked.map_err(|error| CommandError::from_rewrite(error, provider))
-}
-
-/// A key source with no keys, for endpoints the saved key must not reach.
-struct NoKey;
-
-impl ApiKeySource for NoKey {
-    fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
-        Ok(None)
-    }
-}
-
-/// The key typed in Settings and not saved yet, for [`test_connection`].
-struct TypedKey(ApiKey);
-
-impl ApiKeySource for TypedKey {
-    fn api_key(&self, _provider: &Provider) -> Result<Option<ApiKey>, KeyError> {
-        Ok(Some(self.0.clone()))
-    }
 }
 
 /// Removes `provider`'s key from the Windows Credential Manager.
@@ -553,8 +457,6 @@ pub fn set_start_with_windows(
 #[cfg(test)]
 mod tests {
     use super::{CommandError, DefaultShortcut, Section, SetShortcutError, page};
-    use crate::llm::RewriteError;
-    use crate::settings::ProviderKind;
 
     #[test]
     fn the_window_opens_at_the_top_by_default() {
@@ -604,15 +506,5 @@ mod tests {
 
             assert_eq!(json, format!("\"{reason}\""));
         }
-    }
-
-    #[test]
-    fn a_key_test_error_names_the_provider() {
-        let error = CommandError::from_rewrite(RewriteError::Network, ProviderKind::Custom);
-
-        assert_eq!(
-            error.to_string(),
-            "Couldn't reach your server. Check your connection and try again."
-        );
     }
 }

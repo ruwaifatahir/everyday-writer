@@ -134,9 +134,7 @@ border or a fill change:
 - **Provider logos**: monochrome `ink` marks from Simple Icons (CC0),
   inlined as an SVG sprite in `settings.html`. Never in brand colors.
 - **Saved key**: one line in a 2px stone box, "Saved in Windows Credential
-  Manager" in ink, with quiet Test key and Change key. No icon, no color. Test
-  results are a plain caption under the field: `ink-soft` when it works,
-  `ember-ink` when it doesn't.
+  Manager" in ink, with a quiet Change key. No icon, no color.
 - **Switch**: cream track with ink border and fog knob; on is lavender with
   an ink knob. **Radio**: ink ring, ink dot.
 - **kbd**: ink chip, cream text. The `Esc` hint in the popup footer uses a
@@ -214,7 +212,7 @@ Plain, calm and short. The `better-writing` skill has the full rules.
 - **Messages** end with a period, statuses included ("Saved.").
 - **Errors** start with "Couldn't" or name the problem, then give the next
   step: "Couldn't reach OpenAI. Check your connection and try again."
-- **Buttons** are a verb plus an object: "Test key", "Delete set".
+- **Buttons** are a verb plus an object: "Change key", "Delete set".
 - **Placeholders** show an example or nothing, never an instruction.
 - **Never**: "Please", "successfully", "Oops", "Something went wrong" or
   exclamation marks.

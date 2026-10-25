@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+- **Test key** is gone from Settings. A wrong key or model now shows up on your first rewrite, in the popup's error message.
+
 ## 1.4.0 - 2026-10-25
 
 ### Features

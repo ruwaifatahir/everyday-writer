@@ -1062,7 +1062,6 @@ dependencies = [
  "clipboard-win",
  "genai",
  "keyring-core",
- "reqwest",
  "semver",
  "serde",
  "serde_json",

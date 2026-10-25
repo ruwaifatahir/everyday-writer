@@ -12,12 +12,6 @@ export type ProviderKind =
   | "ollama"
   | "custom";
 
-/** What a connection test found; mirrors `Connection` in `genai_rewriter.rs`. */
-export interface Connection {
-  /** Whether the provider lists the model; null when none was given. */
-  modelFound: boolean | null;
-}
-
 export interface Settings {
   provider: ProviderKind;
   model: string;
@@ -104,25 +98,6 @@ export function saveApiKey(provider: ProviderKind, key: string): Promise<void> {
 /** The built-in Suggested Model names per provider, fastest first. */
 export function suggestedModels(): Promise<Record<ProviderKind, string[]>> {
   return invoke<Record<ProviderKind, string[]>>("suggested_models");
-}
-
-/**
- * Checks that `provider` accepts a key without spending tokens: `key` if
- * one was typed, otherwise the saved one. Also says whether it offers
- * `model`. Rejects with a message to show as is.
- */
-export function testConnection(
-  provider: ProviderKind,
-  customBaseUrl: string,
-  key: string | null,
-  model: string,
-): Promise<Connection> {
-  return invoke<Connection>("test_connection", {
-    provider,
-    customBaseUrl,
-    key,
-    model,
-  });
 }
 
 export function clearApiKey(provider: ProviderKind): Promise<void> {

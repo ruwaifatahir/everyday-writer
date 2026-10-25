@@ -1,8 +1,8 @@
 // Settings window: provider, model, Custom base URL and the provider's key.
 //
 // The saved key is never shown: the window only learns whether one exists,
-// and offers Test key and Change key. A typed key is sent on Test key and on Save, and
-// the field is emptied right after saving.
+// and offers Change key. A typed key is sent only on Save, and the field is
+// emptied right after saving.
 
 import "../shared/native-feel";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -18,7 +18,6 @@ import {
   saveSettings,
   settingsReady,
   suggestedModels,
-  testConnection,
 } from "./api";
 import { type Option, Select, Suggest } from "./combobox";
 import { clearFieldError, showFieldError } from "./field-error";
@@ -53,12 +52,6 @@ const PROVIDER_NAMES: Record<ProviderKind, string> = {
   ollama: "Ollama",
   custom: "your server",
 };
-
-/** The provider's name at the start of a sentence. */
-function providerSubject(provider: ProviderKind): string {
-  const name = PROVIDER_NAMES[provider];
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
 
 /** The provider list: the hosted services, then the two you run yourself. */
 const PROVIDER_OPTIONS: Option[] = [
@@ -124,11 +117,8 @@ const keySaved = element<HTMLDivElement>("key-saved");
 const keyEntry = element<HTMLDivElement>("key-entry");
 const keyInput = element<HTMLInputElement>("key");
 const keyChange = element<HTMLButtonElement>("key-change");
-const keyTestSaved = element<HTMLButtonElement>("key-test-saved");
-const keyTest = element<HTMLButtonElement>("key-test");
 const keyCancel = element<HTMLButtonElement>("key-cancel");
 const keyRemove = element<HTMLButtonElement>("key-remove");
-const keyStatus = element<HTMLParagraphElement>("key-status");
 const keyHint = element<HTMLParagraphElement>("key-hint");
 const saveButton = element<HTMLButtonElement>("save");
 const status = element<HTMLParagraphElement>("status");
@@ -239,9 +229,8 @@ function renderModel(): void {
 }
 
 /**
- * Saved: one line saying where the key is, with Test key and Change key. Entering
- * a key: the field with Test key, plus Cancel and Remove key when it replaces
- * a saved one.
+ * Saved: one line saying where the key is, with Change key. Entering a key:
+ * the field, plus Cancel and Remove key when it replaces a saved one.
  */
 function renderKey(): void {
   const showSaved = view.keySaved && !view.replacingKey;
@@ -256,56 +245,6 @@ function renderKey(): void {
   keyHint.textContent = showSaved
     ? ""
     : `${KEY_PAGES[view.provider]} Your key is kept in Windows Credential Manager, never in a file.`.trim();
-}
-
-function showKeyStatus(message: string, kind?: "error"): void {
-  keyStatus.textContent = message;
-  if (kind) keyStatus.dataset.kind = kind;
-  else delete keyStatus.dataset.kind;
-}
-
-/** Counts key tests, so a slow answer for an old provider or key is dropped. */
-let keyTestRequest = 0;
-
-/**
- * Tests the typed key, or the saved one if none is typed, against the
- * provider as it is set in the form. Spends no tokens.
- */
-async function testKey(button: HTMLButtonElement): Promise<void> {
-  const request = ++keyTestRequest;
-  const provider = view.provider;
-  const typed = keyInput.value.trim();
-  const key = keyEntry.hidden || typed === "" ? null : typed;
-  if (key === null && !view.keySaved && !keyIsOptional(provider)) {
-    showKeyStatus("Enter an API key first.", "error");
-    keyInput.focus();
-    return;
-  }
-  button.disabled = true;
-  showKeyStatus(`Testing with ${PROVIDER_NAMES[provider]}…`);
-  try {
-    const model = modelInput.value.trim();
-    const { modelFound } = await testConnection(
-      provider,
-      baseUrlInput.value.trim(),
-      key,
-      model,
-    );
-    if (request !== keyTestRequest) return;
-    if (modelFound === false) {
-      showKeyStatus(
-        `${providerSubject(provider)} accepted the key but doesn't offer ${model}. Check the model name.`,
-        "error",
-      );
-    } else {
-      showKeyStatus(`${providerSubject(provider)} accepted the key.`);
-    }
-  } catch (error) {
-    if (request !== keyTestRequest) return;
-    showKeyStatus(errorMessage(error, "test the key"), "error");
-  } finally {
-    button.disabled = false;
-  }
 }
 
 async function loadKeyState(): Promise<void> {
@@ -323,8 +262,6 @@ function resetKeyEntry(): void {
   view.replacingKey = false;
   view.confirmingRemove = false;
   keyInput.value = "";
-  keyTestRequest++;
-  showKeyStatus("");
 }
 
 function isHttpUrl(url: string): boolean {
@@ -445,7 +382,6 @@ form.addEventListener("submit", (event) => {
 keyChange.addEventListener("click", () => {
   view.replacingKey = true;
   view.confirmingRemove = false;
-  showKeyStatus("");
   renderKey();
   keyInput.focus();
 });
@@ -455,20 +391,6 @@ keyCancel.addEventListener("click", () => {
   renderKey();
   renderUnsaved();
   keyChange.focus();
-});
-
-keyTestSaved.addEventListener("click", () => {
-  void testKey(keyTestSaved);
-});
-
-keyTest.addEventListener("click", () => {
-  void testKey(keyTest);
-});
-
-// A new key is untested; an old result would describe the wrong key.
-keyInput.addEventListener("input", () => {
-  keyTestRequest++;
-  showKeyStatus("");
 });
 
 keyRemove.addEventListener("click", () => {
