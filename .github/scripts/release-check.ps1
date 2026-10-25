@@ -2,7 +2,7 @@
 # its update signature, and a latest.json whose entries point each Build at its own installer.
 # Reads files only, so it runs the same against fixtures: see release-check.tests.ps1.
 #   -Version         app version without the `v`, e.g. 1.4.0
-#   -ReleasePath     the release as the GitHub REST API returns it (GET /repos/{owner}/{repo}/releases/{id})
+#   -ReleasePath     the release as one item of the GitHub REST API's release list (GET /repos/{owner}/{repo}/releases)
 #   -LatestJsonPath  the release's latest.json; a path that doesn't exist means it couldn't be downloaded
 param(
   [Parameter(Mandatory)] [string]$Version,
@@ -44,11 +44,11 @@ if (-not (Find-Asset 'latest.json') -or -not (Test-Path $LatestJsonPath)) {
       $entry = $latest.platforms.$key
       if (-not $entry) { $errors.Add("latest.json has no '$key' entry"); continue }
       # tauri-action v1 writes the asset's API URL; accept the browser download URL too.
-      $target = @($release.assets | Where-Object { $_.url -eq $entry.url -or $_.browser_download_url -eq $entry.url })[0]
-      if (-not $target) {
+      $asset = @($release.assets | Where-Object { $_.url -eq $entry.url -or $_.browser_download_url -eq $entry.url })[0]
+      if (-not $asset) {
         $errors.Add("latest.json '$key' points at $($entry.url), which is not an asset on this release")
-      } elseif ($target.name -ne $build.Installer) {
-        $errors.Add("latest.json '$key' points at $($target.name), not $($build.Installer)")
+      } elseif ($asset.name -ne $build.Installer) {
+        $errors.Add("latest.json '$key' points at $($asset.name), not $($build.Installer)")
       }
       if ([string]::IsNullOrWhiteSpace($entry.signature)) { $errors.Add("latest.json '$key' has an empty signature") }
     }

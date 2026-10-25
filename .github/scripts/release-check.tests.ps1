@@ -14,7 +14,7 @@ function Read-Fixture([string]$name) {
 }
 
 # Runs the check on (possibly edited) copies of the fixtures; returns its exit code and output.
-function Invoke-Check([scriptblock]$edit = {}, [string]$version = '1.4.0') {
+function Invoke-Check([scriptblock]$edit = {}) {
   $release = Read-Fixture 'release.json'
   $latest = Read-Fixture 'latest.json'
   & $edit $release $latest
@@ -28,7 +28,7 @@ function Invoke-Check([scriptblock]$edit = {}, [string]$version = '1.4.0') {
   }
   # Windows PowerShell turns a native command's stderr into errors; don't let that stop the run.
   $ErrorActionPreference = 'Continue'
-  $output = & $shell -NoProfile -ExecutionPolicy Bypass -File $check -Version $version -ReleasePath $releasePath -LatestJsonPath $latestPath 2>&1
+  $output = & $shell -NoProfile -ExecutionPolicy Bypass -File $check -Version '1.4.0' -ReleasePath $releasePath -LatestJsonPath $latestPath 2>&1
   [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output | Out-String) }
 }
 
