@@ -4,7 +4,7 @@ Thanks for helping.
 
 ## Setup
 
-Prerequisites: Rust via rustup (stable MSVC), Microsoft C++ Build Tools ("Desktop development with C++"), WebView2, Node 24 and pnpm.
+Prerequisites: Rust via rustup (`rustup toolchain install` installs the pinned toolchain and both the x64 and ARM64 targets), Microsoft C++ Build Tools ("Desktop development with C++"), WebView2, Node 24 and pnpm.
 
 ```sh
 pnpm install
@@ -22,7 +22,7 @@ The installer build signs the installer for the updater, so it needs a signing k
 2. Make small, focused commits.
 3. Run `pnpm check` before you push.
 4. Open a pull request into `main` and fill in the template.
-5. CI (the `check` job) must pass before merging.
+5. CI must pass before merging: the `check` job (x64) and the `check-arm64` job (Windows on ARM).
 
 ## Commits
 

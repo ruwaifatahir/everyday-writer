@@ -1,6 +1,7 @@
 [toolchain]
 # Latest stable MSVC release at setup time. Bump deliberately.
+# Both Builds: x64 and ARM64. `rustup toolchain install` installs both targets.
 channel = "1.99.1"
-targets = ["x86_64-pc-windows-msvc"]
+targets = ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]
 components = ["rustfmt", "clippy"]
 profile = "minimal"
