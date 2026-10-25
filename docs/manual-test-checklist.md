@@ -74,7 +74,10 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S2 | Settings from the tray | Opens; closing it leaves the app in the tray |
 | S3 | Change provider, model and Custom base URL, restart | All kept |
 | S4 | Save a key for two providers, switch back and forth | Each key kept (check Credential Manager) |
-| S5 | Key field with a saved key | Never shows the key; replace and clear work |
+| S5 | Key field with a saved key; type a new key and Save | Never shows the key. Placeholder "Key saved. Type a new one to replace it."; after Save the new key is in Credential Manager, the field is empty and keeps that placeholder |
+| S5a | Key placeholder with no key saved: a hosted provider, then Custom; then pick Ollama | "Paste your API key"; Custom says "Paste your API key (optional)"; Ollama hides the key field. No hint line under the field |
+| S5b | Switch between a provider with a saved key and one without | Placeholder and Remove key follow each provider's saved key |
+| S5c | Remove key, with a model edit not yet saved | Shown on the right under the field only with a key saved; first click says "Remove permanently", second removes the key at once without Save; placeholder switches to the no-key wording; the model edit is still there |
 | S6 | Ollama at `http://localhost:11434` with no key | Rewrite works |
 | S7 | LM Studio as Custom at `http://localhost:1234/v1` with a blank key | Rewrite works; record whether port 1234 and the empty key were right |
 | S8 | Offline, open the model dropdown | Falls back to the built-in list; a typed name still saves |

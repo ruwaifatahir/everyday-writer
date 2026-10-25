@@ -1,8 +1,9 @@
 // Settings window: provider, model, Custom base URL and the provider's key.
 //
 // The saved key is never shown: the window only learns whether one exists,
-// and offers Change key. A typed key is sent only on Save, and the field is
-// emptied right after saving.
+// and says so in the key field's placeholder. Typing a new key replaces it.
+// A typed key is sent only on Save, and the field is emptied right after
+// saving.
 
 import "../shared/native-feel";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -74,16 +75,6 @@ const PROVIDER_OPTIONS: Option[] = [
   },
 ];
 
-/** Where each provider hands out keys, named under the key field. */
-const KEY_PAGES: Record<ProviderKind, string> = {
-  openai: "Create one at platform.openai.com/api-keys.",
-  anthropic: "Create one at console.anthropic.com/settings/keys.",
-  gemini: "Create one at aistudio.google.com/apikey.",
-  openrouter: "Create one at openrouter.ai/settings/keys.",
-  ollama: "",
-  custom: "Only if your server asks for one.",
-};
-
 // Example names only, shown as placeholders.
 const MODEL_EXAMPLES: Record<ProviderKind, string> = {
   openai: "e.g. gpt-6-luna",
@@ -113,13 +104,8 @@ const modelInput = element<HTMLInputElement>("model");
 const modelHint = element<HTMLParagraphElement>("model-hint");
 const keyField = element<HTMLDivElement>("key-field");
 const keyLabel = element<HTMLLabelElement>("key-label");
-const keySaved = element<HTMLDivElement>("key-saved");
-const keyEntry = element<HTMLDivElement>("key-entry");
 const keyInput = element<HTMLInputElement>("key");
-const keyChange = element<HTMLButtonElement>("key-change");
-const keyCancel = element<HTMLButtonElement>("key-cancel");
 const keyRemove = element<HTMLButtonElement>("key-remove");
-const keyHint = element<HTMLParagraphElement>("key-hint");
 const saveButton = element<HTMLButtonElement>("save");
 const status = element<HTMLParagraphElement>("status");
 
@@ -141,7 +127,6 @@ const modelPicker = new Suggest(
 const view = {
   provider: "gemini" as ProviderKind,
   keySaved: false,
-  replacingKey: false,
   confirmingRemove: false,
 };
 
@@ -229,37 +214,39 @@ function renderModel(): void {
 }
 
 /**
- * Saved: one line saying where the key is, with Change key. Entering a key:
- * the field, plus Cancel and Remove key when it replaces a saved one.
+ * The key field's placeholder says whether the provider has a key saved;
+ * Remove key shows only when it does.
  */
 function renderKey(): void {
-  const showSaved = view.keySaved && !view.replacingKey;
-  keySaved.hidden = !showSaved;
-  keyEntry.hidden = showSaved;
-  keyCancel.hidden = !view.replacingKey;
-  keyRemove.hidden = !view.replacingKey;
+  if (view.keySaved) {
+    keyInput.placeholder = "Key saved. Type a new one to replace it.";
+  } else if (keyIsOptional(view.provider)) {
+    keyInput.placeholder = "Paste your API key (optional)";
+  } else {
+    keyInput.placeholder = "Paste your API key";
+  }
+  keyRemove.hidden = !view.keySaved;
   keyRemove.textContent = view.confirmingRemove
     ? "Remove permanently"
     : "Remove key";
   keyRemove.classList.toggle("confirming", view.confirmingRemove);
-  keyHint.textContent = showSaved
-    ? ""
-    : `${KEY_PAGES[view.provider]} Your key is kept in Windows Credential Manager, never in a file.`.trim();
 }
 
 async function loadKeyState(): Promise<void> {
   const provider = view.provider;
+  let saved = false;
   try {
-    const saved = await isKeySaved(provider);
-    if (provider === view.provider) view.keySaved = saved;
+    saved = await isKeySaved(provider);
   } catch {
-    view.keySaved = false;
+    // Shown as no key saved; typing one still saves it.
   }
+  // A later provider switch has loaded, or will load, its own state.
+  if (provider !== view.provider) return;
+  view.keySaved = saved;
   renderKey();
 }
 
 function resetKeyEntry(): void {
-  view.replacingKey = false;
   view.confirmingRemove = false;
   keyInput.value = "";
 }
@@ -343,7 +330,7 @@ async function removeKey(): Promise<void> {
   try {
     await clearApiKey(view.provider);
     view.keySaved = false;
-    resetKeyEntry();
+    view.confirmingRemove = false;
     renderKey();
     showStatus("Key removed.", "ok");
     keyInput.focus();
@@ -377,20 +364,6 @@ form.addEventListener("input", (event) => {
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   void save();
-});
-
-keyChange.addEventListener("click", () => {
-  view.replacingKey = true;
-  view.confirmingRemove = false;
-  renderKey();
-  keyInput.focus();
-});
-
-keyCancel.addEventListener("click", () => {
-  resetKeyEntry();
-  renderKey();
-  renderUnsaved();
-  keyChange.focus();
 });
 
 keyRemove.addEventListener("click", () => {

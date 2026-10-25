@@ -70,27 +70,15 @@
 
           <div class="field" id="key-field">
             <label class="label" for="key" id="key-label">API key</label>
-
-            <div class="key-saved" id="key-saved" hidden>
-              <span class="key-saved-text">Saved in Windows Credential Manager</span>
-              <button type="button" class="button quiet" id="key-change">Change key</button>
-            </div>
-
-            <div class="key-entry" id="key-entry">
-              <input
-                id="key"
-                name="key"
-                type="password"
-                spellcheck="false"
-                autocomplete="off"
-                aria-describedby="key-hint"
-              />
-              <button type="button" class="button secondary" id="key-cancel" hidden>Cancel</button>
-            </div>
-            <div class="key-foot">
-              <p class="hint" id="key-hint"></p>
-              <button type="button" class="button quiet danger" id="key-remove" hidden>Remove key</button>
-            </div>
+            <input
+              id="key"
+              name="key"
+              type="password"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="Paste your API key"
+            />
+            <button type="button" class="button quiet danger" id="key-remove" hidden>Remove key</button>
           </div>
         </div>
 
