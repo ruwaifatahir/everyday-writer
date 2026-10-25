@@ -1,5 +1,6 @@
-# Push a `v*` tag to build the signed NSIS installer and attach it, its update signature (`.sig`)
-# and `latest.json` to a draft GitHub Release.
+# Push a `v*` tag to build both Builds (x64 and ARM64) as signed NSIS installers and attach them, their
+# update signatures (`.sig`) and one `latest.json` listing both to a draft GitHub Release.
+# The final `release-check` job fails the run unless all of that is on the draft.
 # Steps for cutting a release are in CONTRIBUTING.md.
 name: Release
 
@@ -39,12 +40,23 @@ jobs:
           fi
 
   release:
-    name: build and draft release
+    name: build and draft release (${{ matrix.build.name }})
     needs: version
+    # Both Builds on the x64 machine: ARM64 is cross-compiled with the MSVC ARM64 tools it already has.
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
       contents: write # create the draft release and upload the installer
+    strategy:
+      # Fail-fast is fine: a partial draft never passes `release-check`.
+      matrix:
+        build:
+          - name: x64
+            target: x86_64-pc-windows-msvc
+            args: ""
+          - name: arm64
+            target: aarch64-pc-windows-msvc
+            args: --target aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,6 +75,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "src-tauri -> target"
+          key: ${{ matrix.build.target }} # the matrix isn't part of the default key; one cache per Build
 
       # Installed copies refuse unsigned updates, so every release must be signed.
       # Fail here, before the long build, if a secret is missing. Key setup is in CONTRIBUTING.md.
@@ -78,20 +91,59 @@ jobs:
           fi
 
       # Bundle targets come from tauri.conf.json (NSIS only). Its `createUpdaterArtifacts` makes the
-      # build sign the installer (`.sig`); the action then uploads `latest.json` pointing at it.
-      # No Windows code signing yet.
+      # build sign the installer (`.sig`); the action then uploads `latest.json` pointing at it, merging
+      # in the entry the other Build's job wrote. No Windows code signing yet.
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          args: ${{ matrix.build.args }}
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
-          releaseBody: "Draft release. Download the installer from the assets below."
+          releaseBody: "Draft release. Pick the installer for your PC from the assets below: `_x64-setup.exe` for most Windows PCs, `_arm64-setup.exe` for ARM laptops like Snapdragon."
           # Users get an update only once the draft is published: `releases/latest` skips drafts.
           releaseDraft: true
           prerelease: false
           uploadUpdaterJson: true
           uploadUpdaterSignatures: true
           updaterJsonPreferNsis: true
+
+  # The test for this workflow: fails the run unless the draft has both installers, both `.sig` files
+  # and a `latest.json` whose `windows-x86_64` and `windows-aarch64` entries point at their own Build.
+  # This also catches the two Builds' jobs overwriting each other's `latest.json`.
+  # Logic and its fixture tests: .github/scripts/release-check.ps1 and release-check.tests.ps1.
+  release-check:
+    name: release check
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # only tokens that can push see draft releases; this job changes nothing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dir="$RUNNER_TEMP/release-check"
+          mkdir -p "$dir"
+          # Drafts can't be fetched by tag, so search the release list.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\")" > "$dir/releases.jsonl"
+          count=$(wc -l < "$dir/releases.jsonl")
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Expected one release for $GITHUB_REF_NAME, found $count. Delete them and re-run the tag."
+            exit 1
+          fi
+          cp "$dir/releases.jsonl" "$dir/release.json"
+          url=$(jq -r '.assets[] | select(.name == "latest.json") | .url' "$dir/release.json")
+          if [ -n "$url" ]; then
+            gh api -H "Accept: application/octet-stream" "$url" > "$dir/latest.json"
+          fi
+          pwsh -NoProfile -File .github/scripts/release-check.ps1 -Version "${GITHUB_REF_NAME#v}" \
+            -ReleasePath "$dir/release.json" -LatestJsonPath "$dir/latest.json"

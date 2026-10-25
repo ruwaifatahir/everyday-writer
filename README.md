@@ -11,8 +11,6 @@
 
 <p align="center">
   <a href="https://github.com/ruwaifatahir/everyday-writer/releases/latest"><strong>Download for Windows</strong></a>
-  ·
-  <a href="docs/PRD.md">All features</a>
   <br><br>
   <a href="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml"><img src="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
@@ -53,7 +51,7 @@ Typos and messy sentences slip into emails, chats and docs. Fixing them usually 
 
 ## Install
 
-Download the installer from [Releases](https://github.com/ruwaifatahir/everyday-writer/releases/latest) and run it. It isn't code-signed yet, so Windows SmartScreen may warn on first run.
+Download an installer from [Releases](https://github.com/ruwaifatahir/everyday-writer/releases/latest) and run it: `x64` for most PCs, `arm64` for ARM laptops like Snapdragon. It isn't code-signed yet, so Windows SmartScreen may warn on first run.
 
 ## Updates
 

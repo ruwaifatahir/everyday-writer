@@ -54,3 +54,44 @@ jobs:
         run: pnpm exec biome ci .
       - name: tsc
         run: pnpm exec tsc --noEmit
+      # Fixture tests for the release workflow's `release-check` job.
+      - name: release check tests
+        shell: pwsh
+        run: ./.github/scripts/release-check.tests.ps1
+
+  check-arm64:
+    # Builds and tests natively on Windows ARM so ARM64-only breakage shows up before a release.
+    # Machine-independent checks (rustfmt, cargo-deny, Biome, tsc) run only in `check`.
+    # This name is the required status check on `main`. Rename both together.
+    name: check-arm64
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The windows-11-arm image may not ship rustup; install the ARM64 build if it's missing.
+      # Pinned to rustup 1.29.2; the SHA-256 is the archive's published rustup-init.exe.sha256.
+      - name: Install rustup
+        shell: pwsh
+        run: |
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $init = "$env:RUNNER_TEMP\rustup-init.exe"
+            Invoke-WebRequest https://static.rust-lang.org/rustup/archive/1.29.2/aarch64-pc-windows-msvc/rustup-init.exe -OutFile $init
+            $sha256 = '58005a321c5dcb9c4457c0a13bb5d6a56a5793efaef429004edaa1db33019b59'
+            if ((Get-FileHash -Algorithm SHA256 $init).Hash -ne $sha256) { throw 'rustup-init.exe does not match its pinned SHA-256' }
+            & $init -y --default-toolchain none --profile minimal
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.cargo\bin"
+          }
+      # Installs the toolchain pinned in rust-toolchain.toml. Before rust-cache: its key includes rustc's version.
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --manifest-path src-tauri/Cargo.toml

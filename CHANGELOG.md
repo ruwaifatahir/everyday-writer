@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0 - 2026-10-25
+
+### Features
+- Every release now has an ARM64 installer next to the x64 one, so the app runs natively on ARM laptops like Snapdragon. Each installed copy keeps updating to the installer for its own PC.
+
 ## 1.3.1 - 2026-10-24
 
 ### Changes
