@@ -138,7 +138,17 @@ border or a fill change:
   "Paste your API key", or "Paste your API key (optional)" for Custom.
   Typing a key replaces the saved one on Save. Under it, only a quiet
   danger Remove key on the right, shown when a key is saved; it asks
-  "Remove permanently" before acting. No hint line, no icon.
+  "Remove permanently" before acting, then acts at once without Save and
+  says "Key removed." under the field. No hint line, no icon.
+- **Save bar** (the provider card's foot): hidden at rest. Once the
+  provider, model, base URL or a typed key differs from what was saved,
+  Discard (secondary) then Save (primary) rise in on the right. No visible
+  "Unsaved changes"; a visually hidden live region says it instead. Save
+  swaps the buttons for "Saved." for about two seconds, then the foot
+  goes. A failed save shows its error left of the buttons, which stay.
+  Discard puts back the saved form and hides the foot. Enter saves; Esc
+  never discards. Only this card saves this way; the other sections apply
+  each change at once.
 - **Switch**: cream track with ink border and fog knob; on is lavender with
   an ink knob. **Radio**: ink ring, ink dot.
 - **kbd**: ink chip, cream text. The `Esc` hint in the popup footer uses a
@@ -149,7 +159,7 @@ border or a fill change:
   2px ink border drawn around the text area instead.
 - **Field errors**: under the field, 13px/500 `ember-ink`, named by the
   field's `aria-describedby`; the field border turns `ember-ink`. The
-  footer status line is for save results, not validation.
+  save bar's status line is for save results, not validation.
 
 ## Popup states
 

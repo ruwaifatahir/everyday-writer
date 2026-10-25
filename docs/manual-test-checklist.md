@@ -77,7 +77,15 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S5 | Key field with a saved key; type a new key and Save | Never shows the key. Placeholder "Key saved. Type a new one to replace it."; after Save the new key is in Credential Manager, the field is empty and keeps that placeholder |
 | S5a | Key placeholder with no key saved: a hosted provider, then Custom; then pick Ollama | "Paste your API key"; Custom says "Paste your API key (optional)"; Ollama hides the key field. No hint line under the field |
 | S5b | Switch between a provider with a saved key and one without | Placeholder and Remove key follow each provider's saved key |
-| S5c | Remove key, with a model edit not yet saved | Shown on the right under the field only with a key saved; first click says "Remove permanently", second removes the key at once without Save; placeholder switches to the no-key wording; the model edit is still there |
+| S5c | Remove key, with a model edit not yet saved | Shown on the right under the field only with a key saved; first click says "Remove permanently", second removes the key at once without Save and says "Key removed." under the field; placeholder switches to the no-key wording; the model edit is still there, with Discard and Save still shown |
+| S5d | Open Settings with nothing changed; change the provider, the model, the Custom base URL, and type a key, each in turn; edit each back to its saved value | At rest the card has no buttons. Each change brings Discard then Save at the bottom right of the card, with no "Unsaved changes" text; editing back hides them again |
+| S5e | Change the model and click Save; then type a key and press Enter | "Saved." in place of the buttons for about two seconds, then the foot goes. After a restart the model is kept; the key is in Credential Manager and the field is empty with the "Key saved" placeholder |
+| S5f | Switch provider and model, type a key, click Discard | The last saved provider, model and base URL are back, with that provider's hints and key placeholder; the key field is empty; the saved key is untouched (check Credential Manager); no buttons |
+| S5g | Empty the model, or give Custom a base URL without http(s)://, and Save | The error shows under the field; Discard and Save stay |
+| S5h | Make the save fail (e.g. Credential Manager unavailable), type a key and Save | The error shows in the card foot left of the buttons; Discard and Save stay |
+| S5i | Change the model and press Esc | Nothing is discarded: the "Save your changes?" close prompt shows; Cancel keeps the edit and the buttons |
+| S5j | With Narrator on, change the model | Narrator says "Unsaved changes" as the buttons appear |
+| S5k | Turn off Windows animation effects (reduced motion), change the model | Discard and Save fade in without moving |
 | S6 | Ollama at `http://localhost:11434` with no key | Rewrite works |
 | S7 | LM Studio as Custom at `http://localhost:1234/v1` with a blank key | Rewrite works; record whether port 1234 and the empty key were right |
 | S8 | Offline, open the model dropdown | Falls back to the built-in list; a typed name still saves |
@@ -85,7 +93,7 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S10 | Settings holds only provider, model, key, shortcut, instruction sets, start with Windows and the Updates section | Nothing else |
 | S11 | Look of the settings window and popup | Modern, minimal, clean |
 | S12 | With an update offered, change the model (don't save), click Update now, then press Esc; repeat and click Cancel | Prompt "Save your changes before updating?" with Save, Discard changes and Cancel, Save focused; Esc and Cancel close it, no update starts, the form still shows the edit |
-| S13 | Same, choose Save | "Saved", then the update starts; after the restart the new model is kept |
+| S13 | Same, choose Save | "Saved." in the card foot, then the update starts; after the restart the new model is kept |
 | S14 | Same, but empty the model field first, choose Save | The usual "Enter a model name." error; no update starts |
 | S15 | Same, choose Discard changes | The update starts without saving; after the restart the old model is back |
 | S16 | Type a new key without saving, click Update now; then Save, and click Update now again | First click asks; with nothing unsaved it updates right away with no prompt |

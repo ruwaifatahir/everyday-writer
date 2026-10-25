@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changes
+- The provider card in Settings shows no buttons until you change something. Change the provider, model or base URL, or type a key, and **Discard** and **Save** appear at the bottom of the card. Save shows "Saved." and the buttons go away; Discard puts back what you last saved.
 - **Test key** is gone from Settings. A wrong key or model now shows up on your first rewrite, in the popup's error message.
 
 ## 1.4.0 - 2026-10-25

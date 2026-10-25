@@ -125,13 +125,18 @@ body {
 /* Swapped in as the provider, the key or a status changes: each rises in
    (`rise` replays whenever the element goes from hidden to shown). */
 #key-remove,
+#provider-foot,
+#discard,
+#save,
 #base-url-field,
 #provider-hint,
 .field-status {
   animation: rise var(--motion-normal) var(--ease);
 }
 
-/* Provider footer: status line and Save */
+/* Provider footer, the save bar: shown only with unsaved changes, a save
+   error or "Saved.". The status line takes the room left of Discard and
+   Save. */
 
 .status {
   flex: 1;
@@ -428,6 +433,7 @@ body {
 
 /* Last, so it beats each component's own `display`. */
 .field[hidden],
+.panel-foot[hidden],
 .hint[hidden],
 .button[hidden] {
   display: none;
