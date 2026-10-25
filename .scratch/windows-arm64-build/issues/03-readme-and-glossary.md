@@ -4,8 +4,8 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The README install line names both installers: x64 for most PCs, ARM64 for ARM laptops like Snapdragon. No other README changes
-- [ ] `GLOSSARY.md` gains **Build**: "The installer for one kind of PC, x64 or ARM64. Every release publishes one Build for each." _Avoid_: version, edition, flavour
-- [ ] CHANGELOG `## Unreleased` notes the new ARM64 Build
+- [x] The README install line names both installers: x64 for most PCs, ARM64 for ARM laptops like Snapdragon. No other README changes
+- [x] `GLOSSARY.md` gains **Build**: "The installer for one kind of PC, x64 or ARM64. Every release publishes one Build for each." _Avoid_: version, edition, flavour
+- [x] CHANGELOG `## Unreleased` notes the new ARM64 Build
