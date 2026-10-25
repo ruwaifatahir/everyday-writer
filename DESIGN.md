@@ -138,16 +138,19 @@ border or a fill change:
   "Paste your API key", or "Paste your API key (optional)" for Custom.
   Typing a key replaces the saved one on Save. Under it, only a quiet
   danger Remove key on the right, shown when a key is saved; it asks
-  "Remove permanently" before acting, then acts at once without Save and
-  says "Key removed." under the field. No hint line, no icon.
+  "Remove permanently" before acting, then acts at once without Save. No
+  text follows: the placeholder switching is the sign, and the visually
+  hidden live region says "Key removed." A failed remove shows as a field
+  error on the key field. After a provider switch, Remove key stays
+  hidden until that provider's key state loads. No hint line, no icon.
 - **Save bar** (the provider card's foot): hidden at rest. Once the
   provider, model, base URL or a typed key differs from what was saved,
   Discard (secondary) then Save (primary) rise in on the right. No visible
-  "Unsaved changes"; a visually hidden live region says it instead. Save
+  "Unsaved changes."; a visually hidden live region says it instead. Save
   swaps the buttons for "Saved." for about two seconds, then the foot
   goes. A failed save shows its error left of the buttons, which stay.
-  Discard puts back the saved form and hides the foot. Enter saves; Esc
-  never discards. Only this card saves this way; the other sections apply
+  Discard puts back the saved form and hides the foot. Enter saves, and
+  does nothing with nothing changed; Esc never discards. Only this card saves this way; the other sections apply
   each change at once.
 - **Switch**: cream track with ink border and fog knob; on is lavender with
   an ink knob. **Radio**: ink ring, ink dot.
@@ -159,7 +162,8 @@ border or a fill change:
   2px ink border drawn around the text area instead.
 - **Field errors**: under the field, 13px/500 `ember-ink`, named by the
   field's `aria-describedby`; the field border turns `ember-ink`. The
-  save bar's status line is for save results, not validation.
+  save bar's status line is for save results, not validation or a failed
+  Remove key.
 
 ## Popup states
 
@@ -228,8 +232,9 @@ Plain, calm and short. The `better-writing` skill has the full rules.
   step: "Couldn't reach OpenAI. Check your connection and try again."
 - **Buttons** are a verb plus an object: "Remove key", "Delete set".
 - **Placeholders** show an example or nothing, never an instruction. The
-  key field is the one exception: its placeholder is the only place that
-  says whether a key is saved.
+  key field is the one exception: nothing sits under it, so its three
+  placeholders are the only place that says whether a key is saved and,
+  when none is, whether one is needed.
 - **Never**: "Please", "successfully", "Oops", "Something went wrong" or
   exclamation marks.
 

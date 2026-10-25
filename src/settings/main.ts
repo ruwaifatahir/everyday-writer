@@ -109,12 +109,11 @@ const keyField = element<HTMLDivElement>("key-field");
 const keyLabel = element<HTMLLabelElement>("key-label");
 const keyInput = element<HTMLInputElement>("key");
 const keyRemove = element<HTMLButtonElement>("key-remove");
-const keyStatus = element<HTMLParagraphElement>("key-status");
-const foot = element<HTMLElement>("provider-foot");
+const saveBar = element<HTMLElement>("provider-foot");
 const discardButton = element<HTMLButtonElement>("discard");
 const saveButton = element<HTMLButtonElement>("save");
 const status = element<HTMLParagraphElement>("status");
-const unsavedStatus = element<HTMLParagraphElement>("unsaved-status");
+const announcer = element<HTMLParagraphElement>("provider-announcer");
 
 const providerButton = element<HTMLButtonElement>("provider");
 const providerPicker = new Select(providerButton, "Providers", () =>
@@ -132,8 +131,12 @@ const modelPicker = new Suggest(
 /** What the window shows, apart from the plain text fields. */
 const view = {
   provider: "gemini" as ProviderKind,
-  keySaved: false,
+  /** Whether the provider has a key saved; undefined until that's known. */
+  keySaved: undefined as boolean | undefined,
   confirmingRemove: false,
+  /** True while "Saved." shows in the save bar in place of the buttons. */
+  showingSaved: false,
+  savedTimer: undefined as number | undefined,
 };
 
 /** The form as last loaded or saved; undefined if loading failed. */
@@ -152,9 +155,10 @@ function isUnsaved(): boolean {
   return hasUnsavedChanges(savedForm, currentForm(), keyInput.value);
 }
 
-/** True while "Saved." shows in the foot in place of the buttons. */
-let showingSaved = false;
-let savedTimer: number | undefined;
+/** Says `message` to screen readers only; the same text again stays quiet. */
+function announce(message: string): void {
+  if (announcer.textContent !== message) announcer.textContent = message;
+}
 
 function setStatus(message: string, kind: "ok" | "error"): void {
   // The line is read aloud on change; the same text again stays quiet.
@@ -163,61 +167,59 @@ function setStatus(message: string, kind: "ok" | "error"): void {
 }
 
 function clearFootStatus(): void {
-  window.clearTimeout(savedTimer);
-  showingSaved = false;
+  window.clearTimeout(view.savedTimer);
+  view.showingSaved = false;
   status.textContent = "";
 }
 
-/** Shows "Saved." in the foot for about two seconds, then hides the foot. */
+/** Shows "Saved." in the save bar for about two seconds, then hides it. */
 function flashSaved(): void {
   clearFootStatus();
-  showingSaved = true;
+  view.showingSaved = true;
   setStatus("Saved.", "ok");
-  savedTimer = window.setTimeout(() => {
+  view.savedTimer = window.setTimeout(() => {
     clearFootStatus();
-    renderFoot();
+    renderSaveBar();
   }, 2000);
-  renderFoot();
+  renderSaveBar();
 }
 
-/** A save or load error, in the foot left of the buttons. */
+/** A save or load error, in the save bar left of the buttons. */
 function showFootError(message: string): void {
   clearFootStatus();
   setStatus(message, "error");
-  renderFoot();
+  renderSaveBar();
 }
 
 /**
  * The save bar: Discard and Save while the form has unsaved changes, and
- * nothing at rest. "Saved." or an error keeps the foot up on its own. If
+ * nothing at rest. "Saved." or an error keeps the bar up on its own. If
  * loading failed there is nothing to compare or go back to, so Save stays
  * and Discard doesn't show.
  */
-function renderFoot(): void {
+function renderSaveBar(): void {
   const unsaved = isUnsaved();
   // An edit while "Saved." shows brings the buttons straight back.
-  if (unsaved && showingSaved) clearFootStatus();
+  if (unsaved && view.showingSaved) clearFootStatus();
   const canSave = unsaved || !savedForm;
-  // At rest, a leftover save error goes with the foot.
-  if (!canSave && !showingSaved) clearFootStatus();
+  // At rest, a leftover save error goes with the bar.
+  if (!canSave && !view.showingSaved) clearFootStatus();
   const hidingButtons = !canSave && !saveButton.hidden;
-  if (hidingButtons && foot.contains(document.activeElement)) {
+  if (hidingButtons && saveBar.contains(document.activeElement)) {
     // Don't drop focus to the page with the button it was on.
     providerButton.focus();
   }
   saveButton.hidden = !canSave;
   discardButton.hidden = !(unsaved && savedForm);
-  foot.hidden = !canSave && status.textContent === "";
+  saveBar.hidden = !canSave && status.textContent === "";
   // Screen readers hear what the buttons say to everyone else.
-  const announcement = unsaved ? "Unsaved changes" : "";
-  if (unsavedStatus.textContent !== announcement) {
-    unsavedStatus.textContent = announcement;
-  }
+  announce(unsaved ? "Unsaved changes." : "");
 }
 
 function clearFieldErrors(): void {
   clearFieldError(modelInput);
   clearFieldError(baseUrlInput);
+  clearFieldError(keyInput);
 }
 
 function renderProvider(): void {
@@ -260,7 +262,8 @@ function renderModel(): void {
 
 /**
  * The key field's placeholder says whether the provider has a key saved;
- * Remove key shows only when it does.
+ * Remove key shows only when it does. Until that's known, the field reads
+ * as having no key and Remove key stays hidden.
  */
 function renderKey(): void {
   if (view.keySaved) {
@@ -270,7 +273,7 @@ function renderKey(): void {
   } else {
     keyInput.placeholder = "Paste your API key";
   }
-  keyRemove.hidden = !view.keySaved;
+  keyRemove.hidden = view.keySaved !== true;
   keyRemove.textContent = view.confirmingRemove
     ? "Remove permanently"
     : "Remove key";
@@ -294,7 +297,6 @@ async function loadKeyState(): Promise<void> {
 function resetKeyEntry(): void {
   view.confirmingRemove = false;
   keyInput.value = "";
-  keyStatus.textContent = "";
 }
 
 function isHttpUrl(url: string): boolean {
@@ -327,19 +329,19 @@ function readForm(): ProviderSettings | undefined {
   return settings;
 }
 
-/** Saves the form. Resolves false if it was invalid or couldn't be saved. */
+/**
+ * Saves the form. Resolves false if it was invalid or couldn't be saved.
+ * With nothing changed it does nothing; without a loaded form there's
+ * nothing to compare, so it always saves.
+ */
 async function save(): Promise<boolean> {
-  // Without a loaded form there's nothing to compare, so it always saves.
+  if (savedForm && !isUnsaved()) return true;
   clearFieldErrors();
-  if (savedForm && !isUnsaved()) {
-    flashSaved();
-    return true;
-  }
   clearFootStatus();
   const settings = readForm();
   if (!settings) {
     // The error shows under its field; the buttons stay.
-    renderFoot();
+    renderSaveBar();
     return false;
   }
   // Ollama never sends a key, so none is saved for it.
@@ -367,6 +369,23 @@ async function save(): Promise<boolean> {
 }
 
 /**
+ * Draws the provider card after its form was set from outside the fields:
+ * empties a typed key and clears errors. `switched` means the provider
+ * changed, so the old provider's key state goes until the new one loads;
+ * Remove key, or its pending confirmation, can't act on the wrong one.
+ */
+function renderProviderCard(switched: boolean): void {
+  if (switched) view.keySaved = undefined;
+  resetKeyEntry();
+  clearFieldErrors();
+  renderProvider();
+  renderKey();
+  renderModel();
+  renderSaveBar();
+  if (switched) void loadKeyState();
+}
+
+/**
  * Puts the form back to what was last saved and empties a typed key. The
  * key store is left alone: a saved key stays saved.
  */
@@ -377,63 +396,57 @@ function discard(): void {
   providerPicker.set(savedForm.provider);
   modelInput.value = savedForm.model;
   baseUrlInput.value = savedForm.customBaseUrl;
-  resetKeyEntry();
-  clearFieldErrors();
   clearFootStatus();
-  renderProvider();
-  renderKey();
-  renderModel();
-  renderFoot();
-  if (switched) void loadKeyState();
+  renderProviderCard(switched);
 }
 
-function showKeyStatus(message: string, kind: "ok" | "error"): void {
-  keyStatus.textContent = message;
-  keyStatus.dataset.kind = kind;
+function changeProvider(): void {
+  view.provider = providerPicker.value as ProviderKind;
+  // A name from the old provider won't work on the new one.
+  modelInput.value = suggestedFor(view.provider)[0] ?? "";
+  renderProviderCard(true);
 }
 
+/**
+ * Remove key asks first, then removes the key at once without Save,
+ * leaving other edits unsaved. The placeholder switching is the visible
+ * sign; screen readers hear "Key removed.". A failure shows under the key
+ * field.
+ */
 async function removeKey(): Promise<void> {
+  if (view.keySaved !== true) return;
+  clearFieldError(keyInput);
   if (!view.confirmingRemove) {
     view.confirmingRemove = true;
     renderKey();
     return;
   }
+  const provider = view.provider;
   keyRemove.disabled = true;
   try {
-    await clearApiKey(view.provider);
+    await clearApiKey(provider);
+    // A provider switch meanwhile has reset the key state already.
+    if (provider !== view.provider) return;
     view.keySaved = false;
     view.confirmingRemove = false;
     renderKey();
-    // Under the key field, not in the save bar: removing acts at once and
-    // leaves any other edits unsaved.
-    showKeyStatus("Key removed.", "ok");
+    announce("Key removed.");
+    // Remove key is gone; keep focus in the field it belonged to.
     keyInput.focus();
   } catch (error) {
+    if (provider !== view.provider) return;
     view.confirmingRemove = false;
     renderKey();
-    showKeyStatus(errorMessage(error, "remove the key"), "error");
+    showFieldError(keyInput, errorMessage(error, "remove the key"));
+    keyInput.focus();
   } finally {
     keyRemove.disabled = false;
   }
 }
 
-function changeProvider(): void {
-  view.provider = providerPicker.value as ProviderKind;
-  resetKeyEntry();
-  clearFieldErrors();
-  renderProvider();
-  renderKey();
-  // A name from the old provider won't work on the new one.
-  modelInput.value = suggestedFor(view.provider)[0] ?? "";
-  renderModel();
-  renderFoot();
-  void loadKeyState();
-}
-
 form.addEventListener("input", (event) => {
   if (event.target instanceof HTMLInputElement) clearFieldError(event.target);
-  if (event.target === keyInput) keyStatus.textContent = "";
-  renderFoot();
+  renderSaveBar();
 });
 
 discardButton.addEventListener("click", discard);
@@ -463,7 +476,7 @@ beforeUpdateNow(async () => {
   switch (await askToSaveBeforeUpdating()) {
     case "save": {
       const saved = await save();
-      if (!saved) foot.scrollIntoView({ block: "nearest" });
+      if (!saved) saveBar.scrollIntoView({ block: "nearest" });
       return saved;
     }
     case "discard":
@@ -489,7 +502,7 @@ async function closeWindow(): Promise<void> {
       switch (await askToSave(BEFORE_CLOSING)) {
         case "save":
           if (!(await save())) {
-            foot.scrollIntoView({ block: "nearest" });
+            saveBar.scrollIntoView({ block: "nearest" });
             return;
           }
           break;
