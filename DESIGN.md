@@ -1,6 +1,6 @@
 ---
 name: everyday-writer
-description: Background Windows tray app that rewrites selected text. One cream theme after Wispr Flow's design system, scaled down to a 400px popup and a 440px settings window.
+description: Background Windows tray app that rewrites selected text. One cream theme after Wispr Flow's design system, scaled down to a 400px popup and a 650px settings window.
 colors:
   cream: "#ffffeb"
   ink: "#1a1a1a"
