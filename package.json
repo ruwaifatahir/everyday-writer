@@ -10,9 +10,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "check": "pnpm run check:rs && pnpm run check:ts",
+    "check": "pnpm run check:rs && pnpm run check:ts && pnpm run check:release",
     "check:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml && cargo deny --manifest-path src-tauri/Cargo.toml check",
     "check:ts": "biome ci . && tsc --noEmit",
+    "check:release": "powershell -NoProfile -ExecutionPolicy Bypass -File .github/scripts/release-check.tests.ps1",
     "fix": "cargo fmt --manifest-path src-tauri/Cargo.toml && biome check --write ."
   },
   "dependencies": {

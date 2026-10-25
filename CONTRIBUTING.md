@@ -44,7 +44,7 @@ pnpm check   # everything CI runs
 pnpm fix     # apply rustfmt and Biome fixes
 ```
 
-`pnpm check` runs rustfmt, clippy with warnings as errors, `cargo test`, cargo-deny (licenses, advisories, bans, sources), Biome lint and format, and `tsc --noEmit`. CI (`.github/workflows/ci.yml`) runs the same commands on Windows. Install cargo-deny 0.20.2 first (`cargo binstall cargo-deny@0.20.2`, or `cargo install cargo-deny --locked`).
+`pnpm check` runs rustfmt, clippy with warnings as errors, `cargo test`, cargo-deny (licenses, advisories, bans, sources), Biome lint and format, `tsc --noEmit`, and the release check fixture tests (`.github/scripts/release-check.tests.ps1`). CI (`.github/workflows/ci.yml`) runs the same commands on Windows. Install cargo-deny 0.20.2 first (`cargo binstall cargo-deny@0.20.2`, or `cargo install cargo-deny --locked`).
 
 Clippy lint levels live in the `[lints]` table of `src-tauri/Cargo.toml`. cargo-deny config is `src-tauri/deny.toml`; Biome config is `biome.json`.
 
@@ -52,7 +52,7 @@ Clippy lint levels live in the `[lints]` table of `src-tauri/Cargo.toml`. cargo-
 
 ## Cutting a release
 
-Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed. It builds both Builds on the Windows x64 machine (the ARM64 one cross-compiled with `--target aarch64-pc-windows-msvc`), signs each NSIS installer with the update signing key, and attaches both installers (`*_x64-setup.exe`, `*_arm64-setup.exe`), their update signatures (`.sig`) and one `latest.json` listing both to a **draft** GitHub Release. The last job, `release check`, fails the run unless all of those are on the draft and each `latest.json` entry points at its own Build's installer. Its logic is `.github/scripts/release-check.ps1`; its fixture tests (`pwsh .github/scripts/release-check.tests.ps1`) run in CI. Nothing goes public until you publish the draft. Installed copies check `releases/latest/download/latest.json`, which skips drafts, so publishing is the moment users get the update. There is no Windows code signing yet (see [ADR 0002](docs/adr/0002-updates-from-github-releases-signed.md)).
+Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed. It builds both Builds on the Windows x64 machine (the ARM64 one cross-compiled with `--target aarch64-pc-windows-msvc`), signs each NSIS installer with the update signing key, and attaches both installers (`*_x64-setup.exe`, `*_arm64-setup.exe`), their update signatures (`.sig`) and one `latest.json` listing both to a **draft** GitHub Release. The last job, `release check`, fails the run unless all of those are on the draft and each `latest.json` entry points at its own Build's installer. Its logic is `.github/scripts/release-check.ps1`; its fixture tests (`.github/scripts/release-check.tests.ps1`) run in `pnpm check` and CI. Nothing goes public until you publish the draft. Installed copies check `releases/latest/download/latest.json`, which skips drafts, so publishing is the moment users get the update. There is no Windows code signing yet (see [ADR 0002](docs/adr/0002-updates-from-github-releases-signed.md)).
 
 ### Update signing key (one-time setup)
 
