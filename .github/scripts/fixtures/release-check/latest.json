@@ -1,0 +1,23 @@
+{
+  "version": "1.4.0",
+  "notes": "Draft release.",
+  "pub_date": "2026-10-25T12:00:00.000Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "eDY0LXNpZ25hdHVyZQ==",
+      "url": "https://api.github.com/repos/ruwaifatahir/everyday-writer/releases/assets/101"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "eDY0LXNpZ25hdHVyZQ==",
+      "url": "https://api.github.com/repos/ruwaifatahir/everyday-writer/releases/assets/101"
+    },
+    "windows-aarch64": {
+      "signature": "YXJtNjQtc2lnbmF0dXJl",
+      "url": "https://api.github.com/repos/ruwaifatahir/everyday-writer/releases/assets/201"
+    },
+    "windows-aarch64-nsis": {
+      "signature": "YXJtNjQtc2lnbmF0dXJl",
+      "url": "https://api.github.com/repos/ruwaifatahir/everyday-writer/releases/assets/201"
+    }
+  }
+}
