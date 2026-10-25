@@ -52,7 +52,7 @@ Clippy lint levels live in the `[lints]` table of `src-tauri/Cargo.toml`. cargo-
 
 ## Cutting a release
 
-Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed. It builds the NSIS installer on Windows, signs it with the update signing key, and attaches the installer, its update signature (`*_x64-setup.exe.sig`) and `latest.json` to a **draft** GitHub Release. Nothing goes public until you publish the draft. Installed copies check `releases/latest/download/latest.json`, which skips drafts, so publishing is the moment users get the update. There is no Windows code signing yet (see [ADR 0002](docs/adr/0002-updates-from-github-releases-signed.md)).
+Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed. It builds both Builds on the Windows x64 machine (the ARM64 one cross-compiled with `--target aarch64-pc-windows-msvc`), signs each NSIS installer with the update signing key, and attaches both installers (`*_x64-setup.exe`, `*_arm64-setup.exe`), their update signatures (`.sig`) and one `latest.json` listing both to a **draft** GitHub Release. The last job, `release check`, fails the run unless all of those are on the draft and each `latest.json` entry points at its own Build's installer. Its logic is `.github/scripts/release-check.ps1`; its fixture tests (`pwsh .github/scripts/release-check.tests.ps1`) run in CI. Nothing goes public until you publish the draft. Installed copies check `releases/latest/download/latest.json`, which skips drafts, so publishing is the moment users get the update. There is no Windows code signing yet (see [ADR 0002](docs/adr/0002-updates-from-github-releases-signed.md)).
 
 ### Update signing key (one-time setup)
 
@@ -113,11 +113,11 @@ pnpm tauri build --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'
    ```
 
 4. Watch the run: `gh run watch`. The first job fails if the tag (minus the `v`) differs from any manifest version. Delete the tag (`git push origin :refs/tags/v0.2.0` and `git tag -d v0.2.0`), fix the version, and tag again.
-5. Open the draft release on GitHub and check it has the `*_x64-setup.exe` installer, its `*_x64-setup.exe.sig` and `latest.json` (its `version` is the new one, and `platforms.windows-x86_64` has a `signature` and a `url`).
+5. Confirm the `release check` job passed, then open the draft release on GitHub and check it has both installers (`*_x64-setup.exe`, `*_arm64-setup.exe`), their `.sig` files and `latest.json`. If `release check` failed because the two Build jobs overwrote each other's `latest.json`, delete the draft and its tag and push the tag again.
 6. Before publishing, prove the real update path: update an installed older build to this version and run the rest of [docs/manual-test-checklist.md](docs/manual-test-checklist.md). A draft can't be fetched by an installed copy, so the "Updates" section there uses a pre-release test tag of the same commit and an older build pointed at it. Record the run in the checklist's results table. Don't publish if any update case fails: once a broken updater ships, users must reinstall by hand.
 7. Paste that version's `CHANGELOG.md` notes into the release and publish.
 
-To dry-run the pipeline without a real version, push a test tag such as `v1.1.0-rc.1` from a throwaway branch whose three manifests say `1.1.0-rc.1` (the version job checks they match). Check the draft has the three files from step 5, then delete it as below. Only publish it with **Set as a pre-release** ticked, as the update test in step 6 does: a published release that isn't marked pre-release becomes `latest` and goes to every user.
+To dry-run the pipeline without a real version, push a test tag such as `v1.1.0-rc.1` from a throwaway branch whose three manifests say `1.1.0-rc.1` (the version job checks they match). Check `release check` passed and the draft has the five files from step 5, then delete it as below. Only publish it with **Set as a pre-release** ticked, as the update test in step 6 does: a published release that isn't marked pre-release becomes `latest` and goes to every user.
 
 To throw away a draft and its tag: `gh release delete v0.2.0 --yes --cleanup-tag`, then `git tag -d v0.2.0`.
 

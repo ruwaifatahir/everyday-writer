@@ -54,6 +54,10 @@ jobs:
         run: pnpm exec biome ci .
       - name: tsc
         run: pnpm exec tsc --noEmit
+      # Fixture tests for the release workflow's `release-check` job.
+      - name: release check tests
+        shell: pwsh
+        run: ./.github/scripts/release-check.tests.ps1
 
   check-arm64:
     # Builds and tests natively on Windows ARM so ARM64-only breakage shows up before a release.
