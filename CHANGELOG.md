@@ -1,10 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 - 2026-10-26
 
 ### Changes
 - The provider card in Settings shows no buttons until you change something. Change the provider, model or base URL, or type a key, and **Discard** and **Save** appear at the bottom of the card. Save shows "Saved." and the buttons go away; Discard puts back what you last saved.
+- The API key is one field. When a key is saved, the field says "Key saved. Type a new one to replace it." Type a new key and press **Save** to replace it. **Change key** and **Cancel** are gone.
+- **Remove key** shows under the key field only when a key is saved, and removes it straight away. It no longer clears a key you've typed but not saved.
 - **Test key** is gone from Settings. A wrong key or model now shows up on your first rewrite, in the popup's error message.
+- The Settings window is wider, so the provider card has more room.
+
+### Fixes
+- After switching provider or pressing **Discard**, **Remove key** no longer shows for the wrong provider.
+- Pressing Enter in Settings with nothing changed no longer does anything.
 
 ## 1.4.0 - 2026-10-25
 
