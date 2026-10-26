@@ -4,8 +4,7 @@
 //! Every call goes to a fully resolved `ServiceTarget`: the adapter, endpoint
 //! and key are set here from the user's settings. That skips genai's
 //! model-name inference (unknown names would silently go to a local Ollama)
-//! and its auth fallback to environment variables. The connection check
-//! uses the same explicit endpoint and key.
+//! and its auth fallback to environment variables.
 //!
 //! Privacy: a `genai::Error` can hold the request payload (the selection)
 //! and the provider's response body. It is mapped to [`RewriteError`]
@@ -18,7 +17,6 @@ use genai::adapter::AdapterKind;
 use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ReasoningEffort};
 use genai::resolver::{AuthData, Endpoint};
 use genai::{Client, ModelIden, ServiceTarget, WebConfig};
-use serde::Serialize;
 
 use super::{InvalidSetting, RewriteError, RewritePrompt, Rewriter, Thinking, thinking_for};
 use crate::settings::{ApiKeySource, ModelSettings, Provider};
@@ -27,16 +25,11 @@ const OPENAI_URL: &str = "https://api.openai.com/v1/";
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/";
 const GEMINI_URL: &str = "https://generativelanguage.googleapis.com/v1beta/";
 const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/";
-/// Describes the key it is called with; 401 if `OpenRouter` doesn't know it.
-const OPENROUTER_KEY_URL: &str = "https://openrouter.ai/api/v1/key";
 /// Ollama's native API, not its `/v1` OpenAI-compatible one.
 const OLLAMA_URL: &str = "http://localhost:11434/";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// The connection check waits on the user: give up quickly.
-const LIST_TIMEOUT: Duration = Duration::from_secs(8);
-const LIST_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 
 /// Sends rewrites to the provider and model from the user's settings.
 pub struct GenaiRewriter<K> {
@@ -64,7 +57,7 @@ impl<K: ApiKeySource + 'static> GenaiRewriter<K> {
             return Err(RewriteError::InvalidSettings(InvalidSetting::Model));
         }
         let (kind, endpoint) = adapter_and_endpoint(&settings.provider)?;
-        let client = client(REQUEST_TIMEOUT, CONNECT_TIMEOUT)?;
+        let client = client()?;
         let options = thinking_for(settings.provider.kind(), model)
             .map(|thinking| thinking_options(&settings.provider, thinking));
         Ok(Self {
@@ -133,109 +126,10 @@ fn thinking_options(provider: &Provider, thinking: Thinking) -> ChatOptions {
     ChatOptions::default().with_reasoning_effort(effort)
 }
 
-/// What a connection check found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Connection {
-    /// Whether the provider lists the model asked about; `None` when no
-    /// model was given.
-    pub model_found: Option<bool>,
-}
-
-/// Checks that `provider` answers and accepts the key from `keys`, without
-/// spending tokens: it lists the models, and for `OpenRouter`, whose list is
-/// public, first asks about the key itself. If `model` is given, also says
-/// whether the provider lists it.
-///
-/// # Errors
-///
-/// Returns the [`RewriteError`] a rewrite would hit: a missing or rejected
-/// key, an unusable base URL, or a network or provider failure.
-pub async fn check_connection<K: ApiKeySource + 'static>(
-    provider: &Provider,
-    keys: Arc<K>,
-    model: Option<&str>,
-) -> Result<Connection, RewriteError> {
-    if matches!(provider, Provider::OpenRouter) {
-        let auth = read_auth(provider, Arc::clone(&keys)).await?;
-        check_openrouter_key(OPENROUTER_KEY_URL, &auth).await?;
-    }
-    let names = model_names(provider, keys).await?;
-    let model_found = model
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(|model| is_listed(model, &names));
-    Ok(Connection { model_found })
-}
-
-/// Whether `model` is in `names`. Ollama lists `gemma4` as
-/// `gemma4:latest` and accepts either.
-fn is_listed(model: &str, names: &[String]) -> bool {
-    names.iter().any(|name| {
-        name == model
-            || name
-                .strip_suffix(":latest")
-                .is_some_and(|name| name == model)
-    })
-}
-
-/// The model names `provider` lists, read with the key from `keys`.
-async fn model_names<K: ApiKeySource + 'static>(
-    provider: &Provider,
-    keys: Arc<K>,
-) -> Result<Vec<String>, RewriteError> {
-    let (kind, endpoint) = adapter_and_endpoint(provider)?;
-    let auth = read_auth(provider, keys).await?;
-    model_names_at(kind, endpoint, auth).await
-}
-
-/// Asks `OpenRouter` about the key at `url` (its `/key` endpoint), which
-/// answers 401 for a key it doesn't know. Only the status is read.
-async fn check_openrouter_key(url: &str, auth: &AuthData) -> Result<(), RewriteError> {
-    let key = auth
-        .single_key_value()
-        .map_err(|_| RewriteError::MissingApiKey)?;
-    let client = reqwest::Client::builder()
-        .timeout(LIST_TIMEOUT)
-        .connect_timeout(LIST_CONNECT_TIMEOUT)
-        .build()
-        .map_err(|_| RewriteError::Other)?;
-    let response = client
-        .get(url)
-        .bearer_auth(key)
-        .send()
-        .await
-        .map_err(|_| RewriteError::Network)?;
-    match response.status().as_u16() {
-        200..=299 => Ok(()),
-        401 | 403 => Err(RewriteError::Unauthorized),
-        429 => Err(RewriteError::RateLimited),
-        status => Err(RewriteError::Provider { status }),
-    }
-}
-
-/// Fetches the model names at an explicit endpoint with explicit auth,
-/// sorted and without duplicates. Both are always given, so genai never
-/// consults its resolvers or environment variables.
-async fn model_names_at(
-    kind: AdapterKind,
-    endpoint: Endpoint,
-    auth: AuthData,
-) -> Result<Vec<String>, RewriteError> {
-    let client = client(LIST_TIMEOUT, LIST_CONNECT_TIMEOUT)?;
-    let mut names = client
-        .all_model_names(kind, (endpoint, auth))
-        .await
-        .map_err(|e| map_error(&e))?;
-    names.sort_unstable();
-    names.dedup();
-    Ok(names)
-}
-
-fn client(timeout: Duration, connect_timeout: Duration) -> Result<Client, RewriteError> {
+fn client() -> Result<Client, RewriteError> {
     let web_config = WebConfig::default()
-        .with_timeout(timeout)
-        .with_connect_timeout(connect_timeout);
+        .with_timeout(REQUEST_TIMEOUT)
+        .with_connect_timeout(CONNECT_TIMEOUT);
     Client::builder()
         .with_web_config(web_config)
         .build()
@@ -336,15 +230,9 @@ fn map_error(error: &genai::Error) -> RewriteError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use genai::adapter::AdapterKind;
-    use genai::resolver::{AuthData, Endpoint};
 
-    use super::{
-        Connection, GenaiRewriter, adapter_and_endpoint, check_connection, check_openrouter_key,
-        model_names_at,
-    };
+    use super::{GenaiRewriter, adapter_and_endpoint};
     use crate::llm::{InvalidSetting, RewriteError, Rewriter};
     use crate::settings::{ApiKey, ApiKeySource, KeyError, ModelSettings, Provider};
 
@@ -732,156 +620,9 @@ mod tests {
         assert!(received.body.get("reasoning_effort").is_none());
     }
 
-    const MODELS: &str =
-        r#"{"object":"list","data":[{"id":"a","object":"model"},{"id":"b","object":"model"}]}"#;
-
-    #[tokio::test]
-    async fn the_connection_check_finds_the_model_with_the_key() {
-        let (base_url, server) = serve_once(200, MODELS);
-
-        let result =
-            check_connection(&Provider::Custom { base_url }, Arc::new(key()), Some(" b ")).await;
-
-        let received = server.join().unwrap();
-        assert_eq!(
-            result,
-            Ok(Connection {
-                model_found: Some(true)
-            })
-        );
-        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
-    }
-
-    #[tokio::test]
-    async fn the_connection_check_reports_a_model_the_provider_doesnt_list() {
-        let (base_url, server) = serve_once(200, MODELS);
-
-        let result =
-            check_connection(&Provider::Custom { base_url }, Arc::new(key()), Some("c")).await;
-
-        server.join().unwrap();
-        assert_eq!(
-            result,
-            Ok(Connection {
-                model_found: Some(false)
-            })
-        );
-    }
-
-    #[tokio::test]
-    async fn without_a_model_the_connection_check_only_checks_the_key() {
-        let (base_url, server) = serve_once(200, MODELS);
-
-        let result =
-            check_connection(&Provider::Custom { base_url }, Arc::new(key()), Some("")).await;
-
-        server.join().unwrap();
-        assert_eq!(result, Ok(Connection { model_found: None }));
-    }
-
-    #[test]
-    fn an_ollama_model_is_found_without_its_latest_tag() {
-        let names = ["gemma4:latest".to_owned(), "qwen3.5:4b".to_owned()];
-
-        assert!(super::is_listed("gemma4", &names));
-        assert!(super::is_listed("gemma4:latest", &names));
-        assert!(super::is_listed("qwen3.5:4b", &names));
-        assert!(!super::is_listed("qwen3.5", &names));
-    }
-
-    #[tokio::test]
-    async fn the_connection_check_reports_a_rejected_key() {
-        let (base_url, server) = serve_once(401, r#"{"error":"bad key"}"#);
-
-        let result = check_connection(&Provider::Custom { base_url }, Arc::new(key()), None).await;
-
-        server.join().unwrap();
-        assert_eq!(result, Err(RewriteError::Unauthorized));
-    }
-
-    #[tokio::test]
-    async fn the_connection_check_needs_a_key_where_one_is_required() {
-        let result =
-            check_connection(&Provider::Anthropic, Arc::new(TestKeys(Ok(None))), None).await;
-
-        assert_eq!(result, Err(RewriteError::MissingApiKey));
-    }
-
-    #[tokio::test]
-    async fn openrouter_is_asked_about_the_key_itself() {
-        let (base_url, server) = serve_once(200, r#"{"data":{}}"#);
-
-        let result = check_openrouter_key(
-            &format!("{base_url}/key"),
-            &AuthData::from_single("test-key"),
-        )
-        .await;
-
-        let received = server.join().unwrap();
-        assert_eq!(result, Ok(()));
-        assert_eq!(received.request_line, "GET /v1/key HTTP/1.1");
-        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
-    }
-
-    #[tokio::test]
-    async fn openrouter_rejecting_the_key_maps_to_unauthorized() {
-        let (base_url, server) = serve_once(401, r#"{"error":{}}"#);
-
-        let result =
-            check_openrouter_key(&format!("{base_url}/key"), &AuthData::from_single("bad")).await;
-
-        server.join().unwrap();
-        assert_eq!(result, Err(RewriteError::Unauthorized));
-    }
-
     /// `http://host:port/v1` -> `http://host:port/`.
     fn server_root(base_url: &str) -> String {
         base_url.trim_end_matches("v1").to_owned()
-    }
-
-    #[tokio::test]
-    async fn custom_model_names_come_from_the_models_list_with_the_key() {
-        let (base_url, server) = serve_once(
-            200,
-            r#"{"object":"list","data":[{"id":"zeta-model","object":"model"},{"id":"alpha-model","object":"model"}]}"#,
-        );
-
-        let names = model_names_at(
-            AdapterKind::OpenAI,
-            Endpoint::from_owned(format!("{base_url}/")),
-            AuthData::from_single("test-key"),
-        )
-        .await;
-
-        let received = server.join().unwrap();
-        assert_eq!(
-            names,
-            Ok(vec!["alpha-model".to_owned(), "zeta-model".to_owned()])
-        );
-        assert_eq!(received.request_line, "GET /v1/models HTTP/1.1");
-        assert_eq!(received.authorization.as_deref(), Some("Bearer test-key"));
-    }
-
-    #[tokio::test]
-    async fn ollama_model_names_come_from_its_tags_list() {
-        let (base_url, server) = serve_once(
-            200,
-            r#"{"models":[{"name":"qwen2.5:7b"},{"name":"llama3.2:latest"}]}"#,
-        );
-
-        let names = model_names_at(
-            AdapterKind::Ollama,
-            Endpoint::from_owned(server_root(&base_url)),
-            AuthData::from_single(""),
-        )
-        .await;
-
-        let received = server.join().unwrap();
-        assert_eq!(
-            names,
-            Ok(vec!["llama3.2:latest".to_owned(), "qwen2.5:7b".to_owned()])
-        );
-        assert_eq!(received.request_line, "GET /api/tags HTTP/1.1");
     }
 
     #[test]

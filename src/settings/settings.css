@@ -108,63 +108,35 @@ body {
   min-width: 0;
 }
 
-/* API key. Saved, it is one quiet line in a stone box; it is never shown,
-   only where it is kept. */
-
-.key-saved,
-.key-entry,
 .shortcut-entry {
   display: flex;
   align-items: center;
   gap: var(--space-8);
 }
 
-.key-saved {
-  min-height: 40px;
-  padding: 0 var(--space-4) 0 var(--space-12);
-  border: var(--border) solid var(--stone);
-  border-radius: var(--radius-control);
-}
-
-.key-saved-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ink);
-}
-
-/* Where to get a key, and Remove key while one is being replaced. */
-.key-foot {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-8);
-}
-
-.key-foot .hint {
-  flex: 1;
-}
-
-.key-foot .hint:empty {
-  display: none;
-}
-
-.key-foot .button.quiet {
-  margin: -6px calc(-1 * var(--space-8)) 0 auto;
+/* API key: one password field. The saved key is never shown; the
+   placeholder says whether one is saved. Remove key sits on the right
+   under it, only with a key saved. */
+#key-remove {
+  align-self: flex-end;
+  margin: -6px calc(-1 * var(--space-8)) 0 0;
 }
 
 /* Swapped in as the provider, the key or a status changes: each rises in
    (`rise` replays whenever the element goes from hidden to shown). */
-.key-saved,
-.key-entry,
+#key-remove,
+#provider-foot,
+#discard,
+#save,
 #base-url-field,
 #provider-hint,
 .field-status {
   animation: rise var(--motion-normal) var(--ease);
 }
 
-/* Provider footer: status line and Save */
+/* Provider footer, the save bar: shown only with unsaved changes, a save
+   error or "Saved.". The status line takes the room left of Discard and
+   Save. */
 
 .status {
   flex: 1;
@@ -461,8 +433,7 @@ body {
 
 /* Last, so it beats each component's own `display`. */
 .field[hidden],
-.key-saved[hidden],
-.key-entry[hidden],
+.panel-foot[hidden],
 .hint[hidden],
 .button[hidden] {
   display: none;

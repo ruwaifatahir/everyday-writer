@@ -1,6 +1,6 @@
 ---
 name: everyday-writer
-description: Background Windows tray app that rewrites selected text. One cream theme after Wispr Flow's design system, scaled down to a 400px popup and a 440px settings window.
+description: Background Windows tray app that rewrites selected text. One cream theme after Wispr Flow's design system, scaled down to a 400px popup and a 650px settings window.
 colors:
   cream: "#ffffeb"
   ink: "#1a1a1a"
@@ -64,7 +64,7 @@ and the Settings title bar matches. Change both sides together.
 |---|---|
 | `cream` | Every surface: page, cards, inputs, secondary buttons |
 | `ink` | Text, every 2px border, `kbd` fill, focus ring |
-| `stone` | Card outlines, row rules, the saved-key box, the active list option |
+| `stone` | Card outlines, row rules, the active list option |
 | `ink-soft` | Hints and secondary text (6.4:1 on cream) |
 | `fog` | Non-text: the off switch knob; the reading band's resting text |
 | `lavender` | Primary buttons and the on switch. Nothing else |
@@ -133,10 +133,25 @@ border or a fill change:
   arrow.
 - **Provider logos**: monochrome `ink` marks from Simple Icons (CC0),
   inlined as an SVG sprite in `settings.html`. Never in brand colors.
-- **Saved key**: one line in a 2px stone box, "Saved in Windows Credential
-  Manager" in ink, with quiet Test key and Change key. No icon, no color. Test
-  results are a plain caption under the field: `ink-soft` when it works,
-  `ember-ink` when it doesn't.
+- **Key field**: one password field, never showing the saved key. Its
+  placeholder gives the state: "Key saved. Type a new one to replace it.",
+  "Paste your API key", or "Paste your API key (optional)" for Custom.
+  Typing a key replaces the saved one on Save. Under it, only a quiet
+  danger Remove key on the right, shown when a key is saved; it asks
+  "Remove permanently" before acting, then acts at once without Save. No
+  text follows: the placeholder switching is the sign, and the visually
+  hidden live region says "Key removed." A failed remove shows as a field
+  error on the key field. After a provider switch, Remove key stays
+  hidden until that provider's key state loads. No hint line, no icon.
+- **Save bar** (the provider card's foot): hidden at rest. Once the
+  provider, model, base URL or a typed key differs from what was saved,
+  Discard (secondary) then Save (primary) rise in on the right. No visible
+  "Unsaved changes."; a visually hidden live region says it instead. Save
+  swaps the buttons for "Saved." for about two seconds, then the foot
+  goes. A failed save shows its error left of the buttons, which stay.
+  Discard puts back the saved form and hides the foot. Enter saves, and
+  does nothing with nothing changed; Esc never discards. Only this card saves this way; the other sections apply
+  each change at once.
 - **Switch**: cream track with ink border and fog knob; on is lavender with
   an ink knob. **Radio**: ink ring, ink dot.
 - **kbd**: ink chip, cream text. The `Esc` hint in the popup footer uses a
@@ -147,7 +162,8 @@ border or a fill change:
   2px ink border drawn around the text area instead.
 - **Field errors**: under the field, 13px/500 `ember-ink`, named by the
   field's `aria-describedby`; the field border turns `ember-ink`. The
-  footer status line is for save results, not validation.
+  save bar's status line is for save results, not validation or a failed
+  Remove key.
 
 ## Popup states
 
@@ -166,7 +182,7 @@ border or a fill change:
 120ms for state changes, 220ms for entrances, exponential ease-out. The
 popup result fades in over 220ms where the selection was. Popup
 messages rise 4px as they appear, and so do the Settings
-parts that swap in (the saved-key row, the key entry, the base URL field,
+parts that swap in (Remove key, the base URL field,
 status and error lines). Picker lists drop in 4px over 120ms. The Active badge fades in from 95% over 120ms.
 Dialogs scale in from 98% over 220ms while the scrim fades in; they leave
 over 120ms, fading and dropping 4px (`transition-behavior: allow-discrete`
@@ -214,8 +230,11 @@ Plain, calm and short. The `better-writing` skill has the full rules.
 - **Messages** end with a period, statuses included ("Saved.").
 - **Errors** start with "Couldn't" or name the problem, then give the next
   step: "Couldn't reach OpenAI. Check your connection and try again."
-- **Buttons** are a verb plus an object: "Test key", "Delete set".
-- **Placeholders** show an example or nothing, never an instruction.
+- **Buttons** are a verb plus an object: "Remove key", "Delete set".
+- **Placeholders** show an example or nothing, never an instruction. The
+  key field is the one exception: nothing sits under it, so its three
+  placeholders are the only place that says whether a key is saved and,
+  when none is, whether one is needed.
 - **Never**: "Please", "successfully", "Oops", "Something went wrong" or
   exclamation marks.
 

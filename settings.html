@@ -70,35 +70,24 @@
 
           <div class="field" id="key-field">
             <label class="label" for="key" id="key-label">API key</label>
-
-            <div class="key-saved" id="key-saved" hidden>
-              <span class="key-saved-text">Saved in Windows Credential Manager</span>
-              <button type="button" class="button quiet" id="key-test-saved">Test key</button>
-              <button type="button" class="button quiet" id="key-change">Change key</button>
-            </div>
-
-            <div class="key-entry" id="key-entry">
-              <input
-                id="key"
-                name="key"
-                type="password"
-                spellcheck="false"
-                autocomplete="off"
-                aria-describedby="key-status key-hint"
-              />
-              <button type="button" class="button secondary" id="key-test">Test key</button>
-              <button type="button" class="button secondary" id="key-cancel" hidden>Cancel</button>
-            </div>
-            <p class="hint field-status" id="key-status" role="status" aria-live="polite"></p>
-            <div class="key-foot">
-              <p class="hint" id="key-hint"></p>
-              <button type="button" class="button quiet danger" id="key-remove" hidden>Remove key</button>
-            </div>
+            <input
+              id="key"
+              name="key"
+              type="password"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="Paste your API key"
+              aria-describedby="key-error"
+            />
+            <p class="field-error" id="key-error"></p>
+            <button type="button" class="button quiet danger" id="key-remove" hidden>Remove key</button>
           </div>
         </div>
 
-        <footer class="actions panel-foot">
+        <p class="visually-hidden" id="provider-announcer" role="status" aria-live="polite"></p>
+        <footer class="actions panel-foot" id="provider-foot" hidden>
           <p class="status" id="status" role="status" aria-live="polite"></p>
+          <button type="button" class="button secondary" id="discard">Discard</button>
           <button type="submit" class="button primary" id="save">Save</button>
         </footer>
       </div>
