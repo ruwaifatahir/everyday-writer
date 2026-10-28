@@ -4,13 +4,17 @@
 
 **Blocked by:** 02 (Instruction set dropdown in the popup)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Every change to the instruction sets (add, edit, rename, delete, set active, restore starter templates), from Settings or the tray, tells the session
-- [ ] If the Active Instruction Set or its instructions changed, the session cancels a rewrite in progress, clears a result or failed-rewrite message, and shows Ready
-- [ ] Otherwise it only re-renders the current state with the new list
-- [ ] Messages where a rewrite can't help (too long, not set up) are not turned into Ready
-- [ ] With the popup hidden, a change does nothing visible
-- [ ] Session tests cover: a rename keeps the result, a tray switch clears the result, editing the active set's instructions clears it, deleting the active set clears it and shows the new active set, a change while hidden does nothing
-- [ ] The manual test checklist covers switching from the tray and editing a set in Settings while the popup is open
-- [ ] `pnpm check` passes
+- [x] Every change to the instruction sets (add, edit, rename, delete, set active, restore starter templates), from Settings or the tray, tells the session
+- [x] If the Active Instruction Set or its instructions changed, the session cancels a rewrite in progress, clears a result or failed-rewrite message, and shows Ready
+- [x] Otherwise it only re-renders the current state with the new list
+- [x] Messages where a rewrite can't help (too long, not set up) are not turned into Ready
+- [x] With the popup hidden, a change does nothing visible
+- [x] Session tests cover: a rename keeps the result, a tray switch clears the result, editing the active set's instructions clears it, deleting the active set clears it and shows the new active set, a change while hidden does nothing
+- [x] The manual test checklist covers switching from the tray and editing a set in Settings while the popup is open
+- [x] `pnpm check` passes
+
+## Comments
+
+**2026-10-28:** Done in `d713e31` and `583da01`. One `on_instruction_sets_change` listener feeds `Event::InstructionSetsChanged` through `popup::send`, never inside the listener, so it can't deadlock. Every message without Rewrite stays, not only too long and not set up: that includes a rejected key and the "copied, press Ctrl+V" note. Review fix `d3c2aa5` reads the set list and active instructions under one lock.
