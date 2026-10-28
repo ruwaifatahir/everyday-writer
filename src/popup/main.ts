@@ -80,8 +80,8 @@ function showChoices(choices: Choices | null): void {
   instructionSet.disabled = sets.length < 2;
 }
 
-/** Moves focus to `target`, unless the user is in the dropdown: the arrow
- * keys there pick a set at each press, so focus must stay put. */
+/** Moves focus to `target`, unless the user is in the dropdown: after a
+ * pick, focus stays there so another set is one Alt+↓ away. */
 function focusUnlessPicking(target: HTMLElement): void {
   if (document.activeElement !== instructionSet) target.focus();
 }
@@ -184,10 +184,42 @@ function closePopup(): void {
   send("popup_close");
 }
 
-// Picking a set makes it active everywhere and shows Ready. The session
-// sends the new state, which also puts the dropdown right if it failed.
+// Picking a set makes it active everywhere and rewrites with it at once.
+// The session sends the new state, which also puts the dropdown right if
+// the pick failed.
 instructionSet.addEventListener("change", () => {
   send("popup_pick_instruction_set", { id: Number(instructionSet.value) });
+});
+
+/** Keys the closed dropdown lets through: they move focus, close the
+ * popup, take the main action or open the list, and never change the set. */
+const keysThatKeepTheSet = new Set([
+  "Tab",
+  "Escape",
+  "Enter",
+  "F4",
+  " ",
+  "Shift",
+  "Control",
+  "Alt",
+  "Meta",
+]);
+
+/** Whether `event` on the closed dropdown leaves the picked set as it is. */
+function keepsTheSet(event: KeyboardEvent): boolean {
+  if (keysThatKeepTheSet.has(event.key) || event.ctrlKey || event.metaKey) {
+    return true;
+  }
+  return event.altKey && (event.key === "ArrowDown" || event.key === "ArrowUp");
+}
+
+// Chromium picks another set at each arrow, Home, End, Page Up, Page Down
+// or letter pressed on the closed dropdown, which would send a rewrite per
+// press. Only keys that keep the set get through: Alt+↓, F4 or Space opens
+// the list, where the arrows only move the highlight and Enter picks once.
+// The open list's keys don't reach the page.
+instructionSet.addEventListener("keydown", (event) => {
+  if (!keepsTheSet(event)) event.preventDefault();
 });
 rewrite.addEventListener("click", rewriteText);
 copy.addEventListener("click", () => send("popup_copy"));
@@ -212,11 +244,14 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key !== "Enter") return;
-  // Enter is the main action from the text or that button itself: Replace
-  // on a result, Rewrite when a selection waits or on a failed rewrite.
-  // After picking a set with the arrow keys, Enter in the dropdown
-  // rewrites too. On another button it presses that button instead.
-  if (current.kind === "result" && enterIsMainAction(result, replace)) {
+  // Enter is the main action from the text, the closed dropdown or that
+  // button itself: Replace on a result, Rewrite when a selection waits or
+  // on a failed rewrite. Enter in the open list picks a set and doesn't
+  // reach the page. On another button it presses that button instead.
+  if (
+    current.kind === "result" &&
+    enterIsMainAction(result, replace, instructionSet)
+  ) {
     event.preventDefault();
     replaceText();
   } else if (

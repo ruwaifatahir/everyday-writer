@@ -15,8 +15,8 @@ And every shortcut press starts a rewrite straight away, so a user who wants to 
 The popup gets an instruction set dropdown and a **Rewrite** button.
 
 - The dropdown lists every instruction set and shows the Active Instruction Set. Picking a set there makes it the Active Instruction Set everywhere, the same as picking it in Settings or the tray.
-- Picking a set never starts a rewrite on its own. It cancels a rewrite in progress, clears any result shown, and leaves the popup ready for the user to press Rewrite.
-- Rewrite always runs a new rewrite of the same selection with the set picked. It is how the user retries after an error, retries a result they don't like, and runs a rewrite after changing the set.
+- Picking a set in the popup starts a rewrite with it at once, as pressing Rewrite would. It cancels a rewrite in progress first. A set change from the tray or Settings doesn't rewrite: it clears any result shown and leaves the popup ready for the user to press Rewrite.
+- Rewrite always runs a new rewrite of the same selection with the set picked. It is how the user retries after an error and retries a result they don't like.
 - Enter replaces when a result is shown, and runs a rewrite otherwise.
 
 A new setting, **Rewrite on open**, decides what the shortcut does:
@@ -31,11 +31,11 @@ A new setting, **Rewrite on open**, decides what the shortcut does:
 3. As a user, I want the dropdown to list my sets in the same order as Settings and the tray, so that I find them where I expect.
 4. As a user, I want picking a set in the popup to make it the Active Instruction Set, so that the next shortcut press uses it too.
 5. As a user, I want the tray's check mark and Settings to show the set I picked in the popup, so that the app agrees with itself everywhere.
-6. As a user, I want picking a set never to start a rewrite by itself, so that I can browse sets without spending rewrites.
+6. As a user, I want picking a set in the popup to start a rewrite with it, so that one pick gets me the new result. (Changed by ticket 05; it first read "never to start a rewrite by itself".)
 7. As a user, I want picking a set while a rewrite is running to cancel that rewrite, so that I don't wait for a result I no longer want.
 8. As a user, I want a cancelled rewrite's late answer never to appear, so that the popup never shows a result from a set I moved away from.
 9. As a user, I want picking a set to clear the result shown, so that I can't replace my selection with a result from a set that is no longer picked.
-10. As a user, I want the popup to show my selection and the Rewrite button after I pick a set, so that it's clear what will happen next.
+10. As a user, I want the popup to show my selection and the Rewrite button after a set change from the tray or Settings, so that it's clear what will happen next.
 11. As a user, I want a Rewrite button in the popup, so that I can run the rewrite again without pressing the shortcut.
 12. As a user, I want Rewrite to rewrite the same selection I captured, so that I don't have to go back and select the text again.
 13. As a user, I want Rewrite to use the set currently picked, so that it reflects my latest choice.
@@ -44,7 +44,7 @@ A new setting, **Rewrite on open**, decides what the shortcut does:
 16. As a user, I want Rewrite to be unavailable while a rewrite is running, so that I can't start two at once.
 17. As a user, I want Enter to replace when a result is shown, so that the fast path stays the same as today.
 18. As a user, I want Enter to run a rewrite when no result is shown, so that I can drive the popup from the keyboard.
-19. As a keyboard user, I want to reach the dropdown with Tab and change it with the arrow keys, so that I never need the mouse.
+19. As a keyboard user, I want to reach the dropdown with Tab, open it with Alt+↓ and pick with the arrow keys and Enter, so that I never need the mouse and each pick sends one rewrite.
 20. As a screen reader user, I want the dropdown to have a label naming it the instruction set, so that I know what it changes.
 21. As a user with only one instruction set, I want the dropdown still shown but disabled, so that the popup layout is the same every time.
 22. As a user, I want a Rewrite on open setting in Settings, so that I can choose whether the shortcut rewrites at once.
@@ -73,13 +73,13 @@ A new setting, **Rewrite on open**, decides what the shortcut does:
 
 - **Rewrite session (the core of the change).** The session's events gain two:
   - `Rewrite`: run a new rewrite of the captured selection with the Active Instruction Set. Ignored while a rewrite is in progress, while replacing, or with nothing captured.
-  - `PickInstructionSet(id)`: make that set the Active Instruction Set, cancel a rewrite in progress, clear any result shown, and show the ready view. Never starts a rewrite.
+  - `PickInstructionSet(id)`: make that set the Active Instruction Set, cancel a rewrite in progress, and run a rewrite with it, exactly as `Rewrite` would (so a too-long message stays, and a not-set-up message is checked again). Ticket 05 changed this: it first showed the ready view and never started a rewrite.
 - **A captured selection outlives its rewrite.** Today a selection lives only inside a rewrite run. It now stays with the popup from capture until the popup closes, so Rewrite and PickInstructionSet can act on it.
-- **A new popup state, `Ready`.** It carries the selection preview and means "a selection is captured and nothing is running". Shown when Rewrite on open is off, after a set is picked, and after a set change from outside the popup. Enter in `Ready` means Rewrite.
+- **A new popup state, `Ready`.** It carries the selection preview and means "a selection is captured and nothing is running". Shown when Rewrite on open is off and after a set change from outside the popup. Enter in `Ready` means Rewrite.
 - **Message state gains Rewrite.** Messages about a failed rewrite (provider errors, timeouts, refusals) offer Rewrite next to any existing action. Messages where a rewrite can't help (nothing selected, too long, provider not set up) keep their current actions.
 - **The popup learns the instruction sets.** Every popup state carries the list of sets (id and name, in order) and the Active Instruction Set's id, so the dropdown always renders from the state it's given and the popup holds no state of its own. Names only: instructions are never sent to the popup.
 - **Shortcut press while open.** Acts exactly like the Rewrite event, with no capture. The popup has focus at that moment, so a capture would copy from the popup itself, and clicking into another app to select new text already closes the popup. The only change from today's "cancel and rerun" is that a press while working is now ignored, like Rewrite.
-- **Set changes from outside the popup.** When the instruction sets change in Settings or the tray while the popup is open, the session is told. If the Active Instruction Set changed, or its instructions were edited, it behaves as for PickInstructionSet. Otherwise (a rename or another set added or deleted) it only re-renders the current state with the new list.
+- **Set changes from outside the popup.** When the instruction sets change in Settings or the tray while the popup is open, the session is told. If the Active Instruction Set changed, or its instructions were edited, it cancels a rewrite in progress, clears any result shown and shows `Ready`, without rewriting. Otherwise (a rename or another set added or deleted) it only re-renders the current state with the new list.
 - **Settings.** `Settings` gains `rewrite_on_open: bool`, default `true`, so a file from before this change loads with it on. The settings view the session reads gains a way to read it and a way to set the Active Instruction Set. Settings shows it as a switch in the Shortcut and startup section and applies it at once, like the other switches there. It is not in the tray.
 - **Popup commands.** The popup gains a command for Rewrite and one for picking a set. Both feed the session's events, like the existing Replace, Copy and Close commands.
 - **Popup UI.** A labelled native `select` for the dropdown and a Rewrite button, using the existing tokens and motion from DESIGN.md. The dropdown is disabled while only one set exists. Replace and Copy show only in the result state. Rewrite is disabled while working.
@@ -95,9 +95,9 @@ A new setting, **Rewrite on open**, decides what the shortcut does:
   - Rewrite from a result runs a new rewrite of the same selection.
   - Rewrite from a failed-rewrite message runs a new rewrite.
   - Rewrite while working does nothing.
-  - Picking a set while working cancels the rewrite and a late answer is ignored.
-  - Picking a set with a result shown clears it and shows `Ready`, and makes that set active.
-  - Picking a set never calls the rewriter.
+  - Picking a set while working cancels the rewrite, a late answer is ignored, and a new rewrite runs with the picked set.
+  - Picking a set with a result shown makes that set active and runs a rewrite with its instructions.
+  - Picking a set on the too-long message keeps it and never calls the rewriter.
   - The shortcut while open acts like Rewrite: no capture, ignored while working.
   - A set change from outside while a result is shown clears it. A rename only re-renders.
   - Every state carries the set list and the active id.
