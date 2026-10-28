@@ -244,8 +244,8 @@ impl SettingsView for FakeSettings {
         self.rewrite_on_open
     }
 
-    fn active_instructions(&self) -> String {
-        self.sets.lock().unwrap().active().instructions.clone()
+    fn instruction_sets(&self) -> InstructionSets {
+        self.sets.lock().unwrap().clone()
     }
 
     fn instruction_set_choices(&self) -> InstructionSetChoices {

@@ -7,7 +7,8 @@
 //!
 //! - [`TextBridge`]: captures the selection, replaces it and copies text;
 //! - [`Rewriter`]: rewrites the selection;
-//! - [`SettingsView`]: the active instruction set;
+//! - [`SettingsView`]: the provider and the instruction sets, and making a
+//!   picked set active;
 //! - [`PopupView`]: shows each [`PopupState`].
 //!
 //! Inputs are [`Event`]s, fed to [`RewriteSession::handle`].
@@ -482,7 +483,7 @@ where
         if saved.is_err() {
             tracing::warn!("the instruction set picked in the popup couldn't be made active");
         }
-        let seen = saved.is_ok().then(|| self.seen_sets());
+        let seen = saved.is_ok().then(|| self.current_sets());
         let mut state = self.lock();
         let State {
             phase: Phase::Open { captured, view },
@@ -506,7 +507,7 @@ where
     /// popup shows to Ready, as a pick does; a message a rewrite can't help
     /// stays. Any other change only shows the new list.
     fn instruction_sets_changed(&self) {
-        let now = self.seen_sets();
+        let now = self.current_sets();
         let mut state = self.lock();
         let State {
             phase: Phase::Open { captured, view },
@@ -531,11 +532,13 @@ where
         self.popup.render(&self.shown(captured, view));
     }
 
-    /// The instruction sets as they are now.
-    fn seen_sets(&self) -> SeenSets {
+    /// The instruction sets as they are now, read at one moment so the list
+    /// and the active instructions match.
+    fn current_sets(&self) -> SeenSets {
+        let sets = self.settings.instruction_sets();
         SeenSets {
-            choices: self.settings.instruction_set_choices(),
-            instructions: self.settings.active_instructions(),
+            choices: sets.choices(),
+            instructions: sets.active().instructions.clone(),
         }
     }
 
@@ -565,7 +568,7 @@ where
         let view = too_long(&captured.selection).map_or(View::Ready, View::Message);
         self.popup.render(&self.shown(&captured, &view));
         state.phase = Phase::Open { captured, view };
-        state.seen = Some(self.seen_sets());
+        state.seen = Some(self.current_sets());
         None
     }
 
@@ -581,7 +584,7 @@ where
     ) -> Option<Working> {
         let refused = too_long(&captured.selection)
             .or_else(|| not_ready_message(self.settings.provider_readiness()));
-        let seen = self.seen_sets();
+        let seen = self.current_sets();
         let (view, working) = if let Some(notice) = refused {
             (View::Message(notice), None)
         } else {

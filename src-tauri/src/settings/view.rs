@@ -5,18 +5,19 @@
 //! returned or logged here.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
 
 use super::{
     ApiKey, InstructionSetChoices, InstructionSetError, InstructionSetId, InstructionSets,
     KeyError, KeyStore, ModelSettings, ProviderKind, Settings, SettingsError, SettingsFile,
 };
 
-/// What the rest of the app reads from the settings. A port: the rewrite
+/// What the rest of the app reads from the settings, plus the one change it
+/// makes to them: picking the Active Instruction Set. A port: the rewrite
 /// session depends on this trait, and tests supply a fake.
 ///
-/// Later settings (the active instruction set, the shortcut) are added here
-/// as methods, so readers never see the settings file or the keyring.
+/// Later settings are added here as methods, so the session never sees the
+/// settings file or the keyring.
 pub trait SettingsView: Send + Sync {
     /// The chosen provider and model.
     fn model_settings(&self) -> ModelSettings;
@@ -28,12 +29,12 @@ pub trait SettingsView: Send + Sync {
     /// the popup on Ready and waits for Rewrite.
     fn rewrite_on_open(&self) -> bool;
 
-    /// The active instruction set's instructions, which every rewrite
-    /// follows.
-    fn active_instructions(&self) -> String;
-
     /// Every instruction set's id and name, in order, and the active id.
     fn instruction_set_choices(&self) -> InstructionSetChoices;
+
+    /// A copy of the instruction sets, read at one moment, so the list and
+    /// the active set's instructions (which every rewrite follows) match.
+    fn instruction_sets(&self) -> InstructionSets;
 
     /// Makes the set with `id` the Active Instruction Set and saves it.
     /// Everyone listening for instruction set changes (the tray, the
@@ -59,12 +60,12 @@ impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
         (**self).rewrite_on_open()
     }
 
-    fn active_instructions(&self) -> String {
-        (**self).active_instructions()
-    }
-
     fn instruction_set_choices(&self) -> InstructionSetChoices {
         (**self).instruction_set_choices()
+    }
+
+    fn instruction_sets(&self) -> InstructionSets {
+        (**self).instruction_sets()
     }
 
     fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError> {
@@ -167,10 +168,12 @@ impl AppSettings {
 
     /// A copy of the current settings.
     pub fn settings(&self) -> Settings {
-        self.current
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.read().clone()
+    }
+
+    /// The current settings, for reading only.
+    fn read(&self) -> RwLockReadGuard<'_, Settings> {
+        self.current.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Saves `settings` to the file, then makes them current. The
@@ -353,28 +356,15 @@ impl SettingsView for AppSettings {
     }
 
     fn rewrite_on_open(&self) -> bool {
-        self.current
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .rewrite_on_open
-    }
-
-    fn active_instructions(&self) -> String {
-        self.current
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .instruction_sets
-            .active()
-            .instructions
-            .clone()
+        self.read().rewrite_on_open
     }
 
     fn instruction_set_choices(&self) -> InstructionSetChoices {
-        self.current
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .instruction_sets
-            .choices()
+        self.read().instruction_sets.choices()
+    }
+
+    fn instruction_sets(&self) -> InstructionSets {
+        self.read().instruction_sets.clone()
     }
 
     /// Goes through [`AppSettings::change_instruction_sets`], the same path
@@ -727,7 +717,7 @@ mod tests {
     #[test]
     fn a_rewrite_follows_the_active_instruction_set() {
         let (app, _) = open(&temp_file(), Arc::default());
-        let first = app.active_instructions();
+        let first = app.instruction_sets().active().instructions.clone();
         let shorter = id_of(&app, "Shorter");
 
         app.change_instruction_sets(|sets| sets.set_active(shorter))
@@ -735,7 +725,7 @@ mod tests {
 
         assert_eq!(first, StarterTemplate::FixAndMakeReadable.instructions());
         assert_eq!(
-            app.active_instructions(),
+            app.instruction_sets().active().instructions,
             StarterTemplate::Shorter.instructions()
         );
     }
@@ -756,7 +746,10 @@ mod tests {
             restarted.settings().instruction_sets,
             app.settings().instruction_sets
         );
-        assert_eq!(restarted.active_instructions(), "My rules.");
+        assert_eq!(
+            restarted.instruction_sets().active().instructions,
+            "My rules."
+        );
     }
 
     #[test]
