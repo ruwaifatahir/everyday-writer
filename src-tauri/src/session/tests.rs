@@ -311,7 +311,7 @@ fn message(text: &str, action: Option<MessageAction>) -> PopupState {
         text: text.to_owned(),
         action,
         copied: false,
-        rewrite: false,
+        retryable: false,
         choices: choices_on(1),
     }
 }
@@ -322,7 +322,7 @@ fn failed(text: &str) -> PopupState {
         text: text.to_owned(),
         action: None,
         copied: false,
-        rewrite: true,
+        retryable: true,
         choices: choices_on(1),
     }
 }
@@ -505,7 +505,7 @@ async fn replace_into_a_closed_window_copies_the_result_and_shows_a_message() {
             text: "The original window closed. Press Ctrl + V to paste the rewrite.".to_owned(),
             action: None,
             copied: true,
-            rewrite: false,
+            retryable: false,
             choices: choices_on(1),
         })
     );
@@ -531,7 +531,7 @@ async fn a_failed_replace_copies_the_result_and_says_so() {
             text: "Couldn't replace your text. Press Ctrl + V to paste the rewrite.".to_owned(),
             action: None,
             copied: true,
-            rewrite: false,
+            retryable: false,
             choices: choices_on(1),
         })
     );
@@ -1226,7 +1226,7 @@ async fn picking_a_set_keeps_a_message_a_rewrite_cant_help_and_shows_the_picked_
         text: "This text is too long. Select up to 5,000 characters.".to_owned(),
         action: None,
         copied: false,
-        rewrite: false,
+        retryable: false,
         choices: choices_on(active),
     };
     assert_eq!(session.settings.active_id(), id(2));
@@ -1251,7 +1251,7 @@ async fn picking_a_set_keeps_a_message_asking_to_set_up() {
             text: "Add your API key to get started.".to_owned(),
             action: Some(MessageAction::OpenSettings),
             copied: false,
-            rewrite: false,
+            retryable: false,
             choices: choices_on(2),
         })
     );
@@ -1489,7 +1489,7 @@ async fn switching_sets_elsewhere_keeps_a_message_a_rewrite_cant_help() {
         text: "This text is too long. Select up to 5,000 characters.".to_owned(),
         action: None,
         copied: false,
-        rewrite: false,
+        retryable: false,
         choices: choices_on(active),
     };
     assert_eq!(states(&session), [too_long(1), too_long(2)]);

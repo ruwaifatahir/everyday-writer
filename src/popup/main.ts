@@ -25,7 +25,7 @@ type PopupState =
       action: "openSettings" | null;
       copied: boolean;
       /** The rewrite failed in a way trying again can fix. */
-      rewrite: boolean;
+      retryable: boolean;
       choices: Choices;
     };
 
@@ -56,7 +56,9 @@ let current: PopupState = { kind: "hidden" };
 /** Whether Rewrite leads, primary with Enter: when a selection waits
  * (Ready) and on a failed rewrite. */
 function rewriteLeads(state: PopupState): boolean {
-  return state.kind === "ready" || (state.kind === "message" && state.rewrite);
+  return (
+    state.kind === "ready" || (state.kind === "message" && state.retryable)
+  );
 }
 
 /** The sets the dropdown lists now, so it is rebuilt only when they change. */

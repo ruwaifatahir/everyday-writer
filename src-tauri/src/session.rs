@@ -99,7 +99,7 @@ pub enum PopupState {
         copied: bool,
         /// The rewrite failed in a way trying again can fix, so Rewrite is
         /// offered.
-        rewrite: bool,
+        retryable: bool,
         /// The instruction sets to pick from.
         choices: InstructionSetChoices,
     },
@@ -117,14 +117,14 @@ impl std::fmt::Debug for PopupState {
                 text,
                 action,
                 copied,
-                rewrite,
+                retryable,
                 choices: _,
             } => f
                 .debug_struct("Message")
                 .field("text", text)
                 .field("action", action)
                 .field("copied", copied)
-                .field("rewrite", rewrite)
+                .field("retryable", retryable)
                 .finish_non_exhaustive(),
         }
     }
@@ -262,8 +262,28 @@ enum View {
 struct Notice {
     text: String,
     action: Option<MessageAction>,
-    copied: bool,
-    rewrite: bool,
+    kind: NoticeKind,
+}
+
+/// What kind of message a [`Notice`] is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NoticeKind {
+    /// Nothing was rewritten, and trying again won't help.
+    Plain,
+    /// Replace couldn't go ahead and the result was copied instead.
+    Copied,
+    /// The rewrite failed in a way trying again can fix: Rewrite is offered.
+    Retryable,
+}
+
+impl Notice {
+    fn new(text: &str, action: Option<MessageAction>, kind: NoticeKind) -> Self {
+        Self {
+            text: text.to_owned(),
+            action,
+            kind,
+        }
+    }
 }
 
 impl View {
@@ -286,8 +306,8 @@ impl View {
             Self::Message(notice) => PopupState::Message {
                 text: notice.text.clone(),
                 action: notice.action,
-                copied: notice.copied,
-                rewrite: notice.rewrite,
+                copied: notice.kind == NoticeKind::Copied,
+                retryable: notice.kind == NoticeKind::Retryable,
                 choices,
             },
         }
@@ -694,12 +714,7 @@ where
     async fn copy_instead(&self, captured: Captured<B::Window>, result: String, note: &str) {
         let copied = self.bridge.copy(&result).await;
         let view = if copied.is_ok() {
-            View::Message(Notice {
-                text: note.to_owned(),
-                action: None,
-                copied: true,
-                rewrite: false,
-            })
+            View::Message(Notice::new(note, None, NoticeKind::Copied))
         } else {
             tracing::warn!("the result couldn't be copied");
             View::Result(result)
@@ -748,7 +763,7 @@ fn too_long(selection: &str) -> Option<Notice> {
 /// shows: not for a message that offers no Rewrite, such as too long or
 /// not set up.
 fn rewrite_can_help(view: &View) -> bool {
-    !matches!(view, View::Message(Notice { rewrite: false, .. }))
+    !matches!(view, View::Message(notice) if notice.kind != NoticeKind::Retryable)
 }
 
 /// The message shown when the provider can't take a rewrite yet, naming
@@ -801,23 +816,13 @@ fn timed_out(provider: ProviderKind) -> String {
 
 /// A message showing `text`, with an optional button.
 fn message(text: &str, action: Option<MessageAction>) -> Notice {
-    Notice {
-        text: text.to_owned(),
-        action,
-        copied: false,
-        rewrite: false,
-    }
+    Notice::new(text, action, NoticeKind::Plain)
 }
 
 /// The message for a failed rewrite that trying again can fix: it offers
 /// Rewrite.
 fn failed(text: &str) -> Notice {
-    Notice {
-        text: text.to_owned(),
-        action: None,
-        copied: false,
-        rewrite: true,
-    }
+    Notice::new(text, None, NoticeKind::Retryable)
 }
 
 /// Runs `future` until it finishes, or returns `None` as soon as
