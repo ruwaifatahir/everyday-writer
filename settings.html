@@ -131,6 +131,18 @@
             </label>
             <p class="hint field-status" id="startup-status" role="status" aria-live="polite"></p>
           </div>
+
+          <div class="row">
+            <label class="switch-row" for="rewrite-on-open">
+              <span class="switch-text">
+                <span class="label">Rewrite on open</span>
+                <span class="hint">Rewrites as soon as the popup opens. Turn it off to pick a set first.</span>
+              </span>
+              <!-- biome-ignore lint/a11y/useAriaPropsForRole: a checkbox exposes its own checked state; a manual aria-checked can only drift from it -->
+              <input type="checkbox" role="switch" class="switch" id="rewrite-on-open" />
+            </label>
+            <p class="hint field-status" id="rewrite-on-open-status" role="status" aria-live="polite"></p>
+          </div>
         </div>
       </section>
     </form>

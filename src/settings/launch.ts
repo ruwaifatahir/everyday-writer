@@ -1,5 +1,5 @@
-// "Shortcut and startup" section. Both settings apply right away, through
-// their own commands, and never through the Save button.
+// "Shortcut and startup" section. Every setting here applies right away,
+// through its own command, and never through the Save button.
 //
 // The shortcut field only records key presses. While it has focus it is
 // recording: the saved shortcut is paused, held modifiers show live, and a
@@ -13,6 +13,7 @@ import {
   resumeShortcut,
   type SetShortcutErrorReason,
   type Settings,
+  setRewriteOnOpen,
   setShortcut,
   setStartWithWindows,
 } from "./api";
@@ -29,6 +30,8 @@ const shortcutWarning = element<HTMLParagraphElement>("shortcut-warning");
 const shortcutStatus = element<HTMLParagraphElement>("shortcut-status");
 const startSwitch = element<HTMLInputElement>("start-with-windows");
 const startStatus = element<HTMLParagraphElement>("startup-status");
+const rewriteSwitch = element<HTMLInputElement>("rewrite-on-open");
+const rewriteStatus = element<HTMLParagraphElement>("rewrite-on-open-status");
 
 /** The shortcut that works now, as saved (`Super` for the Windows key). */
 let savedShortcut = "";
@@ -285,6 +288,20 @@ startSwitch.addEventListener("change", async () => {
   }
 });
 
+rewriteSwitch.addEventListener("change", async () => {
+  const enabled = rewriteSwitch.checked;
+  rewriteSwitch.disabled = true;
+  rewriteStatus.textContent = "";
+  try {
+    await setRewriteOnOpen(enabled);
+  } catch (error) {
+    rewriteSwitch.checked = !enabled;
+    show(rewriteStatus, errorMessage(error, "change Rewrite on open"), "error");
+  } finally {
+    rewriteSwitch.disabled = false;
+  }
+});
+
 /** Shows the saved values, and warns if the shortcut failed at startup. */
 export async function initLaunch(
   settings: Settings | undefined,
@@ -292,6 +309,7 @@ export async function initLaunch(
   if (settings) {
     savedShortcut = settings.shortcut;
     startSwitch.checked = settings.startWithWindows;
+    rewriteSwitch.checked = settings.rewriteOnOpen;
   }
   renderField();
   void renderReset();

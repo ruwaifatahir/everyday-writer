@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Settings window: reads and saves the provider, model and Custom base URL, saves or clears keys, lists the built-in model names, changes the shortcut (pausing it while recording a new one) and start-with-Windows, shows the app version and the updates state, checks for updates, installs an offered update, turns automatic update checks on or off, manages instruction sets, says when its page is drawn (Rust then shows the window), and closes itself (Esc, Ctrl+W). It can ask whether a key is saved but can never read one.",
+  "description": "Settings window: reads and saves the provider, model and Custom base URL, saves or clears keys, lists the built-in model names, changes the shortcut (pausing it while recording a new one), start-with-Windows and Rewrite on open, shows the app version and the updates state, checks for updates, installs an offered update, turns automatic update checks on or off, manages instruction sets, says when its page is drawn (Rust then shows the window), and closes itself (Esc, Ctrl+W). It can ask whether a key is saved but can never read one.",
   "windows": ["settings"],
   "permissions": [
     "allow-get-settings",
@@ -15,6 +15,7 @@
     "allow-pause-shortcut",
     "allow-resume-shortcut",
     "allow-set-start-with-windows",
+    "allow-set-rewrite-on-open",
     "allow-default-shortcut",
     "allow-settings-ready",
     "allow-app-version",

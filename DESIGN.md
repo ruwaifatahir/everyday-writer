@@ -174,7 +174,8 @@ chevron, at most 220px wide with long names cut by an ellipsis. It lists
 the sets by name in Settings' order with the active one picked. With one
 set it stays shown but disabled (stone border, ink-soft text), so the
 layout never changes. It fits the 44px header, so the popup stays
-400 x 220. Picking a set never rewrites: it shows Ready.
+400 x 220. Picking a set never rewrites: it shows Ready. With Rewrite on
+open off in Settings, the shortcut opens the popup on Ready too.
 
 - Ready: a plain "Ready to rewrite" caption over the selection, set like
   the result and fading in where it will land, scrollable. Rewrite is the

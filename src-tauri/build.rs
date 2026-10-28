@@ -17,6 +17,7 @@ fn main() {
             "pause_shortcut",
             "resume_shortcut",
             "set_start_with_windows",
+            "set_rewrite_on_open",
             "default_shortcut",
             "settings_ready",
             "app_version",

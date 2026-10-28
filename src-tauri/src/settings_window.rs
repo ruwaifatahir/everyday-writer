@@ -247,7 +247,8 @@ pub fn get_settings(settings: State<'_, Arc<AppSettings>>) -> Settings {
 
 /// Saves the provider, model and Custom base URL. Other settings in
 /// `new_settings` are ignored: the shortcut and start-with-Windows have their
-/// own commands, because they must reach Windows first.
+/// own commands, because they must reach Windows first, and Rewrite on open
+/// has its own because it applies right away.
 ///
 /// # Errors
 ///
@@ -452,6 +453,22 @@ pub fn set_start_with_windows(
         settings.modify(|s| s.start_with_windows = enabled)
     })?;
     Ok(())
+}
+
+/// Turns Rewrite on open on or off. The next shortcut press follows it.
+///
+/// # Errors
+///
+/// Returns [`CommandError::SaveSettings`] if the setting can't be saved; it
+/// stays as it was then.
+#[tauri::command(async)]
+pub fn set_rewrite_on_open(
+    settings: State<'_, Arc<AppSettings>>,
+    enabled: bool,
+) -> Result<(), CommandError> {
+    settings
+        .modify(|s| s.rewrite_on_open = enabled)
+        .map_err(|_| CommandError::SaveSettings)
 }
 
 #[cfg(test)]

@@ -106,7 +106,7 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S7 | LM Studio as Custom at `http://localhost:1234/v1` with a blank key | Rewrite works; record whether port 1234 and the empty key were right |
 | S8 | Offline, open the model dropdown | Falls back to the built-in list; a typed name still saves |
 | S9 | Built-in suggested model names | Still current for each provider |
-| S10 | Settings holds only provider, model, key, shortcut, instruction sets, start with Windows and the Updates section | Nothing else |
+| S10 | Settings holds only provider, model, key, shortcut, instruction sets, start with Windows, Rewrite on open and the Updates section | Nothing else |
 | S11 | Look of the settings window and popup | Modern, minimal, clean |
 | S12 | With an update offered, change the model (don't save), click Update now, then press Esc; repeat and click Cancel | Prompt "Save your changes before updating?" with Save, Discard changes and Cancel, Save focused; Esc and Cancel close it, no update starts, the form still shows the edit |
 | S13 | Same, choose Save | "Saved." in the card foot, then the update starts; after the restart the new model is kept |
@@ -171,6 +171,11 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | L26 | Click the shortcut field, press a new combination and at once close Settings with the title bar, so it closes during the save; press the new shortcut on a selection | The rewrite starts: the shortcut isn't left paused, however late the save finishes |
 | L27 | Click the shortcut field, switch to another app and back, then press the current shortcut | The field records it; no rewrite starts. Leave the field and it works again |
 | L28 | Click the shortcut field, let another app take the saved shortcut while it records (for example AutoHotkey), then leave the field | A tray notification says another app uses your shortcut; Settings still shows the shortcut |
+| L29 | After install, and after upgrading from 1.5.0 | **Rewrite on open** is on; the shortcut rewrites at once, as before |
+| L30 | Turn **Rewrite on open** off, then press the shortcut on a selection | No restart needed: the popup opens on Ready with the selection, nothing is sent (no request in the provider's dashboard or Ollama log); Rewrite or Enter starts the rewrite |
+| L31 | With it off, press the shortcut with nothing selected; then on a selection over 5,000 characters | Nothing selected: the popup stays hidden. Too long: the too-long message, as with it on |
+| L32 | With it off and no API key saved, press the shortcut on a selection, then Rewrite | The popup opens on Ready; Rewrite shows "Add your API key to get started." with Open Settings |
+| L33 | Turn it off, restart the app; open the tray menu | Still off after the restart; the tray menu has no Rewrite on open item |
 
 ## Updates
 
@@ -236,6 +241,6 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 | S1–S16 | | |
 | I1–I7 | | |
 | T1–T7 | | |
-| L1–L25 | | |
+| L1–L33 | | |
 | U1–U22 | | |
 | V1–V2 | | |

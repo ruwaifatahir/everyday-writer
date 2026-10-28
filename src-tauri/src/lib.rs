@@ -84,6 +84,7 @@ pub fn run() {
             settings_window::pause_shortcut,
             settings_window::resume_shortcut,
             settings_window::set_start_with_windows,
+            settings_window::set_rewrite_on_open,
             settings_window::default_shortcut,
             settings_window::settings_ready,
             live_updates::app_version,
