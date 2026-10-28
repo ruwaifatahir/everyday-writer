@@ -51,6 +51,11 @@ pub enum Event {
     /// message and show [`PopupState::Ready`]. Never starts a rewrite.
     /// Ignored unless the popup is open, or if the set is already active.
     PickInstructionSet(InstructionSetId),
+    /// The instruction sets were changed in Settings or the tray. If the
+    /// Active Instruction Set or its instructions changed, acts like
+    /// [`Event::PickInstructionSet`]; otherwise shows the current state with
+    /// the new list. Ignored while the popup is hidden.
+    InstructionSetsChanged,
 }
 
 /// What the popup shows. Serialized for the popup window as
@@ -303,6 +308,16 @@ struct State<W> {
     next_run: u64,
     /// An update holds the session: the shortcut starts nothing.
     held: bool,
+    /// The instruction sets the open popup was last brought up to date
+    /// with, to tell a change of the active set from a rename.
+    seen: Option<SeenSets>,
+}
+
+/// The instruction sets as an open popup last saw them.
+struct SeenSets {
+    choices: InstructionSetChoices,
+    /// The Active Instruction Set's instructions.
+    instructions: String,
 }
 
 /// Runs rewrites: capture, rewrite, show, then Copy, Replace or close.
@@ -334,6 +349,7 @@ where
                 phase: Phase::Hidden,
                 next_run: 0,
                 held: false,
+                seen: None,
             }),
             settled: Notify::new(),
         }
@@ -354,6 +370,7 @@ where
             Event::Replace => self.replace().await,
             Event::Rewrite => self.rewrite_again().await,
             Event::PickInstructionSet(id) => self.pick_instruction_set(id),
+            Event::InstructionSetsChanged => self.instruction_sets_changed(),
         }
         self.settled.notify_waiters();
     }
@@ -465,16 +482,61 @@ where
         if saved.is_err() {
             tracing::warn!("the instruction set picked in the popup couldn't be made active");
         }
+        let seen = saved.is_ok().then(|| self.seen_sets());
         let mut state = self.lock();
-        let Phase::Open { captured, view } = &mut state.phase else {
+        let State {
+            phase: Phase::Open { captured, view },
+            seen: last_seen,
+            ..
+        } = &mut *state
+        else {
             // Closed meanwhile.
             return;
         };
-        if saved.is_ok() {
+        if let Some(seen) = seen {
+            *last_seen = Some(seen);
             // Dropping a running rewrite cancels it.
             *view = View::Ready;
         }
         self.popup.render(&self.shown(captured, view));
+    }
+
+    /// Brings an open popup up to date with the instruction sets. A new
+    /// Active Instruction Set, or new instructions for it, clears what the
+    /// popup shows to Ready, as a pick does; a message a rewrite can't help
+    /// stays. Any other change only shows the new list.
+    fn instruction_sets_changed(&self) {
+        let now = self.seen_sets();
+        let mut state = self.lock();
+        let State {
+            phase: Phase::Open { captured, view },
+            seen,
+            ..
+        } = &mut *state
+        else {
+            return;
+        };
+        let active_changed = seen.as_ref().is_none_or(|seen| {
+            seen.choices.active != now.choices.active || seen.instructions != now.instructions
+        });
+        let list_changed = seen.as_ref().is_none_or(|seen| seen.choices != now.choices);
+        *seen = Some(now);
+        if active_changed && rewrite_can_help(view) {
+            // Dropping a running rewrite cancels it.
+            *view = View::Ready;
+        } else if !list_changed {
+            // Nothing the popup shows changed, as after its own pick.
+            return;
+        }
+        self.popup.render(&self.shown(captured, view));
+    }
+
+    /// The instruction sets as they are now.
+    fn seen_sets(&self) -> SeenSets {
+        SeenSets {
+            choices: self.settings.instruction_set_choices(),
+            instructions: self.settings.active_instructions(),
+        }
     }
 
     /// The popup state `view` shows for `captured`, with the current
@@ -514,6 +576,7 @@ where
         } else {
             not_ready_message(self.settings.provider_readiness())
         };
+        let seen = self.seen_sets();
         let (view, working) = if let Some(notice) = refused {
             (View::Message(notice), None)
         } else {
@@ -523,7 +586,7 @@ where
             let working = Working {
                 run,
                 provider: self.settings.model_settings().provider.kind(),
-                instructions: self.settings.active_instructions(),
+                instructions: seen.instructions.clone(),
                 selection: captured.selection.clone(),
                 cancelled,
             };
@@ -531,6 +594,7 @@ where
         };
         let shown = self.shown(&captured, &view);
         state.phase = Phase::Open { captured, view };
+        state.seen = Some(seen);
         if shown != *before {
             self.popup.render(&shown);
         }
@@ -673,6 +737,13 @@ fn is_idle<W>(phase: &Phase<W>) -> bool {
         Phase::Open { view, .. } => !matches!(view, View::Working { .. }),
         Phase::Capturing | Phase::Replacing => false,
     }
+}
+
+/// Whether a rewrite with other instructions could change what `view`
+/// shows: not for a message that offers no Rewrite, such as too long or
+/// not set up.
+fn rewrite_can_help(view: &View) -> bool {
+    !matches!(view, View::Message(Notice { rewrite: false, .. }))
 }
 
 /// The message shown when the provider can't take a rewrite yet, naming

@@ -1289,3 +1289,186 @@ fn debug_output_hides_the_selection_in_ready() {
 
     assert!(!shown.contains("SECRET-SELECTION"));
 }
+
+// Instruction set changes made in Settings or the tray.
+
+impl FakeSettings {
+    /// Changes the instruction sets as Settings or the tray would.
+    fn change(&self, change: impl FnOnce(&mut InstructionSets)) {
+        change(&mut self.sets.lock().unwrap());
+    }
+}
+
+#[tokio::test]
+async fn renaming_a_set_elsewhere_keeps_the_result_and_shows_the_new_name() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session
+        .settings
+        .change(|sets| sets.edit(id(2), "Polite", "Be formal.").unwrap());
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    let mut renamed = choices_on(1);
+    renamed.sets[1].name = "Polite".to_owned();
+    assert_eq!(
+        states(&session),
+        [
+            working("helo wrld"),
+            result("Hello, world."),
+            PopupState::Result {
+                text: "Hello, world.".to_owned(),
+                choices: renamed,
+            },
+        ]
+    );
+}
+
+#[tokio::test]
+async fn switching_sets_from_the_tray_clears_the_result_and_shows_ready() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session
+        .settings
+        .change(|sets| sets.set_active(id(2)).unwrap());
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(
+        states(&session),
+        [
+            working("helo wrld"),
+            result("Hello, world."),
+            ready_on("helo wrld", 2),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn editing_the_active_sets_instructions_elsewhere_clears_the_result() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session.settings.activate("Fix spelling only.");
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    assert_eq!(states(&session).last(), Some(&ready_on("helo wrld", 1)));
+}
+
+#[tokio::test]
+async fn deleting_the_active_set_elsewhere_clears_the_result_and_shows_the_new_active_set() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session.settings.change(|sets| sets.delete(id(1)).unwrap());
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    let only_formal = InstructionSetChoices {
+        sets: vec![InstructionSetChoice {
+            id: id(2),
+            name: "Formal".to_owned(),
+        }],
+        active: id(2),
+    };
+    assert_eq!(
+        states(&session).last(),
+        Some(&PopupState::Ready {
+            text: "helo wrld".to_owned(),
+            choices: only_formal,
+        })
+    );
+}
+
+#[tokio::test]
+async fn switching_sets_elsewhere_while_working_cancels_the_rewrite_and_a_late_answer_is_ignored() {
+    let (rewriter, answer) = TestRewriter::gated();
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        session
+            .settings
+            .change(|sets| sets.set_active(id(2)).unwrap());
+        session.handle(Event::InstructionSetsChanged).await;
+        let _ = answer.send(Ok("Hello, world.".to_owned()));
+    });
+
+    assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert_eq!(
+        states(&session),
+        [working("helo wrld"), ready_on("helo wrld", 2)]
+    );
+}
+
+#[tokio::test]
+async fn switching_sets_elsewhere_on_a_failed_rewrite_clears_the_message() {
+    let session = session(
+        FakeBridge::selecting("helo wrld"),
+        TestRewriter::answering(Err(RewriteError::Network)),
+    );
+    session.handle(Event::ShortcutPressed).await;
+    session
+        .settings
+        .change(|sets| sets.set_active(id(2)).unwrap());
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    assert_eq!(states(&session).last(), Some(&ready_on("helo wrld", 2)));
+}
+
+#[tokio::test]
+async fn switching_sets_elsewhere_keeps_a_message_a_rewrite_cant_help() {
+    let session = session(
+        FakeBridge::selecting(&"a".repeat(MAX_SELECTION_CHARS + 1)),
+        TestRewriter::returning("unused"),
+    );
+    session.handle(Event::ShortcutPressed).await;
+    session
+        .settings
+        .change(|sets| sets.set_active(id(2)).unwrap());
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    let too_long = |active| PopupState::Message {
+        text: "This text is too long. Select up to 5,000 characters.".to_owned(),
+        action: None,
+        copied: false,
+        rewrite: false,
+        choices: choices_on(active),
+    };
+    assert_eq!(states(&session), [too_long(1), too_long(2)]);
+}
+
+#[tokio::test]
+async fn the_popups_own_pick_announced_back_changes_nothing_more() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session.handle(Event::PickInstructionSet(id(2))).await;
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    assert_eq!(
+        states(&session),
+        [
+            working("helo wrld"),
+            result("Hello, world."),
+            ready_on("helo wrld", 2),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_change_while_the_popup_is_hidden_does_nothing() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session.handle(Event::Close).await;
+    session
+        .settings
+        .change(|sets| sets.set_active(id(2)).unwrap());
+
+    session.handle(Event::InstructionSetsChanged).await;
+
+    assert_eq!(
+        states(&session),
+        [
+            working("helo wrld"),
+            result("Hello, world."),
+            PopupState::Hidden
+        ]
+    );
+}
