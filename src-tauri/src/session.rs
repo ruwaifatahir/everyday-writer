@@ -324,6 +324,19 @@ struct Working {
     cancelled: oneshot::Receiver<()>,
 }
 
+/// What a shortcut press does.
+enum Press {
+    /// Nothing more: an update holds the session, a capture, rewrite or
+    /// replace is running, or the popup now shows why a rewrite can't go
+    /// ahead.
+    Ignored,
+    /// Capture the selection; the phase is now capturing.
+    Capture,
+    /// Send this rewrite of the open popup's selection, already shown as
+    /// working.
+    Rewrite(Working),
+}
+
 struct State<W> {
     phase: Phase<W>,
     /// Numbers each rewrite, so a late answer can't update a newer popup.
@@ -437,31 +450,38 @@ where
     /// without capturing (the popup has focus, so a capture would copy from
     /// it), and does nothing while a rewrite is running.
     async fn shortcut_pressed(&self) {
-        let working = {
-            let mut state = self.lock();
-            if state.held {
-                // An update is about to restart the app.
-                return;
+        let working = match self.press() {
+            Press::Ignored => return,
+            Press::Capture => {
+                let captured = self.bridge.capture().await;
+                let Some(working) = self.captured(captured) else {
+                    return;
+                };
+                working
             }
-            match state.phase {
-                Phase::Hidden => {
-                    state.phase = Phase::Capturing;
-                    None
-                }
-                Phase::Open { .. } => Some(self.rerun(&mut state)),
-                // Already capturing: this press adds nothing. Replacing: a
-                // capture now would race the paste for the clipboard.
-                Phase::Capturing | Phase::Replacing => return,
+            Press::Rewrite(working) => working,
+        };
+        self.rewrite(working).await;
+    }
+
+    /// Decides what a shortcut press does, and starts it under the lock.
+    fn press(&self) -> Press {
+        let mut state = self.lock();
+        if state.held {
+            // An update is about to restart the app.
+            return Press::Ignored;
+        }
+        match state.phase {
+            Phase::Hidden => {
+                state.phase = Phase::Capturing;
+                Press::Capture
             }
-        };
-        let working = if let Some(rerun) = working {
-            rerun
-        } else {
-            let captured = self.bridge.capture().await;
-            self.captured(captured)
-        };
-        if let Some(working) = working {
-            self.rewrite(working).await;
+            Phase::Open { .. } => self
+                .rerun(&mut state)
+                .map_or(Press::Ignored, Press::Rewrite),
+            // Already capturing: this press adds nothing. Replacing: a
+            // capture now would race the paste for the clipboard.
+            Phase::Capturing | Phase::Replacing => Press::Ignored,
         }
     }
 
