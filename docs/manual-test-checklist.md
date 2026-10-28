@@ -47,8 +47,9 @@ Record each run in the results table at the end: date, build, Windows version an
 | P16 | Pick a set while the popup is rewriting, then wait | The running rewrite stops and a new one starts with the picked set; only its result appears, never the first one's late answer |
 | P17 | Turn **Rewrite on open** off, press the shortcut, then pick another set on Ready | A rewrite runs at once with the picked set; no need to press **Rewrite** |
 | P18 | After P15, open the tray menu and Settings | The tray's check mark and Settings' Active badge are on the set picked in the popup; the next shortcut press uses it too |
-| P19 | Tab to the dropdown on a result. Press plain ↑ and ↓ a few times; then press Alt+↓, move with the arrows and press Enter | Plain ↑ and ↓ change nothing and send nothing. Alt+↓ opens the list, the arrows only move the highlight, and Enter picks the set and sends exactly one rewrite; focus stays in the dropdown. Enter on the closed dropdown then replaces with the new result |
-| P19a | On Ready (Rewrite on open off) and on a failed rewrite, Tab to the dropdown and press Enter | Enter rewrites, as from the text |
+| P19 | Tab to the dropdown on a result. Press plain ↑ and ↓ (and ← →) a few times; then press Alt+↓, move with the arrows and press Enter | Plain arrows change nothing and send nothing. Alt+↓ opens the list, the arrows only move the highlight, and Enter picks the set and sends exactly one rewrite; focus stays in the dropdown. Enter on the closed dropdown then replaces with the new result |
+| P19a | Tab to the dropdown on a result and press Home, End, Page Up, Page Down and a set's first letter; then open the list with F4 and with Space and pick with Enter | None of those keys changes the set or sends anything. F4 and Space open the list, and Enter in it picks once and sends one rewrite |
+| P19b | On Ready (Rewrite on open off) and on a failed rewrite, Tab to the dropdown and press Enter | Enter rewrites, as from the text |
 | P20 | A screen reader on the dropdown | It is announced as "Instruction set" with the picked set's name |
 | P21 | Only one instruction set | The dropdown is shown, greyed out and can't be opened; the layout is the same as with several sets |
 | P22 | A set with a long name | The name ends in an ellipsis; the caption, dropdown and ✕ stay on one line |

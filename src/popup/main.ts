@@ -190,13 +190,36 @@ function closePopup(): void {
 instructionSet.addEventListener("change", () => {
   send("popup_pick_instruction_set", { id: Number(instructionSet.value) });
 });
-// Chromium picks the next set at each plain ↑ or ↓ on the closed dropdown,
-// which would send a rewrite per press. Blocked: Alt+↓ opens the list,
-// where the arrows only move the highlight and Enter picks once.
-instructionSet.addEventListener("keydown", (event) => {
-  if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.altKey) {
-    event.preventDefault();
+
+/** Keys the closed dropdown lets through: they move focus, close the
+ * popup, take the main action or open the list, and never change the set. */
+const keysThatKeepTheSet = new Set([
+  "Tab",
+  "Escape",
+  "Enter",
+  "F4",
+  " ",
+  "Shift",
+  "Control",
+  "Alt",
+  "Meta",
+]);
+
+/** Whether `event` on the closed dropdown leaves the picked set as it is. */
+function keepsTheSet(event: KeyboardEvent): boolean {
+  if (keysThatKeepTheSet.has(event.key) || event.ctrlKey || event.metaKey) {
+    return true;
   }
+  return event.altKey && (event.key === "ArrowDown" || event.key === "ArrowUp");
+}
+
+// Chromium picks another set at each arrow, Home, End, Page Up, Page Down
+// or letter pressed on the closed dropdown, which would send a rewrite per
+// press. Only keys that keep the set get through: Alt+↓, F4 or Space opens
+// the list, where the arrows only move the highlight and Enter picks once.
+// The open list's keys don't reach the page.
+instructionSet.addEventListener("keydown", (event) => {
+  if (!keepsTheSet(event)) event.preventDefault();
 });
 rewrite.addEventListener("click", rewriteText);
 copy.addEventListener("click", () => send("popup_copy"));

@@ -176,15 +176,16 @@ set it stays shown but disabled (stone border, ink-soft text), so the
 layout never changes. It fits the 44px header, so the popup stays
 400 x 220. Picking a set rewrites at once with it, as Rewrite does,
 stopping a rewrite in progress first; a message a rewrite can't help
-(too long) stays. On the closed dropdown plain ↑ and ↓ do nothing, so a
-keyboard pick sends one rewrite: Alt+↓ opens the list, the arrows move
-in it and Enter picks. Enter on the closed dropdown is the popup's main
-action, as from the text, and focus stays in the dropdown while the user
-is there, so no state moves it to a button. The dropdown follows
-Settings and the tray while the popup is open; switching the active set
-there, or editing its instructions, never rewrites: it shows Ready. With
-Rewrite on open off in Settings, the shortcut opens the popup on Ready
-as well.
+(too long) stays. On the closed dropdown the keys that would change the
+set (arrows, Home, End, Page Up, Page Down, letters) do nothing, so a
+keyboard pick sends one rewrite: Alt+↓, F4 or Space opens the list, the
+arrows move in it and Enter picks. Enter on the closed dropdown is the
+popup's main action, as from the text, and focus stays in the dropdown
+while the user is there, so no state moves it to a button. The dropdown
+follows Settings and the tray while the popup is open; switching the
+active set there, or editing its instructions, never rewrites: it shows
+Ready. With Rewrite on open off in Settings, the shortcut opens the
+popup on Ready as well.
 
 - Ready: a plain "Ready to rewrite" caption over the selection, set like
   the result and fading in where it will land, scrollable. Rewrite is the
