@@ -128,7 +128,6 @@ body[data-ready] {
    place. The band holds off for a beat, so a quick rewrite never flickers. */
 .working,
 .preview,
-.preview,
 .result {
   height: 100%;
   padding-right: var(--space-8);

@@ -61,16 +61,17 @@ function rewriteLeads(state: PopupState): boolean {
   );
 }
 
-/** The sets the dropdown lists now, so it is rebuilt only when they change. */
-let listed = "";
+/** The sets the dropdown lists now, as JSON, so it is rebuilt only when
+ * they change. */
+let listedKey = "";
 
 /** Lists `choices` in the dropdown with the active set picked. Disabled
  * while there is only one set, so the layout never changes. */
 function showChoices(choices: Choices | null): void {
   const sets = choices?.sets ?? [];
   const names = JSON.stringify(sets);
-  if (names !== listed) {
-    listed = names;
+  if (names !== listedKey) {
+    listedKey = names;
     instructionSet.replaceChildren(
       ...sets.map(({ id, name }) => new Option(name, String(id))),
     );
