@@ -249,6 +249,17 @@ fn message(text: &str, action: Option<MessageAction>) -> PopupState {
         text: text.to_owned(),
         action,
         copied: false,
+        rewrite: false,
+    }
+}
+
+/// The message for a failed rewrite, which offers Rewrite.
+fn failed(text: &str) -> PopupState {
+    PopupState::Message {
+        text: text.to_owned(),
+        action: None,
+        copied: false,
+        rewrite: true,
     }
 }
 
@@ -413,6 +424,7 @@ async fn replace_into_a_closed_window_copies_the_result_and_shows_a_message() {
             text: "The original window closed. Press Ctrl + V to paste the rewrite.".to_owned(),
             action: None,
             copied: true,
+            rewrite: false,
         })
     );
 }
@@ -437,6 +449,7 @@ async fn a_failed_replace_copies_the_result_and_says_so() {
             text: "Couldn't replace your text. Press Ctrl + V to paste the rewrite.".to_owned(),
             action: None,
             copied: true,
+            rewrite: false,
         })
     );
 }
@@ -696,25 +709,41 @@ async fn a_rewrite_with_no_answer_after_30_seconds_is_cancelled() {
         states(&session),
         [
             working("helo wrld"),
-            message("OpenAI took too long. Try again.", None)
+            failed("OpenAI took too long. Try again.")
         ]
     );
 }
 
 #[tokio::test]
-async fn the_shortcut_while_working_restarts_on_the_same_selection_without_capturing() {
+async fn the_shortcut_while_working_does_nothing() {
     let (rewriter, first_answer) = TestRewriter::gated_then(Ok("Second.".to_owned()));
     let session = session(FakeBridge::selecting("helo wrld"), rewriter);
 
     tokio::join!(session.handle(Event::ShortcutPressed), async {
         session.rewriter.called.notified().await;
-        session.settings.activate("Be formal.");
         session.handle(Event::ShortcutPressed).await;
         let _ = first_answer.send(Ok("First.".to_owned()));
     });
 
     assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
-    assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert!(!session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(states(&session), [working("helo wrld"), result("First.")]);
+}
+
+#[tokio::test]
+async fn the_shortcut_on_a_failed_rewrite_tries_the_same_selection_again() {
+    let (rewriter, first_answer) = TestRewriter::gated_then(Ok("Hello, world.".to_owned()));
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        let _ = first_answer.send(Err(RewriteError::RateLimited));
+    });
+    session.settings.activate("Be formal.");
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
     assert_eq!(
         session.rewriter.calls(),
         [
@@ -722,7 +751,7 @@ async fn the_shortcut_while_working_restarts_on_the_same_selection_without_captu
             ("Be formal.".to_owned(), "helo wrld".to_owned()),
         ]
     );
-    assert_eq!(states(&session), [working("helo wrld"), result("Second.")]);
+    assert_eq!(states(&session).last(), Some(&result("Hello, world.")));
 }
 
 #[tokio::test]
@@ -750,57 +779,56 @@ async fn each_rewrite_error_shows_its_own_message() {
     let cases = [
         (
             RewriteError::Network,
-            "Couldn't reach OpenAI. Check your connection and try again.",
-            None,
+            failed("Couldn't reach OpenAI. Check your connection and try again."),
         ),
         (
             RewriteError::Unauthorized,
-            "OpenAI rejected your API key. Check it in Settings.",
-            open_settings,
+            message(
+                "OpenAI rejected your API key. Check it in Settings.",
+                open_settings,
+            ),
         ),
         (
             RewriteError::RateLimited,
-            "OpenAI is busy. Wait a moment and try again.",
-            None,
+            failed("OpenAI is busy. Wait a moment and try again."),
         ),
         (
             RewriteError::Provider { status: 500 },
-            "OpenAI returned an error. Try again.",
-            None,
+            failed("OpenAI returned an error. Try again."),
         ),
         (
             RewriteError::EmptyResponse,
-            "OpenAI sent back nothing. Try again.",
-            None,
+            failed("OpenAI sent back nothing. Try again."),
         ),
         (
             RewriteError::Other,
-            "Couldn't rewrite your text. Try again.",
-            None,
+            failed("Couldn't rewrite your text. Try again."),
         ),
         (
             RewriteError::MissingApiKey,
-            "Add your API key to get started.",
-            open_settings,
+            message("Add your API key to get started.", open_settings),
         ),
         (
             RewriteError::KeyStore,
-            "Couldn't read your saved API key. Enter it again in Settings.",
-            open_settings,
+            message(
+                "Couldn't read your saved API key. Enter it again in Settings.",
+                open_settings,
+            ),
         ),
         (
             RewriteError::InvalidSettings(InvalidSetting::Model),
-            "Choose a model to get started.",
-            open_settings,
+            message("Choose a model to get started.", open_settings),
         ),
         (
             RewriteError::InvalidSettings(InvalidSetting::BaseUrl),
-            "Enter a base URL starting with http:// or https://.",
-            open_settings,
+            message(
+                "Enter a base URL starting with http:// or https://.",
+                open_settings,
+            ),
         ),
     ];
 
-    for (error, text, action) in cases {
+    for (error, shown) in cases {
         let session = session(
             FakeBridge::selecting("helo"),
             TestRewriter::answering(Err(error.clone())),
@@ -808,11 +836,7 @@ async fn each_rewrite_error_shows_its_own_message() {
 
         session.handle(Event::ShortcutPressed).await;
 
-        assert_eq!(
-            states(&session),
-            [working("helo"), message(text, action)],
-            "for {error:?}"
-        );
+        assert_eq!(states(&session), [working("helo"), shown], "for {error:?}");
     }
 }
 
@@ -924,5 +948,130 @@ async fn a_released_session_rewrites_again() {
     assert_eq!(
         states(&session),
         [working("helo wrld"), result("Hello, world.")]
+    );
+}
+
+// Rewrite: a new rewrite of the same selection, from the popup.
+
+#[tokio::test]
+async fn rewrite_on_a_result_rewrites_the_same_selection_with_the_active_instructions() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session.settings.activate("Be formal.");
+
+    session.handle(Event::Rewrite).await;
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        session.rewriter.calls(),
+        [
+            (INSTRUCTIONS.to_owned(), "helo wrld".to_owned()),
+            ("Be formal.".to_owned(), "helo wrld".to_owned()),
+        ]
+    );
+    assert_eq!(
+        states(&session),
+        [
+            working("helo wrld"),
+            result("Hello, world."),
+            working("helo wrld"),
+            result("Hello, world."),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn rewrite_on_a_failed_rewrite_tries_the_same_selection_again() {
+    let (rewriter, first_answer) = TestRewriter::gated_then(Ok("Hello, world.".to_owned()));
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        let _ = first_answer.send(Err(RewriteError::Network));
+    });
+
+    session.handle(Event::Rewrite).await;
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        states(&session),
+        [
+            working("helo wrld"),
+            failed("Couldn't reach OpenAI. Check your connection and try again."),
+            working("helo wrld"),
+            result("Hello, world."),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn rewrite_does_nothing_while_working() {
+    let (rewriter, answer) = TestRewriter::gated();
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        session.handle(Event::Rewrite).await;
+        let _ = answer.send(Ok("Hello, world.".to_owned()));
+    });
+
+    assert!(!session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(
+        states(&session),
+        [working("helo wrld"), result("Hello, world.")]
+    );
+}
+
+#[tokio::test]
+async fn rewrite_does_nothing_while_the_popup_is_hidden() {
+    let session = session(
+        FakeBridge::selecting("helo wrld"),
+        TestRewriter::returning("unused"),
+    );
+
+    session.handle(Event::Rewrite).await;
+
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 0);
+    assert_eq!(session.rewriter.calls(), []);
+    assert_eq!(states(&session), []);
+}
+
+#[tokio::test]
+async fn rewrite_after_close_does_nothing() {
+    let session = rewritten("helo wrld", "Hello, world.").await;
+    session.handle(Event::Close).await;
+
+    session.handle(Event::Rewrite).await;
+
+    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(states(&session).last(), Some(&PopupState::Hidden));
+}
+
+#[tokio::test]
+async fn rewrite_does_nothing_while_replacing() {
+    let (finish_replace, gate) = oneshot::channel();
+    let session = session(
+        FakeBridge {
+            replace_gate: Mutex::new(Some(gate)),
+            ..FakeBridge::selecting("helo wrld")
+        },
+        TestRewriter::returning("Hello, world."),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    tokio::join!(session.handle(Event::Replace), async {
+        session.bridge.replacing.notified().await;
+        session.handle(Event::Rewrite).await;
+        let _ = finish_replace.send(());
+    });
+
+    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(session.bridge.replaced(), [(7, "Hello, world.".to_owned())]);
+    assert_eq!(
+        states(&session),
+        [
+            working("helo wrld"),
+            result("Hello, world."),
+            PopupState::Hidden
+        ]
     );
 }

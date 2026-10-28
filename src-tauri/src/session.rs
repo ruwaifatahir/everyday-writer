@@ -40,6 +40,10 @@ pub enum Event {
     Close,
     /// The message's Open Settings action was chosen.
     OpenSettings,
+    /// Rewrite was chosen (the button, or Enter on a failed rewrite):
+    /// rewrite the same selection again with the active instructions.
+    /// Ignored unless the popup is open and nothing is running.
+    Rewrite,
 }
 
 /// What the popup shows. Serialized for the popup window as
@@ -68,6 +72,9 @@ pub enum PopupState {
         action: Option<MessageAction>,
         /// Replace couldn't go ahead and the result was copied instead.
         copied: bool,
+        /// The rewrite failed in a way trying again can fix, so Rewrite is
+        /// offered.
+        rewrite: bool,
     },
 }
 
@@ -82,11 +89,13 @@ impl std::fmt::Debug for PopupState {
                 text,
                 action,
                 copied,
+                rewrite,
             } => f
                 .debug_struct("Message")
                 .field("text", text)
                 .field("action", action)
                 .field("copied", copied)
+                .field("rewrite", rewrite)
                 .finish(),
         }
     }
@@ -296,6 +305,7 @@ where
                 self.popup.open_settings();
             }
             Event::Replace => self.replace().await,
+            Event::Rewrite => self.rewrite_again().await,
         }
         self.settled.notify_waiters();
     }
@@ -336,32 +346,29 @@ where
     }
 
     /// Captures and rewrites when the popup is hidden. When it is open,
-    /// cancels any rewrite in progress and rewrites the same selection
-    /// again, without capturing.
+    /// acts like [`Event::Rewrite`]: rewrites the same selection again
+    /// without capturing (the popup has focus, so a capture would copy from
+    /// it), and does nothing while a rewrite is running.
     async fn shortcut_pressed(&self) {
-        let rerun = {
+        let working = {
             let mut state = self.lock();
             if state.held {
                 // An update is about to restart the app.
                 return;
             }
-            match std::mem::replace(&mut state.phase, Phase::Capturing) {
-                Phase::Hidden => None,
-                // Already capturing: this press adds nothing.
-                Phase::Capturing => return,
-                // A capture now would race the paste for the clipboard.
-                Phase::Replacing => {
-                    state.phase = Phase::Replacing;
-                    return;
+            match state.phase {
+                Phase::Hidden => {
+                    state.phase = Phase::Capturing;
+                    None
                 }
-                // Dropping the old view cancels its rewrite.
-                Phase::Open { captured, view } => {
-                    Some(self.start(&mut state, captured, &view.shown()))
-                }
+                Phase::Open { .. } => Some(self.rerun(&mut state)),
+                // Already capturing: this press adds nothing. Replacing: a
+                // capture now would race the paste for the clipboard.
+                Phase::Capturing | Phase::Replacing => return,
             }
         };
-        let working = if let Some(working) = rerun {
-            working
+        let working = if let Some(rerun) = working {
+            rerun
         } else {
             let captured = self.bridge.capture().await;
             self.captured(captured)
@@ -369,6 +376,28 @@ where
         if let Some(working) = working {
             self.rewrite(working).await;
         }
+    }
+
+    /// Rewrites the captured selection again with the current active
+    /// instructions, if the popup is open and no rewrite is running.
+    async fn rewrite_again(&self) {
+        let working = self.rerun(&mut self.lock());
+        if let Some(working) = working {
+            self.rewrite(working).await;
+        }
+    }
+
+    /// Starts a new rewrite of the captured selection when the popup is
+    /// open and nothing is running; otherwise leaves `state` as it was.
+    fn rerun(&self, state: &mut State<B::Window>) -> Option<Working> {
+        if !is_open_and_idle(&state.phase) {
+            return None;
+        }
+        let Phase::Open { captured, view } = std::mem::replace(&mut state.phase, Phase::Hidden)
+        else {
+            return None;
+        };
+        self.start(state, captured, &view.shown())
     }
 
     /// Acts on a finished capture: hides the popup again when nothing was
@@ -450,7 +479,7 @@ where
         let view = match outcome {
             Ok(Ok(text)) => View::Result(text),
             Ok(Err(error)) => View::Message(message_for(&error, provider)),
-            Err(_elapsed) => View::Message(message(&timed_out(provider), None)),
+            Err(_elapsed) => View::Message(failed(&timed_out(provider))),
         };
         self.finish(run, view);
     }
@@ -527,6 +556,7 @@ where
                 text: note.to_owned(),
                 action: None,
                 copied: true,
+                rewrite: false,
             })
         } else {
             tracing::warn!("the result couldn't be copied");
@@ -550,6 +580,11 @@ where
             self.popup.render(&PopupState::Hidden);
         }
     }
+}
+
+/// Whether the popup is open in `phase` with no rewrite running.
+fn is_open_and_idle<W>(phase: &Phase<W>) -> bool {
+    matches!(phase, Phase::Open { view, .. } if !matches!(view, View::Working { .. }))
 }
 
 /// Whether nothing is running in `phase`: no capture, rewrite or replace.
@@ -591,21 +626,17 @@ fn message_for(error: &RewriteError, provider: ProviderKind) -> PopupState {
             &format!("{subject} rejected your API key. Check it in Settings."),
             open_settings,
         ),
-        RewriteError::RateLimited => message(
-            &format!("{subject} is busy. Wait a moment and try again."),
-            None,
-        ),
-        RewriteError::Network => message(
-            &format!("Couldn't reach {name}. Check your connection and try again."),
-            None,
-        ),
+        RewriteError::RateLimited => {
+            failed(&format!("{subject} is busy. Wait a moment and try again."))
+        }
+        RewriteError::Network => failed(&format!(
+            "Couldn't reach {name}. Check your connection and try again."
+        )),
         RewriteError::Provider { .. } => {
-            message(&format!("{subject} returned an error. Try again."), None)
+            failed(&format!("{subject} returned an error. Try again."))
         }
-        RewriteError::EmptyResponse => {
-            message(&format!("{subject} sent back nothing. Try again."), None)
-        }
-        RewriteError::Other => message(REWRITE_FAILED, None),
+        RewriteError::EmptyResponse => failed(&format!("{subject} sent back nothing. Try again.")),
+        RewriteError::Other => failed(REWRITE_FAILED),
     }
 }
 
@@ -620,6 +651,18 @@ fn message(text: &str, action: Option<MessageAction>) -> PopupState {
         text: text.to_owned(),
         action,
         copied: false,
+        rewrite: false,
+    }
+}
+
+/// The message for a failed rewrite that trying again can fix: it offers
+/// Rewrite.
+fn failed(text: &str) -> PopupState {
+    PopupState::Message {
+        text: text.to_owned(),
+        action: None,
+        copied: false,
+        rewrite: true,
     }
 }
 
