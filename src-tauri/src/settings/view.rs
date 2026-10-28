@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, PoisonError, RwLock};
 
 use super::{
-    ApiKey, InstructionSetError, InstructionSets, KeyError, KeyStore, ModelSettings, ProviderKind,
-    Settings, SettingsError, SettingsFile,
+    ApiKey, InstructionSetChoices, InstructionSetError, InstructionSetId, InstructionSets,
+    KeyError, KeyStore, ModelSettings, ProviderKind, Settings, SettingsError, SettingsFile,
 };
 
 /// What the rest of the app reads from the settings. A port: the rewrite
@@ -27,6 +27,19 @@ pub trait SettingsView: Send + Sync {
     /// The active instruction set's instructions, which every rewrite
     /// follows.
     fn active_instructions(&self) -> String;
+
+    /// Every instruction set's id and name, in order, and the active id.
+    fn instruction_set_choices(&self) -> InstructionSetChoices;
+
+    /// Makes the set with `id` the Active Instruction Set and saves it.
+    /// Everyone listening for instruction set changes (the tray, the
+    /// settings window) hears about it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChangeError`] if no set has `id` or the file can't be
+    /// written. The active set stays as it was then.
+    fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError>;
 }
 
 impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
@@ -40,6 +53,14 @@ impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
 
     fn active_instructions(&self) -> String {
         (**self).active_instructions()
+    }
+
+    fn instruction_set_choices(&self) -> InstructionSetChoices {
+        (**self).instruction_set_choices()
+    }
+
+    fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError> {
+        (**self).set_active_instruction_set(id)
     }
 }
 
@@ -331,6 +352,20 @@ impl SettingsView for AppSettings {
             .active()
             .instructions
             .clone()
+    }
+
+    fn instruction_set_choices(&self) -> InstructionSetChoices {
+        self.current
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .instruction_sets
+            .choices()
+    }
+
+    /// Goes through [`AppSettings::change_instruction_sets`], the same path
+    /// as the tray and the settings window, so both hear about it.
+    fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError> {
+        self.change_instruction_sets(|sets| sets.set_active(id))
     }
 }
 
@@ -778,6 +813,47 @@ mod tests {
             .unwrap();
 
         assert_eq!(*heard.lock().unwrap(), ["Shorter", "Shorter"]);
+    }
+
+    #[test]
+    fn a_set_made_active_through_the_view_is_saved_and_announced() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let listener = Arc::clone(&heard);
+        app.on_instruction_sets_change(move |sets| {
+            listener.lock().unwrap().push(sets.active().name.clone());
+        });
+        let shorter = id_of(&app, "Shorter");
+
+        app.set_active_instruction_set(shorter).unwrap();
+
+        assert_eq!(*heard.lock().unwrap(), ["Shorter"]);
+        assert_eq!(app.instruction_set_choices().active, shorter);
+        let (restarted, _) = open(&path, Arc::default());
+        assert_eq!(restarted.instruction_set_choices().active, shorter);
+    }
+
+    #[test]
+    fn the_views_choices_list_every_set_by_name_in_order() {
+        let (app, _) = open(&temp_file(), Arc::default());
+        app.change_instruction_sets(|sets| sets.add("Mine", "My rules."))
+            .unwrap();
+
+        let choices = app.instruction_set_choices();
+
+        let names: Vec<_> = choices.sets.iter().map(|set| set.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "Fix & make readable",
+                "Fix mistakes only",
+                "Professional",
+                "Shorter",
+                "Mine"
+            ]
+        );
+        assert_eq!(choices.active, id_of(&app, "Fix & make readable"));
     }
 
     #[test]

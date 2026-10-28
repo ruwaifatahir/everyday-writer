@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 use crate::updates::Remembered;
 
 pub use instruction_sets::{
-    InstructionSet, InstructionSetError, InstructionSetId, InstructionSets, StarterTemplate,
+    InstructionSet, InstructionSetChoice, InstructionSetChoices, InstructionSetError,
+    InstructionSetId, InstructionSets, StarterTemplate,
 };
 pub use store::{SettingsError, SettingsFile};
 pub use view::{AppSettings, ChangeError, ProviderReadiness, SaveKeyError, SettingsView, Startup};

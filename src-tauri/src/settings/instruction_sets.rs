@@ -134,6 +134,27 @@ pub enum InstructionSetError {
     LastSet,
 }
 
+/// The instruction sets as a picker lists them: ids and names in order,
+/// and the active id. Holds no instructions, so it can go to the popup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstructionSetChoices {
+    /// Every set, in the library's order.
+    pub sets: Vec<InstructionSetChoice>,
+    /// The active instruction set's id.
+    pub active: InstructionSetId,
+}
+
+/// One set in [`InstructionSetChoices`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstructionSetChoice {
+    /// The set's id.
+    pub id: InstructionSetId,
+    /// The set's name.
+    pub name: String,
+}
+
 /// The ordered instruction sets plus the active one. Always holds at least
 /// one set, and the active id always names one of them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +184,22 @@ impl InstructionSets {
     /// Every set, in order.
     pub fn sets(&self) -> &[InstructionSet] {
         &self.sets
+    }
+
+    /// Every set's id and name, in order, and the active id: what a picker
+    /// lists. Never the instructions.
+    pub fn choices(&self) -> InstructionSetChoices {
+        InstructionSetChoices {
+            sets: self
+                .sets
+                .iter()
+                .map(|set| InstructionSetChoice {
+                    id: set.id,
+                    name: set.name.clone(),
+                })
+                .collect(),
+            active: self.active().id,
+        }
     }
 
     /// The active instruction set.

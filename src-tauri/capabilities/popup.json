@@ -11,6 +11,7 @@
     "allow-popup-copy",
     "allow-popup-close",
     "allow-popup-open-settings",
-    "allow-popup-rewrite"
+    "allow-popup-rewrite",
+    "allow-popup-pick-instruction-set"
   ]
 }

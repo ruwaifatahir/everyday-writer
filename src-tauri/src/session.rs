@@ -25,7 +25,9 @@ use serde::Serialize;
 use tokio::sync::{Notify, oneshot};
 
 use crate::llm::{InvalidSetting, RewriteError, Rewriter};
-use crate::settings::{ProviderKind, ProviderReadiness, SettingsView};
+use crate::settings::{
+    InstructionSetChoices, InstructionSetId, ProviderKind, ProviderReadiness, SettingsView,
+};
 
 /// Something the user did that the session reacts to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,25 +46,41 @@ pub enum Event {
     /// rewrite the same selection again with the active instructions.
     /// Ignored unless the popup is open and nothing is running.
     Rewrite,
+    /// A set was picked in the popup's dropdown: make it the Active
+    /// Instruction Set, cancel a rewrite in progress, clear any result or
+    /// message and show [`PopupState::Ready`]. Never starts a rewrite.
+    /// Ignored unless the popup is open, or if the set is already active.
+    PickInstructionSet(InstructionSetId),
 }
 
 /// What the popup shows. Serialized for the popup window as
-/// `{ "kind": "working", "text": ... }`, `{ "kind": "result", "text": ... }`
-/// and so on.
+/// `{ "kind": "working", "text": ..., "choices": ... }` and so on. Every
+/// state but [`PopupState::Hidden`] carries the dropdown's `choices`.
 #[derive(Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PopupState {
     /// The popup is hidden.
     Hidden,
+    /// A selection is captured and nothing is running: Rewrite sends it.
+    Ready {
+        /// The selection. User data: never log it.
+        text: String,
+        /// The instruction sets to pick from.
+        choices: InstructionSetChoices,
+    },
     /// A rewrite of the selection is in progress.
     Working {
         /// The selection being rewritten. User data: never log it.
         text: String,
+        /// The instruction sets to pick from.
+        choices: InstructionSetChoices,
     },
     /// The result, exactly as the rewrite returned it.
     Result {
         /// The result. User data: never log it.
         text: String,
+        /// The instruction sets to pick from.
+        choices: InstructionSetChoices,
     },
     /// A short message instead of a result.
     Message {
@@ -75,14 +93,17 @@ pub enum PopupState {
         /// The rewrite failed in a way trying again can fix, so Rewrite is
         /// offered.
         rewrite: bool,
+        /// The instruction sets to pick from.
+        choices: InstructionSetChoices,
     },
 }
 
-/// Hides the result, which is user data.
+/// Hides the selection and the result, which are user data.
 impl std::fmt::Debug for PopupState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Hidden => f.write_str("Hidden"),
+            Self::Ready { .. } => f.write_str("Ready { .. }"),
             Self::Working { .. } => f.write_str("Working { .. }"),
             Self::Result { .. } => f.write_str("Result { .. }"),
             Self::Message {
@@ -90,13 +111,14 @@ impl std::fmt::Debug for PopupState {
                 action,
                 copied,
                 rewrite,
+                choices: _,
             } => f
                 .debug_struct("Message")
                 .field("text", text)
                 .field("action", action)
                 .field("copied", copied)
                 .field("rewrite", rewrite)
-                .finish(),
+                .finish_non_exhaustive(),
         }
     }
 }
@@ -213,29 +235,54 @@ enum Phase<W> {
 
 /// What an open popup shows.
 enum View {
-    /// Rewrite number `run` of `selection` is in progress. Dropping
+    /// The selection is captured and nothing is running.
+    Ready,
+    /// Rewrite number `run` of the selection is in progress. Dropping
     /// `cancel` cancels it.
     Working {
         run: u64,
-        selection: String,
         #[expect(dead_code, reason = "only dropped, which cancels the rewrite")]
         cancel: oneshot::Sender<()>,
     },
     /// The rewrite returned this result.
     Result(String),
-    /// A message is shown: always a [`PopupState::Message`].
-    Message(PopupState),
+    /// A message is shown.
+    Message(Notice),
+}
+
+/// A [`PopupState::Message`] without the dropdown's choices.
+#[derive(Clone)]
+struct Notice {
+    text: String,
+    action: Option<MessageAction>,
+    copied: bool,
+    rewrite: bool,
 }
 
 impl View {
-    /// The popup state this view shows.
-    fn shown(&self) -> PopupState {
+    /// The popup state this view shows for `selection`, with `choices` in
+    /// the dropdown.
+    fn shown(&self, selection: &str, choices: InstructionSetChoices) -> PopupState {
         match self {
-            Self::Working { selection, .. } => PopupState::Working {
-                text: selection.clone(),
+            Self::Ready => PopupState::Ready {
+                text: selection.to_owned(),
+                choices,
             },
-            Self::Result(text) => PopupState::Result { text: text.clone() },
-            Self::Message(message) => message.clone(),
+            Self::Working { .. } => PopupState::Working {
+                text: selection.to_owned(),
+                choices,
+            },
+            Self::Result(text) => PopupState::Result {
+                text: text.clone(),
+                choices,
+            },
+            Self::Message(notice) => PopupState::Message {
+                text: notice.text.clone(),
+                action: notice.action,
+                copied: notice.copied,
+                rewrite: notice.rewrite,
+                choices,
+            },
         }
     }
 }
@@ -306,6 +353,7 @@ where
             }
             Event::Replace => self.replace().await,
             Event::Rewrite => self.rewrite_again().await,
+            Event::PickInstructionSet(id) => self.pick_instruction_set(id),
         }
         self.settled.notify_waiters();
     }
@@ -397,7 +445,42 @@ where
         else {
             return None;
         };
-        self.start(state, captured, &view.shown())
+        let before = self.shown(&captured, &view);
+        self.start(state, captured, &before)
+    }
+
+    /// Makes set `id` the Active Instruction Set and shows Ready, which
+    /// cancels a rewrite in progress and clears a result or message. If the
+    /// set can't be made active, shows the same state again, so the
+    /// dropdown goes back to the active set.
+    fn pick_instruction_set(&self, id: InstructionSetId) {
+        if !matches!(self.lock().phase, Phase::Open { .. })
+            || self.settings.instruction_set_choices().active == id
+        {
+            return;
+        }
+        // Outside the session lock: the change is announced to listeners
+        // right away, and one may tell this session about it.
+        let saved = self.settings.set_active_instruction_set(id);
+        if saved.is_err() {
+            tracing::warn!("the instruction set picked in the popup couldn't be made active");
+        }
+        let mut state = self.lock();
+        let Phase::Open { captured, view } = &mut state.phase else {
+            // Closed meanwhile.
+            return;
+        };
+        if saved.is_ok() {
+            // Dropping a running rewrite cancels it.
+            *view = View::Ready;
+        }
+        self.popup.render(&self.shown(captured, view));
+    }
+
+    /// The popup state `view` shows for `captured`, with the current
+    /// instruction sets in the dropdown.
+    fn shown(&self, captured: &Captured<B::Window>, view: &View) -> PopupState {
+        view.shown(&captured.selection, self.settings.instruction_set_choices())
     }
 
     /// Acts on a finished capture: hides the popup again when nothing was
@@ -431,8 +514,8 @@ where
         } else {
             not_ready_message(self.settings.provider_readiness())
         };
-        let (view, working) = if let Some(shown) = refused {
-            (View::Message(shown), None)
+        let (view, working) = if let Some(notice) = refused {
+            (View::Message(notice), None)
         } else {
             let run = state.next_run;
             state.next_run += 1;
@@ -444,14 +527,9 @@ where
                 selection: captured.selection.clone(),
                 cancelled,
             };
-            let view = View::Working {
-                run,
-                selection: captured.selection.clone(),
-                cancel,
-            };
-            (view, Some(working))
+            (View::Working { run, cancel }, Some(working))
         };
-        let shown = view.shown();
+        let shown = self.shown(&captured, &view);
         state.phase = Phase::Open { captured, view };
         if shown != *before {
             self.popup.render(&shown);
@@ -487,14 +565,14 @@ where
     /// Shows `outcome` for rewrite `run`, unless the popup has moved on.
     fn finish(&self, run: u64, outcome: View) {
         let mut state = self.lock();
-        let Phase::Open { view, .. } = &mut state.phase else {
+        let Phase::Open { captured, view } = &mut state.phase else {
             return;
         };
         if !matches!(view, View::Working { run: current, .. } if *current == run) {
             return;
         }
         *view = outcome;
-        self.popup.render(&view.shown());
+        self.popup.render(&self.shown(captured, view));
     }
 
     async fn copy(&self) {
@@ -552,7 +630,7 @@ where
     async fn copy_instead(&self, captured: Captured<B::Window>, result: String, note: &str) {
         let copied = self.bridge.copy(&result).await;
         let view = if copied.is_ok() {
-            View::Message(PopupState::Message {
+            View::Message(Notice {
                 text: note.to_owned(),
                 action: None,
                 copied: true,
@@ -562,7 +640,7 @@ where
             tracing::warn!("the result couldn't be copied");
             View::Result(result)
         };
-        let shown = view.shown();
+        let shown = self.shown(&captured, &view);
         self.lock().phase = Phase::Open { captured, view };
         self.popup.render(&shown);
     }
@@ -599,7 +677,7 @@ fn is_idle<W>(phase: &Phase<W>) -> bool {
 
 /// The message shown when the provider can't take a rewrite yet, naming
 /// what is missing, or `None` when it is ready.
-fn not_ready_message(readiness: ProviderReadiness) -> Option<PopupState> {
+fn not_ready_message(readiness: ProviderReadiness) -> Option<Notice> {
     let text = match readiness {
         ProviderReadiness::Ready => return None,
         ProviderReadiness::MissingKey => NO_KEY,
@@ -611,7 +689,7 @@ fn not_ready_message(readiness: ProviderReadiness) -> Option<PopupState> {
 
 /// The message shown for a failed rewrite, naming `provider`. Never
 /// includes request or response content.
-fn message_for(error: &RewriteError, provider: ProviderKind) -> PopupState {
+fn message_for(error: &RewriteError, provider: ProviderKind) -> Notice {
     let open_settings = Some(MessageAction::OpenSettings);
     let name = provider.display_name();
     let subject = provider.display_subject();
@@ -645,9 +723,9 @@ fn timed_out(provider: ProviderKind) -> String {
     format!("{} took too long. Try again.", provider.display_subject())
 }
 
-/// A message state showing `text`, with an optional button.
-fn message(text: &str, action: Option<MessageAction>) -> PopupState {
-    PopupState::Message {
+/// A message showing `text`, with an optional button.
+fn message(text: &str, action: Option<MessageAction>) -> Notice {
+    Notice {
         text: text.to_owned(),
         action,
         copied: false,
@@ -657,8 +735,8 @@ fn message(text: &str, action: Option<MessageAction>) -> PopupState {
 
 /// The message for a failed rewrite that trying again can fix: it offers
 /// Rewrite.
-fn failed(text: &str) -> PopupState {
-    PopupState::Message {
+fn failed(text: &str) -> Notice {
+    Notice {
         text: text.to_owned(),
         action: None,
         copied: false,
