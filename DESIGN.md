@@ -174,17 +174,21 @@ chevron, at most 220px wide with long names cut by an ellipsis. It lists
 the sets by name in Settings' order with the active one picked. With one
 set it stays shown but disabled (stone border, ink-soft text), so the
 layout never changes. It fits the 44px header, so the popup stays
-400 x 220. Picking a set never rewrites: it shows Ready, except that a
-message a rewrite can't help (too long, not set up) stays. The dropdown
-follows Settings and the tray while the popup is open; switching the
-active set there, or editing its instructions, shows Ready too. With
+400 x 220. Picking a set rewrites at once with it, as Rewrite does,
+stopping a rewrite in progress first; a message a rewrite can't help
+(too long) stays. On the closed dropdown plain ↑ and ↓ do nothing, so a
+keyboard pick sends one rewrite: Alt+↓ opens the list, the arrows move
+in it and Enter picks. Enter on the closed dropdown is the popup's main
+action, as from the text, and focus stays in the dropdown while the user
+is there, so no state moves it to a button. The dropdown follows
+Settings and the tray while the popup is open; switching the active set
+there, or editing its instructions, never rewrites: it shows Ready. With
 Rewrite on open off in Settings, the shortcut opens the popup on Ready
 as well.
 
 - Ready: a plain "Ready to rewrite" caption over the selection, set like
   the result and fading in where it will land, scrollable. Rewrite is the
   bar's only button: lavender, focused, with Enter, beside the Esc hint.
-  Focus stays in the dropdown when the pick came from its arrow keys.
 - Working: a plain "Rewriting…" caption over the selection itself, set
   like the result, with the reading band. Rewrite is the bar's only
   button, outlined and disabled, beside the Esc hint.

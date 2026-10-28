@@ -43,11 +43,12 @@ Record each run in the results table at the end: date, build, Windows version an
 | P12 | The no-key, too-long and rejected-key messages | No **Rewrite**, Copy or Replace button; only their current action, and the Esc hint |
 | P13 | Press the shortcut while the popup is rewriting | Nothing happens; the running rewrite finishes as usual |
 | P14 | Open the popup with two or more sets | The header shows the instruction set dropdown with the active set picked; it lists every set by name, in the same order as Settings and the tray |
-| P15 | With a result shown, pick another set in the dropdown | No rewrite starts. The result is cleared and the popup shows "Ready to rewrite" over the selection, with **Rewrite** as the only button (primary, Enter) and the Esc hint; no Copy or Replace |
-| P16 | Pick a set while the popup is rewriting, then wait | The rewrite stops; the popup shows Ready, and the late answer never appears |
-| P17 | After P15, press Enter (or click **Rewrite**) | A rewrite of the same selection runs with the picked set's instructions |
+| P15 | With a result shown, pick another set in the dropdown with the mouse | A rewrite starts at once: the result is cleared, the popup shows working on the same selection, then a new result written with the picked set's instructions. One request in the provider's dashboard or Ollama log |
+| P16 | Pick a set while the popup is rewriting, then wait | The running rewrite stops and a new one starts with the picked set; only its result appears, never the first one's late answer |
+| P17 | Turn **Rewrite on open** off, press the shortcut, then pick another set on Ready | A rewrite runs at once with the picked set; no need to press **Rewrite** |
 | P18 | After P15, open the tray menu and Settings | The tray's check mark and Settings' Active badge are on the set picked in the popup; the next shortcut press uses it too |
-| P19 | Tab to the dropdown, change it with the arrow keys | Focus stays in the dropdown at each press; each press shows Ready with that set; Enter then rewrites |
+| P19 | Tab to the dropdown on a result. Press plain ↑ and ↓ a few times; then press Alt+↓, move with the arrows and press Enter | Plain ↑ and ↓ change nothing and send nothing. Alt+↓ opens the list, the arrows only move the highlight, and Enter picks the set and sends exactly one rewrite; focus stays in the dropdown. Enter on the closed dropdown then replaces with the new result |
+| P19a | On Ready (Rewrite on open off) and on a failed rewrite, Tab to the dropdown and press Enter | Enter rewrites, as from the text |
 | P20 | A screen reader on the dropdown | It is announced as "Instruction set" with the picked set's name |
 | P21 | Only one instruction set | The dropdown is shown, greyed out and can't be opened; the layout is the same as with several sets |
 | P22 | A set with a long name | The name ends in an ellipsis; the caption, dropdown and ✕ stay on one line |
@@ -57,7 +58,7 @@ Record each run in the results table at the end: date, build, Windows version an
 | P26 | With a result shown, edit the active set's instructions in Settings and save | The result is cleared and the popup shows Ready; Rewrite uses the new instructions |
 | P27 | With a result shown, delete the active set in Settings | The dropdown drops it and picks the new active set; the popup shows Ready |
 | P28 | With the too-long message shown, switch the set from the tray | The message stays; the dropdown follows |
-| P29 | With the too-long message shown, pick another set in the dropdown; repeat with the no-key message | The message stays and the dropdown shows the picked set; the tray and Settings follow it |
+| P29 | With the too-long message shown, pick another set in the dropdown; repeat with the no-key message | The message stays, nothing is sent and the dropdown shows the picked set; the tray and Settings follow it. After adding the key, a pick rewrites |
 
 ## Replace
 
