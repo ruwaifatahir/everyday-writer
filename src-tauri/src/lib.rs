@@ -84,6 +84,7 @@ pub fn run() {
             settings_window::pause_shortcut,
             settings_window::resume_shortcut,
             settings_window::set_start_with_windows,
+            settings_window::set_rewrite_on_open,
             settings_window::default_shortcut,
             settings_window::settings_ready,
             live_updates::app_version,
@@ -102,6 +103,8 @@ pub fn run() {
             popup::popup_copy,
             popup::popup_close,
             popup::popup_open_settings,
+            popup::popup_rewrite,
+            popup::popup_pick_instruction_set,
         ])
         .setup(|app| {
             let startup = load_settings(app)?;
@@ -164,6 +167,11 @@ fn start_rewrite_session(app: &App) -> tauri::Result<()> {
         popup,
     );
     app.manage(Arc::new(session));
+    // Listeners run inside the change, which the session's own pick makes:
+    // hand the session the news on the async runtime, never in place.
+    let handle = app.handle().clone();
+    app.state::<Arc<AppSettings>>()
+        .on_instruction_sets_change(move |_| popup::send(&handle, Event::InstructionSetsChanged));
     popup::create(app.handle())?;
     Ok(())
 }

@@ -17,6 +17,7 @@ fn main() {
             "pause_shortcut",
             "resume_shortcut",
             "set_start_with_windows",
+            "set_rewrite_on_open",
             "default_shortcut",
             "settings_ready",
             "app_version",
@@ -35,6 +36,8 @@ fn main() {
             "popup_copy",
             "popup_close",
             "popup_open_settings",
+            "popup_rewrite",
+            "popup_pick_instruction_set",
         ]),
     ))
     .expect("failed to run the Tauri build script");

@@ -22,7 +22,7 @@ use tauri::{
 
 use crate::live_rewriter::LiveRewriter;
 use crate::session::{Event, PopupState, PopupView, RewriteSession};
-use crate::settings::{AppSettings, KeyringApiKeys};
+use crate::settings::{AppSettings, InstructionSetId, KeyringApiKeys};
 use crate::settings_window;
 use crate::text_bridge::WindowsTextBridge;
 use placement::{GAP, Rect, place_near_cursor};
@@ -254,4 +254,16 @@ pub fn popup_close(app: AppHandle) {
 #[tauri::command]
 pub fn popup_open_settings(app: AppHandle) {
     send(&app, Event::OpenSettings);
+}
+
+/// The Rewrite button, or Enter on a failed rewrite.
+#[tauri::command]
+pub fn popup_rewrite(app: AppHandle) {
+    send(&app, Event::Rewrite);
+}
+
+/// A set picked in the instruction set dropdown.
+#[tauri::command]
+pub fn popup_pick_instruction_set(app: AppHandle, id: InstructionSetId) {
+    send(&app, Event::PickInstructionSet(id));
 }

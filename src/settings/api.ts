@@ -20,6 +20,8 @@ export interface Settings {
   shortcut: string;
   /** Change it with `setStartWithWindows`. */
   startWithWindows: boolean;
+  /** Change it with `setRewriteOnOpen`. */
+  rewriteOnOpen: boolean;
   /** Change it with `setAutoCheck`. */
   autoCheck: boolean;
 }
@@ -85,6 +87,11 @@ export function defaultShortcut(): Promise<DefaultShortcut> {
 
 export function setStartWithWindows(enabled: boolean): Promise<void> {
   return invoke("set_start_with_windows", { enabled });
+}
+
+/** The next shortcut press follows it. */
+export function setRewriteOnOpen(enabled: boolean): Promise<void> {
+  return invoke("set_rewrite_on_open", { enabled });
 }
 
 export function isKeySaved(provider: ProviderKind): Promise<boolean> {

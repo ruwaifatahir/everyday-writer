@@ -158,6 +158,35 @@ mod tests {
     }
 
     #[test]
+    fn a_file_from_before_rewrite_on_open_loads_with_it_on() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            br#"{ "provider": "gemini", "shortcut": "Alt+Shift+R", "startWithWindows": false }"#,
+        )
+        .unwrap();
+
+        let loaded = SettingsFile::new(path).load().unwrap().unwrap();
+
+        assert!(loaded.rewrite_on_open);
+    }
+
+    #[test]
+    fn rewrite_on_open_off_survives_a_save() {
+        let file = SettingsFile::new(temp_dir().join("settings.json"));
+        let saved = Settings {
+            rewrite_on_open: false,
+            ..custom_settings()
+        };
+
+        file.save(&saved).unwrap();
+
+        assert_eq!(file.load().unwrap(), Some(saved));
+    }
+
+    #[test]
     fn a_file_from_before_updates_checks_automatically_and_remembers_no_notice() {
         let dir = temp_dir();
         std::fs::create_dir_all(&dir).unwrap();

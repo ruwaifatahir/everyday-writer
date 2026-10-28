@@ -16,7 +16,7 @@ Record each run in the results table at the end: date, build, Windows version an
 
 | # | Case | Expected |
 |---|---|---|
-| C1 | Select text in Notepad, press the shortcut | Popup opens near the mouse, shows working, then the result |
+| C1 | Select text in Notepad, press the shortcut | Popup opens near the mouse, shows working (only **Rewrite**, disabled, and the Esc hint), then the result with Rewrite, Copy and Replace |
 | C2 | Same in Word, a Chrome text field, Slack and Windows Terminal | The result shows in each |
 | C3 | Switch to the Urdu or Arabic layout, repeat C1 | Works; no literal "c" or "v" typed into the text |
 | C4 | Use a shortcut with Alt (set it in Settings), rewrite; repeat with a Win shortcut saved by an earlier version | No Start menu, colour filter, menu bar or other Windows shortcut fires |
@@ -33,11 +33,33 @@ Record each run in the results table at the end: date, build, Windows version an
 | P2 | Copy | Result on the clipboard, popup closes |
 | P3 | ✕, Esc and a click outside | Each closes the popup |
 | P4 | Close while working, wait for the answer | The popup stays closed; a late answer never shows |
-| P5 | Press the shortcut while the popup is open | The rewrite starts again on the same selection |
+| P5 | Press the shortcut while the popup shows a result or a failed rewrite | Acts like **Rewrite**: a new rewrite of the same selection starts, without copying anything from the popup |
 | P6 | No key set, press the shortcut, click **Open Settings** | Missing-key message; Settings opens and the popup closes |
 | P7 | A long error message (e.g. a bad Custom URL) | Text wraps inside the popup |
 | P8 | A provider that never answers (e.g. a stalled local server) | "OpenAI took too long. Try again." (the provider you chose) after 30 seconds |
-| P9 | Disconnect from the internet, rewrite | Friendly no-internet message |
+| P9 | Disconnect from the internet, rewrite | Friendly no-internet message, with **Rewrite** focused and showing Enter |
+| P10 | With a result shown, click **Rewrite** | Rewrite sits on the left, Copy and Replace on the right, no Esc hint; the popup shows working on the same selection with only the Esc hint (no Rewrite, Copy or Replace), then a new result. Enter on the result still replaces |
+| P11 | After P9, reconnect and press Enter | A new rewrite of the same selection runs and its result shows |
+| P12 | The no-key, too-long and rejected-key messages | No **Rewrite**, Copy or Replace button; only their current action, and the Esc hint |
+| P13 | Press the shortcut while the popup is rewriting | Nothing happens; the running rewrite finishes as usual |
+| P14 | Open the popup with two or more sets | The title is the active set's name with a chevron; clicking it opens a list of every set by name, in the same order as Settings and the tray |
+| P15 | With a result shown, pick another set in the dropdown with the mouse | A rewrite starts at once: the result is cleared, the popup shows working on the same selection, then a new result written with the picked set's instructions. One request in the provider's dashboard or Ollama log |
+| P16 | Pick a set while the popup is rewriting, then wait | The running rewrite stops and a new one starts with the picked set; only its result appears, never the first one's late answer |
+| P17 | Turn **Rewrite on open** off, press the shortcut, then pick another set on Ready | A rewrite runs at once with the picked set; no need to press **Rewrite** |
+| P18 | After P15, open the tray menu and Settings | The tray's check mark and Settings' Active badge are on the set picked in the popup; the next shortcut press uses it too |
+| P19 | Tab to the dropdown on a result. Press ↓, move with the arrows and press Enter | ↓ opens the list without picking or sending anything; the arrows only move the highlight; Enter picks the set and sends exactly one rewrite, and focus stays on the dropdown |
+| P19a | Tab to the dropdown and press Enter, Space, Home, End and a set's first letter, each time from a closed list; press Esc with the list open | Each key opens the list (Home, End and the letter jump to a row) and none picks or sends anything. Esc closes only the list, then a second Esc closes the popup |
+| P19b | Click the dropdown, then click outside the list but inside the popup; open it again and click a set | The first click outside closes the list with no pick. Clicking a set picks it, sends one rewrite and closes the list. No focus ring shows after either click |
+| P20 | A screen reader on the dropdown | It is announced as "Instruction set" with the picked set's name |
+| P21 | Only one instruction set | The set's name is still the title, in ink, with no chevron, and can't be opened; the layout is the same as with several sets |
+| P22 | A set with a long name | The title ends in an ellipsis before its chevron; the title and ✕ stay on one line and the popup never gets wider |
+| P23 | Reduced motion on (Windows: Animation effects off), pick a set | The selection appears without movement |
+| P24 | With a result shown, switch the active set from the tray | The dropdown follows; no rewrite starts; the result is cleared and the popup shows Ready over the selection |
+| P25 | With a result shown, rename another set, add a set and delete a set in Settings | The dropdown lists the new names and sets at once; the result stays shown |
+| P26 | With a result shown, edit the active set's instructions in Settings and save | The result is cleared and the popup shows Ready; Rewrite uses the new instructions |
+| P27 | With a result shown, delete the active set in Settings | The dropdown drops it and picks the new active set; the popup shows Ready |
+| P28 | With the too-long message shown, switch the set from the tray | The message stays; the dropdown follows |
+| P29 | With the too-long message shown, pick another set in the dropdown; repeat with the no-key message | The message stays, nothing is sent and the dropdown shows the picked set; the tray and Settings follow it. After adding the key, a pick rewrites |
 
 ## Replace
 
@@ -92,7 +114,7 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | S7 | LM Studio as Custom at `http://localhost:1234/v1` with a blank key | Rewrite works; record whether port 1234 and the empty key were right |
 | S8 | Offline, open the model dropdown | Falls back to the built-in list; a typed name still saves |
 | S9 | Built-in suggested model names | Still current for each provider |
-| S10 | Settings holds only provider, model, key, shortcut, instruction sets, start with Windows and the Updates section | Nothing else |
+| S10 | Settings holds only provider, model, key, shortcut, instruction sets, start with Windows, Rewrite on open and the Updates section | Nothing else |
 | S11 | Look of the settings window and popup | Modern, minimal, clean |
 | S12 | With an update offered, change the model (don't save), click Update now, then press Esc; repeat and click Cancel | Prompt "Save your changes before updating?" with Save, Discard changes and Cancel, Save focused; Esc and Cancel close it, no update starts, the form still shows the edit |
 | S13 | Same, choose Save | "Saved." in the card foot, then the update starts; after the restart the new model is kept |
@@ -157,6 +179,11 @@ Before each case, copy the item named, then rewrite and Replace. Check after cap
 | L26 | Click the shortcut field, press a new combination and at once close Settings with the title bar, so it closes during the save; press the new shortcut on a selection | The rewrite starts: the shortcut isn't left paused, however late the save finishes |
 | L27 | Click the shortcut field, switch to another app and back, then press the current shortcut | The field records it; no rewrite starts. Leave the field and it works again |
 | L28 | Click the shortcut field, let another app take the saved shortcut while it records (for example AutoHotkey), then leave the field | A tray notification says another app uses your shortcut; Settings still shows the shortcut |
+| L29 | After install, and after upgrading from 1.5.0 | **Rewrite on open** is on; the shortcut rewrites at once, as before |
+| L30 | Turn **Rewrite on open** off, then press the shortcut on a selection | No restart needed: the popup opens on Ready with the selection, nothing is sent (no request in the provider's dashboard or Ollama log); Rewrite or Enter starts the rewrite |
+| L31 | With it off, press the shortcut with nothing selected; then on a selection over 5,000 characters | Nothing selected: the popup stays hidden. Too long: the too-long message, as with it on |
+| L32 | With it off and no API key saved, press the shortcut on a selection, then Rewrite | The popup opens on Ready; Rewrite shows "Add your API key to get started." with Open Settings |
+| L33 | Turn it off, restart the app; open the tray menu | Still off after the restart; the tray menu has no Rewrite on open item |
 
 ## Updates
 
@@ -216,12 +243,12 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 |---|---|---|
 | Date / build / Windows | | |
 | C1–C8 | | |
-| P1–P9 | | |
+| P1–P28 | | |
 | R1–R5 | | |
 | K1–K10 | | |
 | S1–S16 | | |
 | I1–I7 | | |
 | T1–T7 | | |
-| L1–L25 | | |
+| L1–L33 | | |
 | U1–U22 | | |
 | V1–V2 | | |

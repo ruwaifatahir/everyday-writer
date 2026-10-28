@@ -5,18 +5,19 @@
 //! returned or logged here.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
 
 use super::{
-    ApiKey, InstructionSetError, InstructionSets, KeyError, KeyStore, ModelSettings, ProviderKind,
-    Settings, SettingsError, SettingsFile,
+    ApiKey, InstructionSetChoices, InstructionSetError, InstructionSetId, InstructionSets,
+    KeyError, KeyStore, ModelSettings, ProviderKind, Settings, SettingsError, SettingsFile,
 };
 
-/// What the rest of the app reads from the settings. A port: the rewrite
+/// What the rest of the app reads from the settings, plus the one change it
+/// makes to them: picking the Active Instruction Set. A port: the rewrite
 /// session depends on this trait, and tests supply a fake.
 ///
-/// Later settings (the active instruction set, the shortcut) are added here
-/// as methods, so readers never see the settings file or the keyring.
+/// Later settings are added here as methods, so the session never sees the
+/// settings file or the keyring.
 pub trait SettingsView: Send + Sync {
     /// The chosen provider and model.
     fn model_settings(&self) -> ModelSettings;
@@ -24,9 +25,26 @@ pub trait SettingsView: Send + Sync {
     /// Whether a rewrite can be sent and, if not, the first thing missing.
     fn provider_readiness(&self) -> ProviderReadiness;
 
-    /// The active instruction set's instructions, which every rewrite
-    /// follows.
-    fn active_instructions(&self) -> String;
+    /// Whether the shortcut starts the rewrite at once. When off, it opens
+    /// the popup on Ready and waits for Rewrite.
+    fn rewrite_on_open(&self) -> bool;
+
+    /// Every instruction set's id and name, in order, and the active id.
+    fn instruction_set_choices(&self) -> InstructionSetChoices;
+
+    /// A copy of the instruction sets, read at one moment, so the list and
+    /// the active set's instructions (which every rewrite follows) match.
+    fn instruction_sets(&self) -> InstructionSets;
+
+    /// Makes the set with `id` the Active Instruction Set and saves it.
+    /// Everyone listening for instruction set changes (the tray, the
+    /// settings window) hears about it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChangeError`] if no set has `id` or the file can't be
+    /// written. The active set stays as it was then.
+    fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError>;
 }
 
 impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
@@ -38,8 +56,20 @@ impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
         (**self).provider_readiness()
     }
 
-    fn active_instructions(&self) -> String {
-        (**self).active_instructions()
+    fn rewrite_on_open(&self) -> bool {
+        (**self).rewrite_on_open()
+    }
+
+    fn instruction_set_choices(&self) -> InstructionSetChoices {
+        (**self).instruction_set_choices()
+    }
+
+    fn instruction_sets(&self) -> InstructionSets {
+        (**self).instruction_sets()
+    }
+
+    fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError> {
+        (**self).set_active_instruction_set(id)
     }
 }
 
@@ -138,10 +168,12 @@ impl AppSettings {
 
     /// A copy of the current settings.
     pub fn settings(&self) -> Settings {
-        self.current
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.read().clone()
+    }
+
+    /// The current settings, for reading only.
+    fn read(&self) -> RwLockReadGuard<'_, Settings> {
+        self.current.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Saves `settings` to the file, then makes them current. The
@@ -323,14 +355,22 @@ impl SettingsView for AppSettings {
         }
     }
 
-    fn active_instructions(&self) -> String {
-        self.current
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .instruction_sets
-            .active()
-            .instructions
-            .clone()
+    fn rewrite_on_open(&self) -> bool {
+        self.read().rewrite_on_open
+    }
+
+    fn instruction_set_choices(&self) -> InstructionSetChoices {
+        self.read().instruction_sets.choices()
+    }
+
+    fn instruction_sets(&self) -> InstructionSets {
+        self.read().instruction_sets.clone()
+    }
+
+    /// Goes through [`AppSettings::change_instruction_sets`], the same path
+    /// as the tray and the settings window, so both hear about it.
+    fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError> {
+        self.change_instruction_sets(|sets| sets.set_active(id))
     }
 }
 
@@ -677,7 +717,7 @@ mod tests {
     #[test]
     fn a_rewrite_follows_the_active_instruction_set() {
         let (app, _) = open(&temp_file(), Arc::default());
-        let first = app.active_instructions();
+        let first = app.instruction_sets().active().instructions.clone();
         let shorter = id_of(&app, "Shorter");
 
         app.change_instruction_sets(|sets| sets.set_active(shorter))
@@ -685,7 +725,7 @@ mod tests {
 
         assert_eq!(first, StarterTemplate::FixAndMakeReadable.instructions());
         assert_eq!(
-            app.active_instructions(),
+            app.instruction_sets().active().instructions,
             StarterTemplate::Shorter.instructions()
         );
     }
@@ -706,7 +746,10 @@ mod tests {
             restarted.settings().instruction_sets,
             app.settings().instruction_sets
         );
-        assert_eq!(restarted.active_instructions(), "My rules.");
+        assert_eq!(
+            restarted.instruction_sets().active().instructions,
+            "My rules."
+        );
     }
 
     #[test]
@@ -781,6 +824,47 @@ mod tests {
     }
 
     #[test]
+    fn a_set_made_active_through_the_view_is_saved_and_announced() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let listener = Arc::clone(&heard);
+        app.on_instruction_sets_change(move |sets| {
+            listener.lock().unwrap().push(sets.active().name.clone());
+        });
+        let shorter = id_of(&app, "Shorter");
+
+        app.set_active_instruction_set(shorter).unwrap();
+
+        assert_eq!(*heard.lock().unwrap(), ["Shorter"]);
+        assert_eq!(app.instruction_set_choices().active, shorter);
+        let (restarted, _) = open(&path, Arc::default());
+        assert_eq!(restarted.instruction_set_choices().active, shorter);
+    }
+
+    #[test]
+    fn the_views_choices_list_every_set_by_name_in_order() {
+        let (app, _) = open(&temp_file(), Arc::default());
+        app.change_instruction_sets(|sets| sets.add("Mine", "My rules."))
+            .unwrap();
+
+        let choices = app.instruction_set_choices();
+
+        let names: Vec<_> = choices.sets.iter().map(|set| set.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "Fix & make readable",
+                "Fix mistakes only",
+                "Professional",
+                "Shorter",
+                "Mine"
+            ]
+        );
+        assert_eq!(choices.active, id_of(&app, "Fix & make readable"));
+    }
+
+    #[test]
     fn a_damaged_file_is_reported_and_loads_defaults() {
         let path = temp_file();
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -817,6 +901,22 @@ mod tests {
             Some("1.1.0")
         );
         assert_eq!(saved.updates.last_run_version.as_deref(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn turning_rewrite_on_open_off_applies_at_once_and_saving_the_form_keeps_it() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        assert!(app.rewrite_on_open());
+
+        app.modify(|s| s.rewrite_on_open = false).unwrap();
+        assert!(!app.rewrite_on_open());
+        // The page sends only what it edits; the rest arrives as defaults.
+        app.save_form(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+        let (restarted, _) = open(&path, Arc::default());
+
+        assert!(!restarted.rewrite_on_open());
     }
 
     #[test]

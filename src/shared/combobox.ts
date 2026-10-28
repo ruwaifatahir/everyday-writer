@@ -1,6 +1,7 @@
-// The two pickers on the provider card, after the WAI-ARIA APG combobox
-// pattern: the provider is a select-only combobox (a button), the model an
-// editable one (a text field whose typed value always counts).
+// The pickers on the provider card and the popup's instruction set, after
+// the WAI-ARIA APG combobox pattern: the provider and the instruction set
+// are select-only comboboxes (a button), the model an editable one (a text
+// field whose typed value always counts).
 //
 // Focus never leaves the field: the active option is named with
 // aria-activedescendant. The list is a manual popover, so it sits in the top
@@ -300,6 +301,11 @@ export class Select {
     text.textContent = option.label;
     this.button.append(text, icon("chevron", "combo-chevron"));
     this.popup.render(this.options, value);
+  }
+
+  /** Closes the list, if it's open. */
+  close(): void {
+    this.popup.close();
   }
 
   private pick(value: string): void {

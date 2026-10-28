@@ -9,9 +9,16 @@
   </head>
 
   <body>
+    <!-- Icons for the instruction set picker, as in Settings. -->
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+      <symbol id="check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+    </svg>
     <main class="popup" id="popup" data-state="working">
       <header class="bar">
-        <p class="status" id="status" role="status" aria-live="polite"><span id="status-text">Rewriting…</span><span class="visually-hidden" id="status-detail"></span></p>
+        <p class="status visually-hidden" id="status" role="status" aria-live="polite"><span id="status-text">Rewriting…</span><span class="visually-hidden" id="status-detail"></span></p>
+        <span class="visually-hidden" id="instruction-set-label">Instruction set</span>
+        <button type="button" class="set-picker" id="instruction-set" aria-labelledby="instruction-set-label" title="Instruction set"></button>
         <button type="button" class="icon-button" id="close" aria-label="Close" title="Close (Esc)">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
         </button>
@@ -19,6 +26,8 @@
 
       <section class="body">
         <div class="working" id="working" aria-hidden="true"></div>
+        <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must take focus so the keyboard can scroll it -->
+        <section class="preview" id="preview" aria-label="Selected text" tabindex="0" hidden></section>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must take focus so the keyboard can scroll it -->
         <section class="result" id="result" aria-label="Rewritten text" tabindex="0" hidden></section>
         <div class="message" id="message" hidden>
@@ -29,8 +38,12 @@
 
       <footer class="actions panel-foot">
         <span class="keys" aria-hidden="true"><kbd>Esc</kbd> to close</span>
-        <button type="button" class="button secondary" id="copy" disabled>Copy</button>
-        <button type="button" class="button primary" id="replace" aria-describedby="result" disabled>
+        <button type="button" class="button ghost" id="rewrite" hidden>
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8.5A5 5 0 1 1 11.6 4.6" /><path d="M12.5 2v3h-3" /></svg>
+          Rewrite <kbd aria-hidden="true" id="rewrite-key" hidden>Enter</kbd>
+        </button>
+        <button type="button" class="button ghost" id="copy" hidden>Copy</button>
+        <button type="button" class="button primary" id="replace" aria-describedby="result" hidden>
           Replace <kbd aria-hidden="true">Enter</kbd>
         </button>
       </footer>
