@@ -38,21 +38,21 @@ Record each run in the results table at the end: date, build, Windows version an
 | P7 | A long error message (e.g. a bad Custom URL) | Text wraps inside the popup |
 | P8 | A provider that never answers (e.g. a stalled local server) | "OpenAI took too long. Try again." (the provider you chose) after 30 seconds |
 | P9 | Disconnect from the internet, rewrite | Friendly no-internet message, with **Rewrite** focused and showing Enter |
-| P10 | With a result shown, click **Rewrite** | Rewrite, Copy and Replace sit side by side, the Esc hint gives way; the popup shows working on the same selection with only Rewrite, disabled, and the Esc hint (no Copy or Replace), then a new result. Enter on the result still replaces |
+| P10 | With a result shown, click **Rewrite** | Rewrite sits on the left, Copy and Replace on the right, no Esc hint; the popup shows working on the same selection with only the Esc hint (no Rewrite, Copy or Replace), then a new result. Enter on the result still replaces |
 | P11 | After P9, reconnect and press Enter | A new rewrite of the same selection runs and its result shows |
 | P12 | The no-key, too-long and rejected-key messages | No **Rewrite**, Copy or Replace button; only their current action, and the Esc hint |
 | P13 | Press the shortcut while the popup is rewriting | Nothing happens; the running rewrite finishes as usual |
-| P14 | Open the popup with two or more sets | The header shows the instruction set dropdown with the active set picked; it lists every set by name, in the same order as Settings and the tray |
+| P14 | Open the popup with two or more sets | The title is the active set's name with a chevron; clicking it opens a list of every set by name, in the same order as Settings and the tray |
 | P15 | With a result shown, pick another set in the dropdown with the mouse | A rewrite starts at once: the result is cleared, the popup shows working on the same selection, then a new result written with the picked set's instructions. One request in the provider's dashboard or Ollama log |
 | P16 | Pick a set while the popup is rewriting, then wait | The running rewrite stops and a new one starts with the picked set; only its result appears, never the first one's late answer |
 | P17 | Turn **Rewrite on open** off, press the shortcut, then pick another set on Ready | A rewrite runs at once with the picked set; no need to press **Rewrite** |
 | P18 | After P15, open the tray menu and Settings | The tray's check mark and Settings' Active badge are on the set picked in the popup; the next shortcut press uses it too |
-| P19 | Tab to the dropdown on a result. Press plain ↑ and ↓ (and ← →) a few times; then press Alt+↓, move with the arrows and press Enter | Plain arrows change nothing and send nothing. Alt+↓ opens the list, the arrows only move the highlight, and Enter picks the set and sends exactly one rewrite; focus stays in the dropdown. Enter on the closed dropdown then replaces with the new result |
-| P19a | Tab to the dropdown on a result and press Home, End, Page Up, Page Down and a set's first letter; then open the list with F4 and with Space and pick with Enter | None of those keys changes the set or sends anything. F4 and Space open the list, and Enter in it picks once and sends one rewrite |
-| P19b | On Ready (Rewrite on open off) and on a failed rewrite, Tab to the dropdown and press Enter | Enter rewrites, as from the text |
+| P19 | Tab to the dropdown on a result. Press ↓, move with the arrows and press Enter | ↓ opens the list without picking or sending anything; the arrows only move the highlight; Enter picks the set and sends exactly one rewrite, and focus stays on the dropdown |
+| P19a | Tab to the dropdown and press Enter, Space, Home, End and a set's first letter, each time from a closed list; press Esc with the list open | Each key opens the list (Home, End and the letter jump to a row) and none picks or sends anything. Esc closes only the list, then a second Esc closes the popup |
+| P19b | Click the dropdown, then click outside the list but inside the popup; open it again and click a set | The first click outside closes the list with no pick. Clicking a set picks it, sends one rewrite and closes the list. No focus ring shows after either click |
 | P20 | A screen reader on the dropdown | It is announced as "Instruction set" with the picked set's name |
-| P21 | Only one instruction set | The dropdown is shown, greyed out and can't be opened; the layout is the same as with several sets |
-| P22 | A set with a long name | The name ends in an ellipsis; the caption, dropdown and ✕ stay on one line |
+| P21 | Only one instruction set | The set's name is still the title, in ink, with no chevron, and can't be opened; the layout is the same as with several sets |
+| P22 | A set with a long name | The title ends in an ellipsis before its chevron; the title and ✕ stay on one line and the popup never gets wider |
 | P23 | Reduced motion on (Windows: Animation effects off), pick a set | The selection appears without movement |
 | P24 | With a result shown, switch the active set from the tray | The dropdown follows; no rewrite starts; the result is cleared and the popup shows Ready over the selection |
 | P25 | With a result shown, rename another set, add a set and delete a set in Settings | The dropdown lists the new names and sets at once; the result stays shown |

@@ -1,7 +1,7 @@
 /* Rewrite popup: a fixed 400 x 220 frameless window on cream. Windows 11
    gives it its rounded corners, hairline edge and shadow, so the page draws
-   no frame of its own (see DESIGN.md). State line, the text, then the
-   action bar. */
+   no frame of its own (see DESIGN.md). The instruction set as title, the
+   text, then the action bar. */
 
 @import "../styles/fonts.css";
 @import "../styles/tokens.css";
@@ -30,88 +30,77 @@ body[data-ready] {
 .popup {
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* Never wider than the window, so a long set name is cut short. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
-/* State line: a plain caption saying where the rewrite is, the instruction
-   set dropdown, and close. */
+/* Title bar: the instruction set's name as the popup's title, close on the
+   right. The state is said by the text and the actions below it; the
+   status line is only read out. */
 
 .bar {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  height: 44px;
-  padding: 0 var(--space-8) 0 var(--space-16);
+  height: 48px;
+  /* ✕'s glyph lines up with Replace's right edge below. */
+  padding: 0 var(--space-6) 0 var(--space-16);
 }
 
-.status {
-  flex: none;
-  margin-right: auto;
-  font-size: var(--text-caption);
-  line-height: 1;
-  font-weight: var(--weight-medium);
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
-
-/* The instruction set dropdown: a native select at the compact 30px size,
-   with the picker's ink-soft chevron. It takes what the caption and ✕
-   leave and cuts a long name short with an ellipsis. */
+/* The instruction set picker is the title: Settings' select-only combobox
+   (combobox.ts) drawn as text with a chevron, no box until hovered. Its
+   text lines up with the body text, the hover fill runs into the margin.
+   It hugs the name and cuts a long one short with an ellipsis. */
 .set-picker {
-  position: relative;
   display: flex;
-  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-6);
   min-width: 0;
-  max-width: 220px;
-}
-
-.set-picker select {
-  width: 100%;
-  min-width: 0;
-  height: var(--control-sm);
-  padding: 0 32px 0 var(--space-12);
+  height: 32px;
+  margin-right: auto;
+  margin-left: calc(var(--space-8) * -1);
+  padding: 0 var(--space-6) 0 var(--space-8);
   font: inherit;
-  font-size: 14px;
-  font-weight: var(--weight-medium);
+  font-size: var(--text-body);
+  font-weight: var(--weight-strong);
   color: var(--ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
   background: transparent;
-  border: var(--border) solid var(--ink);
+  border: 0;
   border-radius: var(--radius-control);
-  appearance: none;
   cursor: default;
   transition: background-color var(--motion-fast) var(--ease);
 }
 
-.set-picker select:hover:enabled {
+.set-picker:hover:enabled,
+.set-picker[aria-expanded="true"] {
   background: var(--fill-hover);
 }
 
-.set-picker select:focus-visible {
+.set-picker:active:enabled {
+  background: var(--fill-press);
+}
+
+.set-picker:focus-visible {
   outline: var(--border) solid var(--ink);
-  outline-offset: 2px;
+  outline-offset: 0;
 }
 
-/* One set: shown so the layout never changes, plainly not a choice. */
-.set-picker select:disabled {
-  color: var(--ink-soft);
-  border-color: var(--stone);
+/* One set: just the title, with nothing to open. */
+.set-picker:disabled {
+  padding-right: var(--space-8);
 }
 
-.set-chevron {
-  position: absolute;
-  top: 50%;
-  right: var(--space-10);
-  width: 16px;
-  height: 16px;
-  translate: 0 -50%;
-  fill: none;
-  stroke: var(--ink-soft);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  pointer-events: none;
+.set-picker:disabled .combo-chevron {
+  display: none;
+}
+
+/* Its list drops under the title in the popup's 400 x 220 window: wide
+   enough to read a name whatever the title's width, and it scrolls past
+   about four rows. */
+.combo-list {
+  min-width: 240px;
+  max-width: calc(100vw - var(--space-16));
 }
 
 /* Body: the selection being rewritten or waiting, the result, or a message */
@@ -195,6 +184,13 @@ body[data-ready] {
   }
 }
 
+/* The popup opens from a key press, so Chromium would ring the focused
+   button every time, and a clicked dropdown too. The ring shows only once
+   the user moves focus with Tab (main.ts sets data-tabbing). */
+.popup:not([data-tabbing]) :focus-visible {
+  outline: none;
+}
+
 /* Focusable so the keyboard can scroll it; Enter there is still the main
    action (Replace, or Rewrite on a waiting selection).
    The fade mask would clip an outline on the text itself, so the ring is
@@ -204,7 +200,7 @@ body[data-ready] {
   outline: none;
 }
 
-.body:has(> :is(.preview, .result):focus-visible)::after {
+.popup[data-tabbing] .body:has(> :is(.preview, .result):focus-visible)::after {
   content: "";
   position: absolute;
   inset: -4px 6px 4px 6px;
@@ -239,10 +235,16 @@ body[data-ready] {
   font-size: 14px;
 }
 
-/* Action bar */
+/* Action bar: what to do next on the right, at the same 16px edge as the
+   text. On a result, Rewrite moves to the left as a ghost, so the bar
+   reads "try again" on one side and "use it" on the other. */
 
 .actions {
-  padding: var(--space-10) var(--space-10) var(--space-10) var(--space-16);
+  gap: var(--space-4);
+  /* One button tall even with none, so the rule never moves between
+     states. */
+  min-height: calc(var(--control-md) + var(--space-10) * 2 + var(--border));
+  padding: var(--space-10) var(--space-16);
 }
 
 .keys {
@@ -254,9 +256,35 @@ body[data-ready] {
   color: var(--ink-soft);
 }
 
-/* On a result Rewrite, Copy and Replace fill the 400px bar, so the Esc hint
-   gives way (✕ still says "Close (Esc)"). */
+/* On a result the Esc hint gives way to Rewrite (✕ still says
+   "Close (Esc)"). */
 .popup[data-state="result"] .keys {
+  display: none;
+}
+
+.popup[data-state="result"] #rewrite {
+  margin-right: auto;
+  /* Its icon lines up with the text above; the hover fill runs into the
+     margin. */
+  margin-left: calc((var(--space-12) + var(--border)) * -1);
+}
+
+/* Ghost: a borderless button for the actions beside the primary one, so
+   the bar has one outlined, lavender button and no more. */
+.button.ghost {
+  padding: 0 var(--space-10);
+}
+
+.button.ghost:hover:not(:disabled) {
+  background: var(--fill-hover);
+}
+
+.button.ghost:active:not(:disabled) {
+  background: var(--fill-press);
+}
+
+/* The arrow marks Rewrite as a ghost; as the primary action, Enter does. */
+.button.primary .icon {
   display: none;
 }
 

@@ -126,8 +126,9 @@ border or a fill change:
   `ink-soft` chevron. Its list is a cream card with the ink border and 12px
   radius, in the top layer, at most 320px tall. Rows are 36px; the
   keyboard's active row is `stone`, hover is the hover fill, the chosen
-  one carries a check. A stone rule divides blocks. The provider picker is
-  select-only, with logos; the model picker is a text field that lists the
+  one carries a check. A stone rule divides blocks. The provider picker and
+  the popup's instruction set picker (drawn as its title) are
+  select-only, the provider one with logos; the model picker is a text field that lists the
   provider's few Suggested Models, filters them as you type and closes
   when none match. For Ollama and Custom it is a plain field with no
   arrow.
@@ -159,7 +160,9 @@ border or a fill change:
 - **Focus**: one rule, a 2px ink outline offset 2px, on every control. A
   real outline, so Windows high contrast still draws it. The popup's
   result fades at its foot, which would clip an outline, so its ring is a
-  2px ink border drawn around the text area instead.
+  2px ink border drawn around the text area instead. The popup opens from
+  a key press, which would ring its focused button every time, so its rings
+  show only after the user presses Tab, and a click hides them again.
 - **Field errors**: under the field, 13px/500 `ember-ink`, named by the
   field's `aria-describedby`; the field border turns `ember-ink`. The
   save bar's status line is for save results, not validation or a failed
@@ -167,45 +170,70 @@ border or a fill change:
 
 ## Popup states
 
-Every state's header carries the **instruction set dropdown** between the
-caption and ✕: a native `select` labelled "Instruction set", 30px tall,
-2px ink border, 12px radius, 14px/500 ink text and the picker's ink-soft
-chevron, at most 220px wide with long names cut by an ellipsis. It lists
-the sets by name in Settings' order with the active one picked. With one
-set it stays shown but disabled (stone border, ink-soft text), so the
-layout never changes. It fits the 44px header, so the popup stays
-400 x 220. Picking a set rewrites at once with it, as Rewrite does,
+The popup has three rows on one 16px edge: the title bar, the text, and
+the action bar under a stone rule. The left edges of the title, the text
+and a ghost Rewrite all line up. On the right, ✕'s glyph and the last
+button line up too. Each bar has one thing at each end. That is the
+symmetry; nothing is centred. The layout follows Chrome's Help me write
+and Copilot's Rewrite: the style sits above the text, "try again" goes
+on the left of the action row, and "use it" goes on the right.
+
+The 48px title bar holds only the **instruction set dropdown**, as the
+popup's title, and ✕:
+
+- The dropdown is Settings' **Picker** (`combobox.ts`, select-only),
+  labelled "Instruction set" and drawn as text: Figtree 15px/600 ink with
+  the ink-soft chevron, which turns over while the list is open. It has
+  no border; hovering it, or an open list, gives the hover fill, 32px
+  tall with a 12px radius.
+- Its list is the Picker's own cream card under the title, at least
+  240px wide. It shows about four rows in the 220px popup and scrolls
+  for more. The active set carries the check.
+- It fits its text, and a long name ends in an ellipsis before ✕.
+- It lists the sets by name in Settings' order, with the active one
+  picked.
+- With one set it is still shown as the title, but disabled and without
+  the chevron, so the layout never changes.
+
+There's no visible state caption. The text, the reading band and the
+actions show the state. The status line ("Rewriting…", "Rewritten", "Not
+rewritten", "Copied") is still read out to screen readers, and the
+messages explain themselves.
+
+The action bar holds one outlined lavender button at most. Rewrite and
+Copy are **ghost** buttons: no border and the hover fill.
+Rewrite as a ghost carries a circular arrow icon; as the
+primary it shows Enter instead.
+
+Picking a set rewrites at once with it, as Rewrite does,
 stopping a rewrite in progress first; a message a rewrite can't help
-(too long) stays. On the closed dropdown the keys that would change the
-set (arrows, Home, End, Page Up, Page Down, letters) do nothing, so a
-keyboard pick sends one rewrite: Alt+↓, F4 or Space opens the list, the
-arrows move in it and Enter picks. Enter on the closed dropdown is the
-popup's main action, as from the text, and focus stays in the dropdown
-while the user is there, so no state moves it to a button. The dropdown
+(too long) stays. A key on the closed dropdown never picks: ↓, ↑,
+Enter, Space, Home, End or a letter opens the list, the arrows move in
+it, and Enter (or a click) picks, so each pick sends one rewrite. Esc
+closes an open list before it closes the popup. Focus stays in the
+dropdown while the user is there, so no state moves it to a button. The dropdown
 follows Settings and the tray while the popup is open; switching the
 active set there, or editing its instructions, never rewrites: it shows
 Ready. With Rewrite on open off in Settings, the shortcut opens the
 popup on Ready as well.
 
-- Ready: a plain "Ready to rewrite" caption over the selection, set like
-  the result and fading in where it will land, scrollable. Rewrite is the
-  bar's only button: lavender, focused, with Enter, beside the Esc hint.
-- Working: a plain "Rewriting…" caption over the selection itself, set
-  like the result, with the reading band. Rewrite is the bar's only
-  button, outlined and disabled, beside the Esc hint.
-- Result: a plain "Rewritten" caption, the text in Figtree 15px fading in
-  where the selection was, Replace focused. Rewrite and Copy are outlined
-  beside it. Long text fades into the footer rule and scrolls. With three
-  buttons the bar has no room for the Esc hint, so it gives way (✕ still
-  says "Close (Esc)").
-- Message: a plain "Not rewritten" caption, or "Copied" when Replace fell
-  back to copying, the message in Garamond 20px, and an outlined Open
-  Settings button at the compact 30px size when there is something to fix,
-  so a two-line message still clears the footer. When trying again can
-  fix it (busy, unreachable, too slow, an error or nothing back), Rewrite
-  is the bar's only button: lavender, focused, with Enter. Otherwise the
-  bar has no button. Either way the Esc hint shows. Copy and Replace
-  appear only with a result.
+- Ready: the selection, set like the result and fading in where it will
+  land, scrollable. The Esc hint is on the left and Rewrite on the right:
+  lavender, focused, with Enter.
+- Working: the selection itself, set like the result, with the reading
+  band. Only the Esc hint shows: there is nothing to press until it
+  ends.
+- Result: the text in Figtree 15px, fading in where the selection was.
+  The ghost Rewrite is on the left. Copy (a ghost) and Replace (focused,
+  with Enter) are on the right. Long text fades into the footer rule and
+  scrolls. The Esc hint gives way to Rewrite (✕ still says "Close
+  (Esc)").
+- Message: the message in Garamond 20px, with an outlined Open Settings
+  button at the compact 30px size when there is something to fix, so a
+  two-line message still clears the footer. When trying again can fix it
+  (busy, unreachable, too slow, an error or nothing back), Rewrite is on
+  the right: lavender, focused, with Enter. Otherwise only the Esc hint
+  shows. Copy and Replace appear only with a result.
 
 ## Motion
 
@@ -278,8 +306,8 @@ Plain, calm and short. The `better-writing` skill has the full rules.
 
 - Add shadows, gradients (beyond the reading band), blur, or a second
   accent color.
-- Add a status dot, spinner, skeleton or status pill; say the state in
-  plain caption text and let the reading band show the work.
+- Add a status dot, spinner, skeleton or status pill; let the text, the
+  reading band and the actions show the state.
 - Use radii under 12px on buttons, inputs or cards (only `kbd` is smaller).
 - Use `fog` for text (the reading band is the one exception), or put
   cream content on cream without a border.

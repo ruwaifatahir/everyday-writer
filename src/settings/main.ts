@@ -10,6 +10,7 @@
 
 import "../shared/native-feel";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { type Option, Select, Suggest } from "../shared/combobox";
 import {
   clearApiKey,
   errorMessage,
@@ -23,7 +24,6 @@ import {
   settingsReady,
   suggestedModels,
 } from "./api";
-import { type Option, Select, Suggest } from "./combobox";
 import { clearFieldError, showFieldError } from "./field-error";
 import {
   initInstructionSets,
