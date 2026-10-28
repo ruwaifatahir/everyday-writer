@@ -57,6 +57,7 @@ Record each run in the results table at the end: date, build, Windows version an
 | P26 | With a result shown, edit the active set's instructions in Settings and save | The result is cleared and the popup shows Ready; Rewrite uses the new instructions |
 | P27 | With a result shown, delete the active set in Settings | The dropdown drops it and picks the new active set; the popup shows Ready |
 | P28 | With the too-long message shown, switch the set from the tray | The message stays; the dropdown follows |
+| P29 | With the too-long message shown, pick another set in the dropdown; repeat with the no-key message | The message stays and the dropdown shows the picked set; the tray and Settings follow it |
 
 ## Replace
 

@@ -1213,6 +1213,51 @@ async fn picking_a_set_on_a_failed_rewrite_clears_the_message_and_shows_ready() 
 }
 
 #[tokio::test]
+async fn picking_a_set_keeps_a_message_a_rewrite_cant_help_and_shows_the_picked_set() {
+    let session = session(
+        FakeBridge::selecting(&"a".repeat(MAX_SELECTION_CHARS + 1)),
+        TestRewriter::returning("unused"),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::PickInstructionSet(id(2))).await;
+
+    let too_long = |active| PopupState::Message {
+        text: "This text is too long. Select up to 5,000 characters.".to_owned(),
+        action: None,
+        copied: false,
+        rewrite: false,
+        choices: choices_on(active),
+    };
+    assert_eq!(session.settings.active_id(), id(2));
+    assert_eq!(states(&session), [too_long(1), too_long(2)]);
+}
+
+#[tokio::test]
+async fn picking_a_set_keeps_a_message_asking_to_set_up() {
+    let session = session_with(
+        FakeBridge::selecting("helo wrld"),
+        TestRewriter::returning("unused"),
+        FakeSettings::not_ready(ProviderReadiness::MissingKey),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::PickInstructionSet(id(2))).await;
+
+    assert_eq!(session.settings.active_id(), id(2));
+    assert_eq!(
+        states(&session).last(),
+        Some(&PopupState::Message {
+            text: "Add your API key to get started.".to_owned(),
+            action: Some(MessageAction::OpenSettings),
+            copied: false,
+            rewrite: false,
+            choices: choices_on(2),
+        })
+    );
+}
+
+#[tokio::test]
 async fn picking_the_set_that_is_already_active_changes_nothing() {
     let session = rewritten("helo wrld", "Hello, world.").await;
 

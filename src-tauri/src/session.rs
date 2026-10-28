@@ -49,7 +49,8 @@ pub enum Event {
     Rewrite,
     /// A set was picked in the popup's dropdown: make it the Active
     /// Instruction Set, cancel a rewrite in progress, clear any result or
-    /// message and show [`PopupState::Ready`]. Never starts a rewrite.
+    /// message and show [`PopupState::Ready`]. A message a rewrite can't
+    /// help (too long, not set up) stays. Never starts a rewrite.
     /// Ignored unless the popup is open, or if the set is already active.
     PickInstructionSet(InstructionSetId),
     /// The instruction sets were changed in Settings or the tray. If the
@@ -467,10 +468,11 @@ where
         self.start(state, captured, &before)
     }
 
-    /// Makes set `id` the Active Instruction Set and shows Ready, which
-    /// cancels a rewrite in progress and clears a result or message. If the
-    /// set can't be made active, shows the same state again, so the
-    /// dropdown goes back to the active set.
+    /// Makes set `id` the Active Instruction Set and brings the popup up to
+    /// date as for a change made elsewhere: Ready, which cancels a rewrite
+    /// in progress and clears a result or message, except that a message a
+    /// rewrite can't help stays. If the set can't be made active, shows the
+    /// same state again, so the dropdown goes back to the active set.
     fn pick_instruction_set(&self, id: InstructionSetId) {
         if !matches!(self.lock().phase, Phase::Open { .. })
             || self.settings.instruction_set_choices().active == id
@@ -479,27 +481,17 @@ where
         }
         // Outside the session lock: the change is announced to listeners
         // right away, and one may tell this session about it.
-        let saved = self.settings.set_active_instruction_set(id);
-        if saved.is_err() {
-            tracing::warn!("the instruction set picked in the popup couldn't be made active");
-        }
-        let seen = saved.is_ok().then(|| self.current_sets());
-        let mut state = self.lock();
-        let State {
-            phase: Phase::Open { captured, view },
-            seen: last_seen,
-            ..
-        } = &mut *state
-        else {
-            // Closed meanwhile.
+        if self.settings.set_active_instruction_set(id).is_ok() {
+            // Whichever of this and the announcement comes second finds the
+            // popup up to date and shows nothing new.
+            self.instruction_sets_changed();
             return;
-        };
-        if let Some(seen) = seen {
-            *last_seen = Some(seen);
-            // Dropping a running rewrite cancels it.
-            *view = View::Ready;
         }
-        self.popup.render(&self.shown(captured, view));
+        tracing::warn!("the instruction set picked in the popup couldn't be made active");
+        let state = self.lock();
+        if let Phase::Open { captured, view } = &state.phase {
+            self.popup.render(&self.shown(captured, view));
+        }
     }
 
     /// Brings an open popup up to date with the instruction sets. A new
