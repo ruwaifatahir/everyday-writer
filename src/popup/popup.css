@@ -187,6 +187,12 @@ body[data-ready] {
   color: var(--ink-soft);
 }
 
+/* Rewrite, Copy and Replace fill the 400px bar, so the Esc hint gives way
+   (✕ still says "Close (Esc)"). */
+.popup:is([data-state="working"], [data-state="result"]) .keys {
+  display: none;
+}
+
 .keys kbd {
   color: var(--ink);
   background: var(--stone);
@@ -196,6 +202,7 @@ body[data-ready] {
 .working[hidden],
 .result[hidden],
 .message[hidden],
-.button[hidden] {
+.button[hidden],
+.button kbd[hidden] {
   display: none;
 }

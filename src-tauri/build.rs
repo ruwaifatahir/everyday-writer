@@ -35,6 +35,7 @@ fn main() {
             "popup_copy",
             "popup_close",
             "popup_open_settings",
+            "popup_rewrite",
         ]),
     ))
     .expect("failed to run the Tauri build script");

@@ -102,6 +102,7 @@ pub fn run() {
             popup::popup_copy,
             popup::popup_close,
             popup::popup_open_settings,
+            popup::popup_rewrite,
         ])
         .setup(|app| {
             let startup = load_settings(app)?;

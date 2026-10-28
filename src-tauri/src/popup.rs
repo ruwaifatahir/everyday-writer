@@ -255,3 +255,9 @@ pub fn popup_close(app: AppHandle) {
 pub fn popup_open_settings(app: AppHandle) {
     send(&app, Event::OpenSettings);
 }
+
+/// The Rewrite button, or Enter on a failed rewrite.
+#[tauri::command]
+pub fn popup_rewrite(app: AppHandle) {
+    send(&app, Event::Rewrite);
+}

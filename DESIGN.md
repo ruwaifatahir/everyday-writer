@@ -168,14 +168,19 @@ border or a fill change:
 ## Popup states
 
 - Working: a plain "Rewriting…" caption over the selection itself, set
-  like the result, with the reading band. Copy and Replace disabled.
+  like the result, with the reading band. Rewrite, Copy and Replace
+  disabled.
 - Result: a plain "Rewritten" caption, the text in Figtree 15px fading in
-  where the selection was, Replace focused. Long text fades into the
-  footer rule and scrolls.
+  where the selection was, Replace focused. Rewrite and Copy are outlined
+  beside it. Long text fades into the footer rule and scrolls. With three
+  buttons the bar has no room for the Esc hint, so it gives way (✕ still
+  says "Close (Esc)").
 - Message: a plain "Not rewritten" caption, or "Copied" when Replace fell
   back to copying, the message in Garamond 20px, and an outlined Open
   Settings button at the compact 30px size when there is something to fix,
-  so a two-line message still clears the footer.
+  so a two-line message still clears the footer. When trying again can
+  fix it (busy, unreachable, too slow, an error or nothing back), Rewrite
+  is the bar's only button: lavender, focused, with Enter.
 
 ## Motion
 

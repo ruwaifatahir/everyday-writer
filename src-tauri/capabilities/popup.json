@@ -10,6 +10,7 @@
     "allow-popup-replace",
     "allow-popup-copy",
     "allow-popup-close",
-    "allow-popup-open-settings"
+    "allow-popup-open-settings",
+    "allow-popup-rewrite"
   ]
 }

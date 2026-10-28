@@ -33,11 +33,15 @@ Record each run in the results table at the end: date, build, Windows version an
 | P2 | Copy | Result on the clipboard, popup closes |
 | P3 | ✕, Esc and a click outside | Each closes the popup |
 | P4 | Close while working, wait for the answer | The popup stays closed; a late answer never shows |
-| P5 | Press the shortcut while the popup is open | The rewrite starts again on the same selection |
+| P5 | Press the shortcut while the popup shows a result or a failed rewrite | Acts like **Rewrite**: a new rewrite of the same selection starts, without copying anything from the popup |
 | P6 | No key set, press the shortcut, click **Open Settings** | Missing-key message; Settings opens and the popup closes |
 | P7 | A long error message (e.g. a bad Custom URL) | Text wraps inside the popup |
 | P8 | A provider that never answers (e.g. a stalled local server) | "OpenAI took too long. Try again." (the provider you chose) after 30 seconds |
-| P9 | Disconnect from the internet, rewrite | Friendly no-internet message |
+| P9 | Disconnect from the internet, rewrite | Friendly no-internet message, with **Rewrite** focused and showing Enter |
+| P10 | With a result shown, click **Rewrite** | Rewrite, Copy and Replace sit side by side, the Esc hint gives way; the popup shows working on the same selection, Rewrite disabled, then a new result. Enter on the result still replaces |
+| P11 | After P9, reconnect and press Enter | A new rewrite of the same selection runs and its result shows |
+| P12 | The no-key, too-long and rejected-key messages | No **Rewrite** button; only their current action |
+| P13 | Press the shortcut while the popup is rewriting | Nothing happens; the running rewrite finishes as usual |
 
 ## Replace
 
@@ -216,7 +220,7 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 |---|---|---|
 | Date / build / Windows | | |
 | C1–C8 | | |
-| P1–P9 | | |
+| P1–P13 | | |
 | R1–R5 | | |
 | K1–K10 | | |
 | S1–S16 | | |

@@ -16,6 +16,8 @@ type PopupState =
       text: string;
       action: "openSettings" | null;
       copied: boolean;
+      /** The rewrite failed in a way trying again can fix. */
+      rewrite: boolean;
     };
 
 function element<T extends HTMLElement>(id: string): T {
@@ -32,19 +34,36 @@ const result = element<HTMLElement>("result");
 const message = element<HTMLDivElement>("message");
 const messageText = element<HTMLParagraphElement>("message-text");
 const openSettings = element<HTMLButtonElement>("open-settings");
+const rewrite = element<HTMLButtonElement>("rewrite");
+const rewriteKey = element<HTMLElement>("rewrite-key");
 const copy = element<HTMLButtonElement>("copy");
 const replace = element<HTMLButtonElement>("replace");
 const close = element<HTMLButtonElement>("close");
 
-let current: PopupState["kind"] = "hidden";
+let current: PopupState = { kind: "hidden" };
+
+/** Whether Rewrite leads, as on a failed rewrite: primary, with Enter. */
+function rewriteLeads(state: PopupState): boolean {
+  return state.kind === "message" && state.rewrite;
+}
 
 function show(state: PopupState): void {
-  current = state.kind;
+  current = state;
   popup.dataset.state = state.kind;
   const hasResult = state.kind === "result";
+  const leads = rewriteLeads(state);
   working.hidden = state.kind !== "working";
   result.hidden = !hasResult;
   message.hidden = state.kind !== "message";
+  // Rewrite sits beside Copy and Replace while working and on a result;
+  // on a failed rewrite it is the only action, with Enter.
+  rewrite.hidden = !(state.kind === "working" || hasResult || leads);
+  rewrite.disabled = state.kind === "working";
+  rewrite.classList.toggle("primary", leads);
+  rewrite.classList.toggle("secondary", !leads);
+  rewriteKey.hidden = !leads;
+  copy.hidden = leads;
+  replace.hidden = leads;
   copy.disabled = !hasResult;
   replace.disabled = !hasResult;
   // The message itself is read out with the status, not only "Not rewritten".
@@ -76,7 +95,8 @@ function show(state: PopupState): void {
       statusText.textContent = state.copied ? "Copied" : "Not rewritten";
       messageText.textContent = state.text;
       openSettings.hidden = state.action !== "openSettings";
-      if (!openSettings.hidden) openSettings.focus();
+      if (leads) rewrite.focus();
+      else if (!openSettings.hidden) openSettings.focus();
       break;
   }
 }
@@ -100,9 +120,16 @@ function send(command: string): void {
 
 /** Replace hides the popup, or shows a new state if it couldn't go ahead. */
 function replaceText(): void {
-  if (current !== "result") return;
+  if (current.kind !== "result") return;
   blank();
   send("popup_replace");
+}
+
+/** Rewrite runs a new rewrite of the same selection; the session ignores
+ * it while one is running. */
+function rewriteText(): void {
+  if (rewrite.hidden || rewrite.disabled) return;
+  send("popup_rewrite");
 }
 
 function closePopup(): void {
@@ -110,10 +137,21 @@ function closePopup(): void {
   send("popup_close");
 }
 
+rewrite.addEventListener("click", rewriteText);
 copy.addEventListener("click", () => send("popup_copy"));
 replace.addEventListener("click", replaceText);
 close.addEventListener("click", closePopup);
 openSettings.addEventListener("click", () => send("popup_open_settings"));
+
+/** Whether Enter here means the popup's main action, not a button's own. */
+function enterIsMainAction(...owners: HTMLElement[]): boolean {
+  const focused = document.activeElement;
+  return (
+    focused === null ||
+    focused === document.body ||
+    owners.some((owner) => focused === owner)
+  );
+}
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
@@ -121,18 +159,16 @@ document.addEventListener("keydown", (event) => {
     closePopup();
     return;
   }
-  if (event.key !== "Enter" || current !== "result") return;
-  // Enter is Replace from the text or Replace itself; on Copy or Close it
-  // presses that button instead.
-  const focused = document.activeElement;
-  if (
-    focused === null ||
-    focused === document.body ||
-    focused === result ||
-    focused === replace
-  ) {
+  if (event.key !== "Enter") return;
+  // Enter is the main action from the text or that button itself: Replace
+  // on a result, Rewrite on a failed rewrite. On another button it presses
+  // that button instead.
+  if (current.kind === "result" && enterIsMainAction(result, replace)) {
     event.preventDefault();
     replaceText();
+  } else if (rewriteLeads(current) && enterIsMainAction(message, rewrite)) {
+    event.preventDefault();
+    rewriteText();
   }
 });
 
