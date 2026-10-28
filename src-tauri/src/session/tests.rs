@@ -1,8 +1,10 @@
 //! Rewrite session tests: fake ports, no Windows, network or key.
 
 use std::future::{Future, ready};
-use std::sync::Mutex;
+use std::pin::pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 use tokio::sync::{Notify, oneshot};
@@ -179,9 +181,11 @@ const INSTRUCTIONS: &str = "Fix mistakes only.";
 /// set. Rewrite on open starts on, and there are two sets: "Fix" (id 1,
 /// [`INSTRUCTIONS`], active) and "Formal" (id 2, "Be formal.").
 struct FakeSettings {
-    readiness: ProviderReadiness,
+    readiness: Mutex<ProviderReadiness>,
     rewrite_on_open: bool,
     sets: Mutex<InstructionSets>,
+    /// Runs in place once a set is made active, as a settings listener does.
+    on_set_active: OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl Default for FakeSettings {
@@ -193,9 +197,10 @@ impl Default for FakeSettings {
         )
         .unwrap();
         Self {
-            readiness: ProviderReadiness::Ready,
+            readiness: Mutex::new(ProviderReadiness::Ready),
             rewrite_on_open: true,
             sets: Mutex::new(sets),
+            on_set_active: OnceLock::new(),
         }
     }
 }
@@ -203,7 +208,7 @@ impl Default for FakeSettings {
 impl FakeSettings {
     fn not_ready(readiness: ProviderReadiness) -> Self {
         Self {
-            readiness,
+            readiness: Mutex::new(readiness),
             ..Self::default()
         }
     }
@@ -237,7 +242,7 @@ impl SettingsView for FakeSettings {
     }
 
     fn provider_readiness(&self) -> ProviderReadiness {
-        self.readiness
+        *self.readiness.lock().unwrap()
     }
 
     fn rewrite_on_open(&self) -> bool {
@@ -253,7 +258,11 @@ impl SettingsView for FakeSettings {
     }
 
     fn set_active_instruction_set(&self, id: InstructionSetId) -> Result<(), ChangeError> {
-        Ok(self.sets.lock().unwrap().set_active(id)?)
+        self.sets.lock().unwrap().set_active(id)?;
+        if let Some(listener) = self.on_set_active.get() {
+            listener();
+        }
+        Ok(())
     }
 }
 
@@ -1162,26 +1171,34 @@ async fn rewrite_does_nothing_while_replacing() {
 // Picking an instruction set in the popup's dropdown.
 
 #[tokio::test]
-async fn picking_a_set_with_a_result_shown_clears_it_and_shows_ready() {
+async fn picking_a_set_with_a_result_shown_rewrites_with_the_picked_sets_instructions() {
     let session = rewritten("helo wrld", "Hello, world.").await;
 
     session.handle(Event::PickInstructionSet(id(2))).await;
 
     assert_eq!(session.settings.active_id(), id(2));
-    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(session.bridge.captures.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        session.rewriter.calls(),
+        [
+            (INSTRUCTIONS.to_owned(), "helo wrld".to_owned()),
+            ("Be formal.".to_owned(), "helo wrld".to_owned()),
+        ]
+    );
     assert_eq!(
         states(&session),
         [
             working("helo wrld"),
             result("Hello, world."),
-            ready_on("helo wrld", 2),
+            working_on("helo wrld", 2),
+            result_on("Hello, world.", 2),
         ]
     );
 }
 
 #[tokio::test]
-async fn picking_a_set_while_working_cancels_the_rewrite_and_a_late_answer_is_ignored() {
-    let (rewriter, answer) = TestRewriter::gated();
+async fn picking_a_set_while_working_cancels_the_rewrite_and_reruns_with_the_picked_set() {
+    let (rewriter, answer) = TestRewriter::gated_then(Ok("Good day, world.".to_owned()));
     let session = session(FakeBridge::selecting("helo wrld"), rewriter);
 
     tokio::join!(session.handle(Event::ShortcutPressed), async {
@@ -1191,25 +1208,60 @@ async fn picking_a_set_while_working_cancels_the_rewrite_and_a_late_answer_is_ig
     });
 
     assert!(session.rewriter.cancelled.load(Ordering::Relaxed));
-    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(
+        session.rewriter.calls(),
+        [
+            (INSTRUCTIONS.to_owned(), "helo wrld".to_owned()),
+            ("Be formal.".to_owned(), "helo wrld".to_owned()),
+        ]
+    );
+    // The first rewrite's late answer never shows.
     assert_eq!(
         states(&session),
-        [working("helo wrld"), ready_on("helo wrld", 2)]
+        [
+            working("helo wrld"),
+            working_on("helo wrld", 2),
+            result_on("Good day, world.", 2),
+        ]
     );
 }
 
 #[tokio::test]
-async fn picking_a_set_on_a_failed_rewrite_clears_the_message_and_shows_ready() {
-    let session = session(
-        FakeBridge::selecting("helo wrld"),
-        TestRewriter::answering(Err(RewriteError::Network)),
+async fn picking_a_set_on_a_failed_rewrite_rewrites_with_the_picked_set() {
+    let (rewriter, first_answer) = TestRewriter::gated_then(Ok("Good day, world.".to_owned()));
+    let session = session(FakeBridge::selecting("helo wrld"), rewriter);
+    tokio::join!(session.handle(Event::ShortcutPressed), async {
+        session.rewriter.called.notified().await;
+        let _ = first_answer.send(Err(RewriteError::Network));
+    });
+
+    session.handle(Event::PickInstructionSet(id(2))).await;
+
+    assert_eq!(
+        states(&session)[2..],
+        [working_on("helo wrld", 2), result_on("Good day, world.", 2)]
     );
+}
+
+#[tokio::test]
+async fn with_rewrite_on_open_off_a_pick_from_ready_runs_the_rewrite() {
+    let session = opening_on_ready(Some("helo wrld"), FakeSettings::default());
     session.handle(Event::ShortcutPressed).await;
 
     session.handle(Event::PickInstructionSet(id(2))).await;
 
-    assert_eq!(session.rewriter.calls().len(), 1);
-    assert_eq!(states(&session).last(), Some(&ready_on("helo wrld", 2)));
+    assert_eq!(
+        session.rewriter.calls(),
+        [("Be formal.".to_owned(), "helo wrld".to_owned())]
+    );
+    assert_eq!(
+        states(&session),
+        [
+            ready_on("helo wrld", 1),
+            working_on("helo wrld", 2),
+            result_on("Hello, world.", 2),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -1230,11 +1282,12 @@ async fn picking_a_set_keeps_a_message_a_rewrite_cant_help_and_shows_the_picked_
         choices: choices_on(active),
     };
     assert_eq!(session.settings.active_id(), id(2));
+    assert_eq!(session.rewriter.calls(), []);
     assert_eq!(states(&session), [too_long(1), too_long(2)]);
 }
 
 #[tokio::test]
-async fn picking_a_set_keeps_a_message_asking_to_set_up() {
+async fn picking_a_set_checks_the_provider_again_and_keeps_asking_to_set_up() {
     let session = session_with(
         FakeBridge::selecting("helo wrld"),
         TestRewriter::returning("unused"),
@@ -1245,6 +1298,7 @@ async fn picking_a_set_keeps_a_message_asking_to_set_up() {
     session.handle(Event::PickInstructionSet(id(2))).await;
 
     assert_eq!(session.settings.active_id(), id(2));
+    assert_eq!(session.rewriter.calls(), []);
     assert_eq!(
         states(&session).last(),
         Some(&PopupState::Message {
@@ -1254,6 +1308,28 @@ async fn picking_a_set_keeps_a_message_asking_to_set_up() {
             retryable: false,
             choices: choices_on(2),
         })
+    );
+}
+
+#[tokio::test]
+async fn picking_a_set_after_setting_up_rewrites() {
+    let session = session_with(
+        FakeBridge::selecting("helo wrld"),
+        TestRewriter::returning("Hello, world."),
+        FakeSettings::not_ready(ProviderReadiness::MissingKey),
+    );
+    session.handle(Event::ShortcutPressed).await;
+    *session.settings.readiness.lock().unwrap() = ProviderReadiness::Ready;
+
+    session.handle(Event::PickInstructionSet(id(2))).await;
+
+    assert_eq!(
+        session.rewriter.calls(),
+        [("Be formal.".to_owned(), "helo wrld".to_owned())]
+    );
+    assert_eq!(
+        states(&session).last(),
+        Some(&result_on("Hello, world.", 2))
     );
 }
 
@@ -1290,6 +1366,7 @@ async fn a_pick_that_fails_shows_the_same_state_again_so_the_dropdown_goes_back(
     session.handle(Event::PickInstructionSet(id(9))).await;
 
     assert_eq!(session.settings.active_id(), id(1));
+    assert_eq!(session.rewriter.calls().len(), 1);
     assert_eq!(
         states(&session),
         [
@@ -1301,32 +1378,9 @@ async fn a_pick_that_fails_shows_the_same_state_again_so_the_dropdown_goes_back(
 }
 
 #[tokio::test]
-async fn rewrite_after_a_pick_uses_the_picked_sets_instructions() {
-    let session = rewritten("helo wrld", "Hello, world.").await;
-    session.handle(Event::PickInstructionSet(id(2))).await;
-
-    session.handle(Event::Rewrite).await;
-
-    assert_eq!(
-        session.rewriter.calls(),
-        [
-            (INSTRUCTIONS.to_owned(), "helo wrld".to_owned()),
-            ("Be formal.".to_owned(), "helo wrld".to_owned()),
-        ]
-    );
-    assert_eq!(
-        states(&session)[2..],
-        [
-            ready_on("helo wrld", 2),
-            working_on("helo wrld", 2),
-            result_on("Hello, world.", 2),
-        ]
-    );
-}
-
-#[tokio::test]
 async fn every_state_carries_the_set_names_and_the_active_id_but_no_instructions() {
-    let session = rewritten("helo wrld", "Hello, world.").await;
+    let session = opening_on_ready(Some("helo wrld"), FakeSettings::default());
+    session.handle(Event::ShortcutPressed).await;
     session.handle(Event::PickInstructionSet(id(2))).await;
 
     let sent = serde_json::to_value(states(&session)).unwrap();
@@ -1335,9 +1389,9 @@ async fn every_state_carries_the_set_names_and_the_active_id_but_no_instructions
     assert_eq!(
         sent,
         serde_json::json!([
-            { "kind": "working", "text": "helo wrld", "choices": { "sets": sets, "active": 1 } },
-            { "kind": "result", "text": "Hello, world.", "choices": { "sets": sets, "active": 1 } },
-            { "kind": "ready", "text": "helo wrld", "choices": { "sets": sets, "active": 2 } },
+            { "kind": "ready", "text": "helo wrld", "choices": { "sets": sets, "active": 1 } },
+            { "kind": "working", "text": "helo wrld", "choices": { "sets": sets, "active": 2 } },
+            { "kind": "result", "text": "Hello, world.", "choices": { "sets": sets, "active": 2 } },
         ])
     );
 }
@@ -1496,18 +1550,76 @@ async fn switching_sets_elsewhere_keeps_a_message_a_rewrite_cant_help() {
 }
 
 #[tokio::test]
-async fn the_popups_own_pick_announced_back_changes_nothing_more() {
+async fn the_popups_own_pick_announced_back_after_it_finishes_changes_nothing_more() {
     let session = rewritten("helo wrld", "Hello, world.").await;
     session.handle(Event::PickInstructionSet(id(2))).await;
 
     session.handle(Event::InstructionSetsChanged).await;
 
+    assert_eq!(session.rewriter.calls().len(), 2);
     assert_eq!(
         states(&session),
         [
             working("helo wrld"),
             result("Hello, world."),
-            ready_on("helo wrld", 2),
+            working_on("helo wrld", 2),
+            result_on("Hello, world.", 2),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_popups_own_pick_announced_back_while_its_rewrite_runs_keeps_it_running() {
+    let (rewriter, answer) = TestRewriter::gated();
+    let session = session_with(
+        FakeBridge::selecting("helo wrld"),
+        rewriter,
+        FakeSettings::default().without_rewrite_on_open(),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    tokio::join!(session.handle(Event::PickInstructionSet(id(2))), async {
+        session.rewriter.called.notified().await;
+        session.handle(Event::InstructionSetsChanged).await;
+        let _ = answer.send(Ok("Good day, world.".to_owned()));
+    });
+
+    assert!(!session.rewriter.cancelled.load(Ordering::Relaxed));
+    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(
+        states(&session),
+        [
+            ready_on("helo wrld", 1),
+            working_on("helo wrld", 2),
+            result_on("Good day, world.", 2),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_popups_own_pick_announced_back_before_its_rewrite_starts_shows_nothing_more() {
+    let session = Arc::new(opening_on_ready(Some("helo wrld"), FakeSettings::default()));
+    let announced_to = Arc::downgrade(&session);
+    let _ = session.settings.on_set_active.set(Box::new(move || {
+        // The listener's news arrives before the pick goes on.
+        let session = announced_to.upgrade().unwrap();
+        let mut announced = pin!(session.handle(Event::InstructionSetsChanged));
+        let done = announced
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()));
+        assert!(matches!(done, Poll::Ready(())));
+    }));
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::PickInstructionSet(id(2))).await;
+
+    assert_eq!(session.rewriter.calls().len(), 1);
+    assert_eq!(
+        states(&session),
+        [
+            ready_on("helo wrld", 1),
+            working_on("helo wrld", 2),
+            result_on("Hello, world.", 2),
         ]
     );
 }

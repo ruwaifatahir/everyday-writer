@@ -27,7 +27,8 @@ use tokio::sync::{Notify, oneshot};
 
 use crate::llm::{InvalidSetting, RewriteError, Rewriter};
 use crate::settings::{
-    InstructionSetChoices, InstructionSetId, ProviderKind, ProviderReadiness, SettingsView,
+    InstructionSetChoices, InstructionSetId, InstructionSets, ProviderKind, ProviderReadiness,
+    SettingsView,
 };
 
 /// Something the user did that the session reacts to.
@@ -48,15 +49,18 @@ pub enum Event {
     /// Ignored unless the popup is open and nothing is running.
     Rewrite,
     /// A set was picked in the popup's dropdown: make it the Active
-    /// Instruction Set, cancel a rewrite in progress, clear any result or
-    /// message and show [`PopupState::Ready`]. A message a rewrite can't
-    /// help (too long, not set up) stays. Never starts a rewrite.
-    /// Ignored unless the popup is open, or if the set is already active.
+    /// Instruction Set and rewrite the same selection with it, as
+    /// [`Event::Rewrite`] does, cancelling a rewrite in progress first. A
+    /// message a rewrite can't help (too long) stays; the provider is
+    /// checked again. Ignored unless the popup is open, or if the set is
+    /// already active.
     PickInstructionSet(InstructionSetId),
     /// The instruction sets were changed in Settings or the tray. If the
-    /// Active Instruction Set or its instructions changed, acts like
-    /// [`Event::PickInstructionSet`]; otherwise shows the current state with
-    /// the new list. Ignored while the popup is hidden.
+    /// Active Instruction Set or its instructions changed, cancels a rewrite
+    /// in progress and shows [`PopupState::Ready`] without rewriting; a
+    /// message a rewrite can't help (too long, not set up) stays. Otherwise
+    /// shows the current state with the new list. Ignored while the popup is
+    /// hidden, and finds nothing new when it announces the popup's own pick.
     InstructionSetsChanged,
 }
 
@@ -355,6 +359,15 @@ struct SeenSets {
     instructions: String,
 }
 
+impl SeenSets {
+    fn of(sets: &InstructionSets) -> Self {
+        Self {
+            choices: sets.choices(),
+            instructions: sets.active().instructions.clone(),
+        }
+    }
+}
+
 /// Runs rewrites: capture, rewrite, show, then Copy, Replace or close.
 pub struct RewriteSession<B: TextBridge, R, S, P> {
     bridge: B,
@@ -404,7 +417,7 @@ where
             }
             Event::Replace => self.replace().await,
             Event::Rewrite => self.rewrite_again().await,
-            Event::PickInstructionSet(id) => self.pick_instruction_set(id),
+            Event::PickInstructionSet(id) => self.pick_instruction_set(id).await,
             Event::InstructionSetsChanged => self.instruction_sets_changed(),
         }
         self.settled.notify_waiters();
@@ -508,35 +521,67 @@ where
         self.start(state, captured, &before)
     }
 
-    /// Makes set `id` the Active Instruction Set and brings the popup up to
-    /// date as for a change made elsewhere: Ready, which cancels a rewrite
-    /// in progress and clears a result or message, except that a message a
-    /// rewrite can't help stays. If the set can't be made active, shows the
-    /// same state again, so the dropdown goes back to the active set.
-    fn pick_instruction_set(&self, id: InstructionSetId) {
-        if !matches!(self.lock().phase, Phase::Open { .. })
-            || self.settings.instruction_set_choices().active == id
-        {
+    /// Makes set `id` the Active Instruction Set and rewrites the captured
+    /// selection with it, as [`Event::Rewrite`] does, cancelling a rewrite in
+    /// progress first. If the set can't be made active, shows the same state
+    /// again, so the dropdown goes back to the active set.
+    async fn pick_instruction_set(&self, id: InstructionSetId) {
+        let mut picked = self.settings.instruction_sets();
+        if picked.active().id == id {
             return;
+        }
+        {
+            let mut state = self.lock();
+            if !matches!(state.phase, Phase::Open { .. }) {
+                return;
+            }
+            if picked.set_active(id).is_err() {
+                self.pick_failed(&mut state);
+                return;
+            }
+            // The change is announced back to this session, before or after
+            // the rewrite below starts: either way it finds nothing new.
+            state.seen = Some(SeenSets::of(&picked));
         }
         // Outside the session lock: the change is announced to listeners
         // right away, and one may tell this session about it.
-        if self.settings.set_active_instruction_set(id).is_ok() {
-            // Whichever of this and the announcement comes second finds the
-            // popup up to date and shows nothing new.
-            self.instruction_sets_changed();
+        if self.settings.set_active_instruction_set(id).is_err() {
+            self.pick_failed(&mut self.lock());
             return;
         }
+        let working = self.restart(&mut self.lock());
+        if let Some(working) = working {
+            self.rewrite(working).await;
+        }
+    }
+
+    /// Shows the same state again after a pick that couldn't be made
+    /// active, so the dropdown goes back to the active set.
+    fn pick_failed(&self, state: &mut State<B::Window>) {
         tracing::warn!("the instruction set picked in the popup couldn't be made active");
-        let state = self.lock();
         if let Phase::Open { captured, view } = &state.phase {
+            state.seen = Some(self.current_sets());
             self.popup.render(&self.shown(captured, view));
+        }
+    }
+
+    /// Starts a new rewrite of the captured selection when the popup is
+    /// open, cancelling one in progress, and shows it even if only the
+    /// dropdown's choices changed.
+    fn restart(&self, state: &mut State<B::Window>) -> Option<Working> {
+        match std::mem::replace(&mut state.phase, Phase::Hidden) {
+            // Dropping the old view cancels a running rewrite.
+            Phase::Open { captured, .. } => self.start(state, captured, &PopupState::Hidden),
+            other => {
+                state.phase = other;
+                None
+            }
         }
     }
 
     /// Brings an open popup up to date with the instruction sets. A new
     /// Active Instruction Set, or new instructions for it, clears what the
-    /// popup shows to Ready, as a pick does; a message a rewrite can't help
+    /// popup shows to Ready without rewriting; a message a rewrite can't help
     /// stays. Any other change only shows the new list.
     fn instruction_sets_changed(&self) {
         let now = self.current_sets();
@@ -567,11 +612,7 @@ where
     /// The instruction sets as they are now, read at one moment so the list
     /// and the active instructions match.
     fn current_sets(&self) -> SeenSets {
-        let sets = self.settings.instruction_sets();
-        SeenSets {
-            choices: sets.choices(),
-            instructions: sets.active().instructions.clone(),
-        }
+        SeenSets::of(&self.settings.instruction_sets())
     }
 
     /// The popup state `view` shows for `captured`, with the current
