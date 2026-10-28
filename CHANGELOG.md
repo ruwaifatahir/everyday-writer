@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 - 2026-10-28
 
 ### Features
 - The popup has a **Rewrite** button. It runs a new rewrite of the same selection with your active instruction set, so you don't have to select the text again. It sits on the left of the action bar when a result is shown, across from Copy and Replace, and it's the main button (press Enter) when a rewrite fails because the provider was busy, unreachable, too slow or sent back an error.
