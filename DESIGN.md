@@ -186,8 +186,8 @@ as well.
   bar's only button: lavender, focused, with Enter, beside the Esc hint.
   Focus stays in the dropdown when the pick came from its arrow keys.
 - Working: a plain "Rewriting…" caption over the selection itself, set
-  like the result, with the reading band. Rewrite, Copy and Replace
-  disabled.
+  like the result, with the reading band. Rewrite is the bar's only
+  button, outlined and disabled, beside the Esc hint.
 - Result: a plain "Rewritten" caption, the text in Figtree 15px fading in
   where the selection was, Replace focused. Rewrite and Copy are outlined
   beside it. Long text fades into the footer rule and scrolls. With three
@@ -198,7 +198,9 @@ as well.
   Settings button at the compact 30px size when there is something to fix,
   so a two-line message still clears the footer. When trying again can
   fix it (busy, unreachable, too slow, an error or nothing back), Rewrite
-  is the bar's only button: lavender, focused, with Enter.
+  is the bar's only button: lavender, focused, with Enter. Otherwise the
+  bar has no button. Either way the Esc hint shows. Copy and Replace
+  appear only with a result.
 
 ## Motion
 

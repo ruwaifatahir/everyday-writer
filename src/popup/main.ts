@@ -95,18 +95,16 @@ function show(state: PopupState): void {
   preview.hidden = state.kind !== "ready";
   result.hidden = !hasResult;
   message.hidden = state.kind !== "message";
-  // Rewrite sits beside Copy and Replace while working and on a result;
-  // when a selection waits or on a failed rewrite it is the only action,
-  // with Enter.
+  // Copy and Replace show only on a result, with Rewrite beside them.
+  // While working Rewrite shows alone, disabled; when a selection waits or
+  // on a failed rewrite it is the only action, with Enter.
   rewrite.hidden = !(state.kind === "working" || hasResult || leads);
   rewrite.disabled = state.kind === "working";
   rewrite.classList.toggle("primary", leads);
   rewrite.classList.toggle("secondary", !leads);
   rewriteKey.hidden = !leads;
-  copy.hidden = leads;
-  replace.hidden = leads;
-  copy.disabled = !hasResult;
-  replace.disabled = !hasResult;
+  copy.hidden = !hasResult;
+  replace.hidden = !hasResult;
   // The message itself is read out with the status, not only "Not rewritten".
   statusDetail.textContent = state.kind === "message" ? `. ${state.text}` : "";
   // The selection only stays in the page while it is shown.

@@ -16,7 +16,7 @@ Record each run in the results table at the end: date, build, Windows version an
 
 | # | Case | Expected |
 |---|---|---|
-| C1 | Select text in Notepad, press the shortcut | Popup opens near the mouse, shows working, then the result |
+| C1 | Select text in Notepad, press the shortcut | Popup opens near the mouse, shows working (only **Rewrite**, disabled, and the Esc hint), then the result with Rewrite, Copy and Replace |
 | C2 | Same in Word, a Chrome text field, Slack and Windows Terminal | The result shows in each |
 | C3 | Switch to the Urdu or Arabic layout, repeat C1 | Works; no literal "c" or "v" typed into the text |
 | C4 | Use a shortcut with Alt (set it in Settings), rewrite; repeat with a Win shortcut saved by an earlier version | No Start menu, colour filter, menu bar or other Windows shortcut fires |
@@ -38,9 +38,9 @@ Record each run in the results table at the end: date, build, Windows version an
 | P7 | A long error message (e.g. a bad Custom URL) | Text wraps inside the popup |
 | P8 | A provider that never answers (e.g. a stalled local server) | "OpenAI took too long. Try again." (the provider you chose) after 30 seconds |
 | P9 | Disconnect from the internet, rewrite | Friendly no-internet message, with **Rewrite** focused and showing Enter |
-| P10 | With a result shown, click **Rewrite** | Rewrite, Copy and Replace sit side by side, the Esc hint gives way; the popup shows working on the same selection, Rewrite disabled, then a new result. Enter on the result still replaces |
+| P10 | With a result shown, click **Rewrite** | Rewrite, Copy and Replace sit side by side, the Esc hint gives way; the popup shows working on the same selection with only Rewrite, disabled, and the Esc hint (no Copy or Replace), then a new result. Enter on the result still replaces |
 | P11 | After P9, reconnect and press Enter | A new rewrite of the same selection runs and its result shows |
-| P12 | The no-key, too-long and rejected-key messages | No **Rewrite** button; only their current action |
+| P12 | The no-key, too-long and rejected-key messages | No **Rewrite**, Copy or Replace button; only their current action, and the Esc hint |
 | P13 | Press the shortcut while the popup is rewriting | Nothing happens; the running rewrite finishes as usual |
 | P14 | Open the popup with two or more sets | The header shows the instruction set dropdown with the active set picked; it lists every set by name, in the same order as Settings and the tray |
 | P15 | With a result shown, pick another set in the dropdown | No rewrite starts. The result is cleared and the popup shows "Ready to rewrite" over the selection, with **Rewrite** as the only button (primary, Enter) and the Esc hint; no Copy or Replace |

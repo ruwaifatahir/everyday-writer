@@ -240,7 +240,7 @@ body[data-ready] {
   font-size: 14px;
 }
 
-/* Action bar: the same two actions every time */
+/* Action bar */
 
 .actions {
   padding: var(--space-10) var(--space-10) var(--space-10) var(--space-16);
@@ -255,9 +255,9 @@ body[data-ready] {
   color: var(--ink-soft);
 }
 
-/* Rewrite, Copy and Replace fill the 400px bar, so the Esc hint gives way
-   (✕ still says "Close (Esc)"). */
-.popup:is([data-state="working"], [data-state="result"]) .keys {
+/* On a result Rewrite, Copy and Replace fill the 400px bar, so the Esc hint
+   gives way (✕ still says "Close (Esc)"). */
+.popup[data-state="result"] .keys {
   display: none;
 }
 
