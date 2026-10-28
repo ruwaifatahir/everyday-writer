@@ -22,3 +22,5 @@
 ## Comments
 
 **2026-10-28:** Done in `868cc68` and `a6a83cb`. The popup stays 400 × 220: the dropdown fits in the existing header. A pick that can't be saved sends the same state again so the dropdown goes back to the real active set. Enter in the dropdown runs Rewrite on Ready. The glossary wording replaces "Exactly one is active at any time." After review (`e5a0e3c`), a pick keeps messages a rewrite can't help (too long, not set up), the same rule as changes from elsewhere.
+
+**2026-10-28:** The rule that a pick never starts a rewrite, and the Ready view after a pick, are replaced by [ticket 05](05-rewrite-on-pick.md): a pick in the popup now rewrites at once.
