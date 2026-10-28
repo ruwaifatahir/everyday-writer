@@ -6,6 +6,7 @@
 - The popup has a **Rewrite** button. It runs a new rewrite of the same selection with your active instruction set, so you don't have to select the text again. It sits next to Copy and Replace when a result is shown, and it's the main button (press Enter) when a rewrite fails because the provider was busy, unreachable, too slow or sent back an error.
 - The popup shows your instruction sets in a dropdown at the top, with the active one picked. Pick another set there and it becomes the active set everywhere, in the tray and Settings too. Picking a set doesn't rewrite on its own: it stops a rewrite in progress, clears the result and waits with your selection until you press **Rewrite** (or Enter).
 - New **Rewrite on open** switch in Settings, under Shortcut and startup. It starts on, so the shortcut rewrites at once as before. Turn it off and the shortcut opens the popup with your selection and sends nothing until you press **Rewrite** (or Enter), so you can pick a set first.
+- The popup's dropdown stays in step with Settings and the tray while the popup is open. Adding, renaming or deleting a set updates the list; switching the active set, or editing its instructions, clears the result and waits for **Rewrite**, as a pick in the popup does.
 
 ### Changes
 - Pressing the shortcut while the popup is open now works like **Rewrite**. While a rewrite is running it does nothing, instead of starting over.

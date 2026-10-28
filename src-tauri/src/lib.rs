@@ -167,6 +167,11 @@ fn start_rewrite_session(app: &App) -> tauri::Result<()> {
         popup,
     );
     app.manage(Arc::new(session));
+    // Listeners run inside the change, which the session's own pick makes:
+    // hand the session the news on the async runtime, never in place.
+    let handle = app.handle().clone();
+    app.state::<Arc<AppSettings>>()
+        .on_instruction_sets_change(move |_| popup::send(&handle, Event::InstructionSetsChanged));
     popup::create(app.handle())?;
     Ok(())
 }

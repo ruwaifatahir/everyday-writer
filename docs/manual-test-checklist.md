@@ -52,6 +52,11 @@ Record each run in the results table at the end: date, build, Windows version an
 | P21 | Only one instruction set | The dropdown is shown, greyed out and can't be opened; the layout is the same as with several sets |
 | P22 | A set with a long name | The name ends in an ellipsis; the caption, dropdown and ✕ stay on one line |
 | P23 | Reduced motion on (Windows: Animation effects off), pick a set | The selection appears without movement |
+| P24 | With a result shown, switch the active set from the tray | The dropdown follows; no rewrite starts; the result is cleared and the popup shows Ready over the selection |
+| P25 | With a result shown, rename another set, add a set and delete a set in Settings | The dropdown lists the new names and sets at once; the result stays shown |
+| P26 | With a result shown, edit the active set's instructions in Settings and save | The result is cleared and the popup shows Ready; Rewrite uses the new instructions |
+| P27 | With a result shown, delete the active set in Settings | The dropdown drops it and picks the new active set; the popup shows Ready |
+| P28 | With the too-long message shown, switch the set from the tray | The message stays; the dropdown follows |
 
 ## Replace
 
@@ -235,7 +240,7 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 |---|---|---|
 | Date / build / Windows | | |
 | C1–C8 | | |
-| P1–P23 | | |
+| P1–P28 | | |
 | R1–R5 | | |
 | K1–K10 | | |
 | S1–S16 | | |
