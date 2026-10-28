@@ -121,6 +121,10 @@ pub struct Settings {
     pub shortcut: String,
     /// Whether the app starts when the user signs in to Windows.
     pub start_with_windows: bool,
+    /// Whether the shortcut starts the rewrite at once. Off, it opens the
+    /// popup on Ready and nothing is sent until the user presses Rewrite.
+    /// A file from before this setting loads with it on.
+    pub rewrite_on_open: bool,
     /// What the update controller keeps between runs, stored as top-level
     /// fields of the file.
     #[serde(flatten)]
@@ -137,6 +141,7 @@ impl Default for Settings {
             custom_base_url: String::new(),
             shortcut: crate::shortcut::DEFAULT_SHORTCUT.to_owned(),
             start_with_windows: true,
+            rewrite_on_open: true,
             updates: Remembered::default(),
             instruction_sets: InstructionSets::default(),
         }

@@ -484,7 +484,8 @@ where
     }
 
     /// Acts on a finished capture: hides the popup again when nothing was
-    /// selected, or opens it for the selection.
+    /// selected, or opens it for the selection. With Rewrite on open off,
+    /// it opens on Ready and sends nothing.
     fn captured(&self, captured: Option<Captured<B::Window>>) -> Option<Working> {
         let mut state = self.lock();
         if !matches!(state.phase, Phase::Capturing) {
@@ -496,7 +497,13 @@ where
             state.phase = Phase::Hidden;
             return None;
         };
-        self.start(&mut state, captured, &PopupState::Hidden)
+        if self.settings.rewrite_on_open() {
+            return self.start(&mut state, captured, &PopupState::Hidden);
+        }
+        let view = too_long(&captured.selection).map_or(View::Ready, View::Message);
+        self.popup.render(&self.shown(&captured, &view));
+        state.phase = Phase::Open { captured, view };
+        None
     }
 
     /// Opens the popup for `captured`, which showed `before`. Shows a
@@ -509,11 +516,8 @@ where
         captured: Captured<B::Window>,
         before: &PopupState,
     ) -> Option<Working> {
-        let refused = if captured.selection.chars().count() > MAX_SELECTION_CHARS {
-            Some(message(TOO_LONG, None))
-        } else {
-            not_ready_message(self.settings.provider_readiness())
-        };
+        let refused = too_long(&captured.selection)
+            .or_else(|| not_ready_message(self.settings.provider_readiness()));
         let (view, working) = if let Some(notice) = refused {
             (View::Message(notice), None)
         } else {
@@ -673,6 +677,11 @@ fn is_idle<W>(phase: &Phase<W>) -> bool {
         Phase::Open { view, .. } => !matches!(view, View::Working { .. }),
         Phase::Capturing | Phase::Replacing => false,
     }
+}
+
+/// The too-long message if `selection` is over [`MAX_SELECTION_CHARS`].
+fn too_long(selection: &str) -> Option<Notice> {
+    (selection.chars().count() > MAX_SELECTION_CHARS).then(|| message(TOO_LONG, None))
 }
 
 /// The message shown when the provider can't take a rewrite yet, naming

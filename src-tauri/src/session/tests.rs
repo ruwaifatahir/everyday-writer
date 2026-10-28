@@ -175,11 +175,12 @@ impl Rewriter for TestRewriter {
 
 const INSTRUCTIONS: &str = "Fix mistakes only.";
 
-/// Settings whose readiness and instruction sets a test can set. They start
-/// with two sets: "Fix" (id 1, [`INSTRUCTIONS`], active) and "Formal" (id 2,
-/// "Be formal.").
+/// Settings whose readiness, Rewrite on open and instruction sets a test can
+/// set. Rewrite on open starts on, and there are two sets: "Fix" (id 1,
+/// [`INSTRUCTIONS`], active) and "Formal" (id 2, "Be formal.").
 struct FakeSettings {
     readiness: ProviderReadiness,
+    rewrite_on_open: bool,
     sets: Mutex<InstructionSets>,
 }
 
@@ -193,6 +194,7 @@ impl Default for FakeSettings {
         .unwrap();
         Self {
             readiness: ProviderReadiness::Ready,
+            rewrite_on_open: true,
             sets: Mutex::new(sets),
         }
     }
@@ -203,6 +205,14 @@ impl FakeSettings {
         Self {
             readiness,
             ..Self::default()
+        }
+    }
+
+    /// These settings with Rewrite on open off.
+    fn without_rewrite_on_open(self) -> Self {
+        Self {
+            rewrite_on_open: false,
+            ..self
         }
     }
 
@@ -228,6 +238,10 @@ impl SettingsView for FakeSettings {
 
     fn provider_readiness(&self) -> ProviderReadiness {
         self.readiness
+    }
+
+    fn rewrite_on_open(&self) -> bool {
+        self.rewrite_on_open
     }
 
     fn active_instructions(&self) -> String {
@@ -1288,4 +1302,96 @@ fn debug_output_hides_the_selection_in_ready() {
     let shown = format!("{:?}", ready_on("SECRET-SELECTION", 1));
 
     assert!(!shown.contains("SECRET-SELECTION"));
+}
+
+// Rewrite on open off: the shortcut opens the popup on Ready.
+
+/// A session with Rewrite on open off whose capture finds `selection`.
+fn opening_on_ready(selection: Option<&str>, settings: FakeSettings) -> TestSession {
+    let bridge = selection.map_or_else(FakeBridge::default, FakeBridge::selecting);
+    session_with(
+        bridge,
+        TestRewriter::returning("Hello, world."),
+        settings.without_rewrite_on_open(),
+    )
+}
+
+#[tokio::test]
+async fn with_rewrite_on_open_off_the_shortcut_shows_ready_and_sends_nothing() {
+    let session = opening_on_ready(Some("helo wrld"), FakeSettings::default());
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(states(&session), [ready_on("helo wrld", 1)]);
+    assert_eq!(session.rewriter.calls(), []);
+}
+
+#[tokio::test]
+async fn with_rewrite_on_open_off_a_selection_over_5000_characters_shows_too_long() {
+    let session = opening_on_ready(Some(&"a".repeat(5_001)), FakeSettings::default());
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(
+        states(&session),
+        [message(
+            "This text is too long. Select up to 5,000 characters.",
+            None
+        )]
+    );
+    assert_eq!(session.rewriter.calls(), []);
+}
+
+#[tokio::test]
+async fn with_rewrite_on_open_off_nothing_selected_leaves_the_popup_hidden() {
+    let session = opening_on_ready(None, FakeSettings::default());
+
+    session.handle(Event::ShortcutPressed).await;
+
+    assert_eq!(states(&session), []);
+    assert_eq!(session.rewriter.calls(), []);
+}
+
+#[tokio::test]
+async fn with_rewrite_on_open_off_rewrite_from_ready_sends_the_selection() {
+    let session = opening_on_ready(Some("helo wrld"), FakeSettings::default());
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::Rewrite).await;
+
+    assert_eq!(
+        session.rewriter.calls(),
+        [(INSTRUCTIONS.to_owned(), "helo wrld".to_owned())]
+    );
+    assert_eq!(
+        states(&session),
+        [
+            ready_on("helo wrld", 1),
+            working("helo wrld"),
+            result("Hello, world.")
+        ]
+    );
+}
+
+#[tokio::test]
+async fn with_rewrite_on_open_off_and_no_key_the_popup_opens_on_ready_and_rewrite_asks_for_one() {
+    let session = opening_on_ready(
+        Some("helo wrld"),
+        FakeSettings::not_ready(ProviderReadiness::MissingKey),
+    );
+    session.handle(Event::ShortcutPressed).await;
+
+    session.handle(Event::Rewrite).await;
+
+    assert_eq!(
+        states(&session),
+        [
+            ready_on("helo wrld", 1),
+            message(
+                "Add your API key to get started.",
+                Some(MessageAction::OpenSettings)
+            )
+        ]
+    );
+    assert_eq!(session.rewriter.calls(), []);
 }

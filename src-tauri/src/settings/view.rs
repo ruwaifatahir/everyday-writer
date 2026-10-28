@@ -24,6 +24,10 @@ pub trait SettingsView: Send + Sync {
     /// Whether a rewrite can be sent and, if not, the first thing missing.
     fn provider_readiness(&self) -> ProviderReadiness;
 
+    /// Whether the shortcut starts the rewrite at once. When off, it opens
+    /// the popup on Ready and waits for Rewrite.
+    fn rewrite_on_open(&self) -> bool;
+
     /// The active instruction set's instructions, which every rewrite
     /// follows.
     fn active_instructions(&self) -> String;
@@ -49,6 +53,10 @@ impl<T: SettingsView + ?Sized> SettingsView for Arc<T> {
 
     fn provider_readiness(&self) -> ProviderReadiness {
         (**self).provider_readiness()
+    }
+
+    fn rewrite_on_open(&self) -> bool {
+        (**self).rewrite_on_open()
     }
 
     fn active_instructions(&self) -> String {
@@ -342,6 +350,13 @@ impl SettingsView for AppSettings {
         } else {
             ProviderReadiness::Ready
         }
+    }
+
+    fn rewrite_on_open(&self) -> bool {
+        self.current
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .rewrite_on_open
     }
 
     fn active_instructions(&self) -> String {
@@ -893,6 +908,22 @@ mod tests {
             Some("1.1.0")
         );
         assert_eq!(saved.updates.last_run_version.as_deref(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn turning_rewrite_on_open_off_applies_at_once_and_saving_the_form_keeps_it() {
+        let path = temp_file();
+        let (app, _) = open(&path, Arc::default());
+        assert!(app.rewrite_on_open());
+
+        app.modify(|s| s.rewrite_on_open = false).unwrap();
+        assert!(!app.rewrite_on_open());
+        // The page sends only what it edits; the rest arrives as defaults.
+        app.save_form(settings(ProviderKind::Gemini, "gemini-test"))
+            .unwrap();
+        let (restarted, _) = open(&path, Arc::default());
+
+        assert!(!restarted.rewrite_on_open());
     }
 
     #[test]
