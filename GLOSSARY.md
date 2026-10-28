@@ -25,7 +25,7 @@ A named, user-owned set of instructions that decides what a rewrite does. The us
 _Avoid_: Template, preset, prompt
 
 **Active Instruction Set**:
-The one instruction set the shortcut uses. Exactly one is active at any time.
+The one instruction set a rewrite uses. Changing it in the popup, tray or settings changes it everywhere.
 _Avoid_: Current set, selected set, default set
 
 **Starter Template**:

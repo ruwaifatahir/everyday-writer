@@ -1,16 +1,24 @@
 // Popup window. It has no logic of its own: it shows the state the rewrite
 // session sends and turns buttons and keys into session events.
 //
-// The result is user data: it is only ever put into the page, never logged.
+// The selection and the result are user data: they are only ever put into
+// the page, never logged.
 
 import "../shared/native-feel";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+/** The instruction sets the dropdown lists: names only, never instructions. */
+type Choices = {
+  sets: { id: number; name: string }[];
+  active: number;
+};
+
 type PopupState =
   | { kind: "hidden" }
-  | { kind: "working"; text: string }
-  | { kind: "result"; text: string }
+  | { kind: "ready"; text: string; choices: Choices }
+  | { kind: "working"; text: string; choices: Choices }
+  | { kind: "result"; text: string; choices: Choices }
   | {
       kind: "message";
       text: string;
@@ -18,6 +26,7 @@ type PopupState =
       copied: boolean;
       /** The rewrite failed in a way trying again can fix. */
       rewrite: boolean;
+      choices: Choices;
     };
 
 function element<T extends HTMLElement>(id: string): T {
@@ -29,7 +38,9 @@ function element<T extends HTMLElement>(id: string): T {
 const popup = element<HTMLElement>("popup");
 const statusText = element<HTMLSpanElement>("status-text");
 const statusDetail = element<HTMLSpanElement>("status-detail");
+const instructionSet = element<HTMLSelectElement>("instruction-set");
 const working = element<HTMLDivElement>("working");
+const preview = element<HTMLElement>("preview");
 const result = element<HTMLElement>("result");
 const message = element<HTMLDivElement>("message");
 const messageText = element<HTMLParagraphElement>("message-text");
@@ -42,9 +53,34 @@ const close = element<HTMLButtonElement>("close");
 
 let current: PopupState = { kind: "hidden" };
 
-/** Whether Rewrite leads, as on a failed rewrite: primary, with Enter. */
+/** Whether Rewrite leads, primary with Enter: when a selection waits
+ * (Ready) and on a failed rewrite. */
 function rewriteLeads(state: PopupState): boolean {
-  return state.kind === "message" && state.rewrite;
+  return state.kind === "ready" || (state.kind === "message" && state.rewrite);
+}
+
+/** The sets the dropdown lists now, so it is rebuilt only when they change. */
+let listed = "";
+
+/** Lists `choices` in the dropdown with the active set picked. Disabled
+ * while there is only one set, so the layout never changes. */
+function showChoices(choices: Choices | null): void {
+  const sets = choices?.sets ?? [];
+  const names = JSON.stringify(sets);
+  if (names !== listed) {
+    listed = names;
+    instructionSet.replaceChildren(
+      ...sets.map(({ id, name }) => new Option(name, String(id))),
+    );
+  }
+  if (choices) instructionSet.value = String(choices.active);
+  instructionSet.disabled = sets.length < 2;
+}
+
+/** Moves focus to `target`, unless the user is in the dropdown: the arrow
+ * keys there pick a set at each press, so focus must stay put. */
+function focusUnlessPicking(target: HTMLElement): void {
+  if (document.activeElement !== instructionSet) target.focus();
 }
 
 function show(state: PopupState): void {
@@ -52,11 +88,14 @@ function show(state: PopupState): void {
   popup.dataset.state = state.kind;
   const hasResult = state.kind === "result";
   const leads = rewriteLeads(state);
+  showChoices(state.kind === "hidden" ? null : state.choices);
   working.hidden = state.kind !== "working";
+  preview.hidden = state.kind !== "ready";
   result.hidden = !hasResult;
   message.hidden = state.kind !== "message";
   // Rewrite sits beside Copy and Replace while working and on a result;
-  // on a failed rewrite it is the only action, with Enter.
+  // when a selection waits or on a failed rewrite it is the only action,
+  // with Enter.
   rewrite.hidden = !(state.kind === "working" || hasResult || leads);
   rewrite.disabled = state.kind === "working";
   rewrite.classList.toggle("primary", leads);
@@ -68,8 +107,9 @@ function show(state: PopupState): void {
   replace.disabled = !hasResult;
   // The message itself is read out with the status, not only "Not rewritten".
   statusDetail.textContent = state.kind === "message" ? `. ${state.text}` : "";
-  // The selection is user data too: it only stays in the page while working.
+  // The selection only stays in the page while it is shown.
   working.textContent = state.kind === "working" ? state.text : "";
+  preview.textContent = state.kind === "ready" ? state.text : "";
 
   switch (state.kind) {
     case "hidden":
@@ -80,6 +120,12 @@ function show(state: PopupState): void {
       messageText.textContent = "";
       openSettings.hidden = true;
       break;
+    case "ready":
+      statusText.textContent = "Ready to rewrite";
+      result.textContent = "";
+      preview.scrollTop = 0;
+      focusUnlessPicking(rewrite);
+      break;
     case "working":
       statusText.textContent = "Rewriting…";
       result.textContent = "";
@@ -89,14 +135,14 @@ function show(state: PopupState): void {
       statusText.textContent = "Rewritten";
       result.textContent = state.text;
       result.scrollTop = 0;
-      replace.focus();
+      focusUnlessPicking(replace);
       break;
     case "message":
       statusText.textContent = state.copied ? "Copied" : "Not rewritten";
       messageText.textContent = state.text;
       openSettings.hidden = state.action !== "openSettings";
-      if (leads) rewrite.focus();
-      else if (!openSettings.hidden) openSettings.focus();
+      if (leads) focusUnlessPicking(rewrite);
+      else if (!openSettings.hidden) focusUnlessPicking(openSettings);
       break;
   }
 }
@@ -112,8 +158,8 @@ function blank(): void {
   show({ kind: "hidden" });
 }
 
-function send(command: string): void {
-  invoke(command).catch(() => {
+function send(command: string, args?: Record<string, unknown>): void {
+  invoke(command, args).catch(() => {
     // The session ignores events that don't fit its state; nothing to show.
   });
 }
@@ -137,6 +183,11 @@ function closePopup(): void {
   send("popup_close");
 }
 
+// Picking a set makes it active everywhere and shows Ready. The session
+// sends the new state, which also puts the dropdown right if it failed.
+instructionSet.addEventListener("change", () => {
+  send("popup_pick_instruction_set", { id: Number(instructionSet.value) });
+});
 rewrite.addEventListener("click", rewriteText);
 copy.addEventListener("click", () => send("popup_copy"));
 replace.addEventListener("click", replaceText);
@@ -161,12 +212,16 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key !== "Enter") return;
   // Enter is the main action from the text or that button itself: Replace
-  // on a result, Rewrite on a failed rewrite. On another button it presses
-  // that button instead.
+  // on a result, Rewrite when a selection waits or on a failed rewrite.
+  // After picking a set with the arrow keys, Enter in the dropdown
+  // rewrites too. On another button it presses that button instead.
   if (current.kind === "result" && enterIsMainAction(result, replace)) {
     event.preventDefault();
     replaceText();
-  } else if (rewriteLeads(current) && enterIsMainAction(message, rewrite)) {
+  } else if (
+    rewriteLeads(current) &&
+    enterIsMainAction(message, preview, rewrite, instructionSet)
+  ) {
     event.preventDefault();
     rewriteText();
   }

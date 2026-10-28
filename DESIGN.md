@@ -167,6 +167,19 @@ border or a fill change:
 
 ## Popup states
 
+Every state's header carries the **instruction set dropdown** between the
+caption and ✕: a native `select` labelled "Instruction set", 30px tall,
+2px ink border, 12px radius, 14px/500 ink text and the picker's ink-soft
+chevron, at most 220px wide with long names cut by an ellipsis. It lists
+the sets by name in Settings' order with the active one picked. With one
+set it stays shown but disabled (stone border, ink-soft text), so the
+layout never changes. It fits the 44px header, so the popup stays
+400 x 220. Picking a set never rewrites: it shows Ready.
+
+- Ready: a plain "Ready to rewrite" caption over the selection, set like
+  the result and fading in where it will land, scrollable. Rewrite is the
+  bar's only button: lavender, focused, with Enter, beside the Esc hint.
+  Focus stays in the dropdown when the pick came from its arrow keys.
 - Working: a plain "Rewriting…" caption over the selection itself, set
   like the result, with the reading band. Rewrite, Copy and Replace
   disabled.

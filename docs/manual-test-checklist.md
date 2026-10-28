@@ -42,6 +42,16 @@ Record each run in the results table at the end: date, build, Windows version an
 | P11 | After P9, reconnect and press Enter | A new rewrite of the same selection runs and its result shows |
 | P12 | The no-key, too-long and rejected-key messages | No **Rewrite** button; only their current action |
 | P13 | Press the shortcut while the popup is rewriting | Nothing happens; the running rewrite finishes as usual |
+| P14 | Open the popup with two or more sets | The header shows the instruction set dropdown with the active set picked; it lists every set by name, in the same order as Settings and the tray |
+| P15 | With a result shown, pick another set in the dropdown | No rewrite starts. The result is cleared and the popup shows "Ready to rewrite" over the selection, with **Rewrite** as the only button (primary, Enter) and the Esc hint; no Copy or Replace |
+| P16 | Pick a set while the popup is rewriting, then wait | The rewrite stops; the popup shows Ready, and the late answer never appears |
+| P17 | After P15, press Enter (or click **Rewrite**) | A rewrite of the same selection runs with the picked set's instructions |
+| P18 | After P15, open the tray menu and Settings | The tray's check mark and Settings' Active badge are on the set picked in the popup; the next shortcut press uses it too |
+| P19 | Tab to the dropdown, change it with the arrow keys | Focus stays in the dropdown at each press; each press shows Ready with that set; Enter then rewrites |
+| P20 | A screen reader on the dropdown | It is announced as "Instruction set" with the picked set's name |
+| P21 | Only one instruction set | The dropdown is shown, greyed out and can't be opened; the layout is the same as with several sets |
+| P22 | A set with a long name | The name ends in an ellipsis; the caption, dropdown and ✕ stay on one line |
+| P23 | Reduced motion on (Windows: Animation effects off), pick a set | The selection appears without movement |
 
 ## Replace
 
@@ -220,7 +230,7 @@ Not yet run: the cases need a real Windows desktop and other apps. Fill in one c
 |---|---|---|
 | Date / build / Windows | | |
 | C1–C8 | | |
-| P1–P13 | | |
+| P1–P23 | | |
 | R1–R5 | | |
 | K1–K10 | | |
 | S1–S16 | | |

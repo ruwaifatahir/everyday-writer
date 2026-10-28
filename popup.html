@@ -12,6 +12,11 @@
     <main class="popup" id="popup" data-state="working">
       <header class="bar">
         <p class="status" id="status" role="status" aria-live="polite"><span id="status-text">Rewriting…</span><span class="visually-hidden" id="status-detail"></span></p>
+        <span class="set-picker">
+          <label class="visually-hidden" for="instruction-set">Instruction set</label>
+          <select id="instruction-set" title="Instruction set"></select>
+          <svg class="set-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
+        </span>
         <button type="button" class="icon-button" id="close" aria-label="Close" title="Close (Esc)">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
         </button>
@@ -19,6 +24,8 @@
 
       <section class="body">
         <div class="working" id="working" aria-hidden="true"></div>
+        <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must take focus so the keyboard can scroll it -->
+        <section class="preview" id="preview" aria-label="Selected text" tabindex="0" hidden></section>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must take focus so the keyboard can scroll it -->
         <section class="result" id="result" aria-label="Rewritten text" tabindex="0" hidden></section>
         <div class="message" id="message" hidden>

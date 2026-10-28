@@ -33,7 +33,8 @@ body[data-ready] {
   height: 100%;
 }
 
-/* State line: a plain caption saying where the rewrite is, and close. */
+/* State line: a plain caption saying where the rewrite is, the instruction
+   set dropdown, and close. */
 
 .bar {
   display: flex;
@@ -44,6 +45,7 @@ body[data-ready] {
 }
 
 .status {
+  flex: none;
   margin-right: auto;
   font-size: var(--text-caption);
   line-height: 1;
@@ -52,7 +54,67 @@ body[data-ready] {
   white-space: nowrap;
 }
 
-/* Body: the selection being rewritten, the result, or a message */
+/* The instruction set dropdown: a native select at the compact 30px size,
+   with the picker's ink-soft chevron. It takes what the caption and ✕
+   leave and cuts a long name short with an ellipsis. */
+.set-picker {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.set-picker select {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-sm);
+  padding: 0 32px 0 var(--space-12);
+  font: inherit;
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: var(--border) solid var(--ink);
+  border-radius: var(--radius-control);
+  appearance: none;
+  cursor: default;
+  transition: background-color var(--motion-fast) var(--ease);
+}
+
+.set-picker select:hover:enabled {
+  background: var(--fill-hover);
+}
+
+.set-picker select:focus-visible {
+  outline: var(--border) solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* One set: shown so the layout never changes, plainly not a choice. */
+.set-picker select:disabled {
+  color: var(--ink-soft);
+  border-color: var(--stone);
+}
+
+.set-chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--space-10);
+  width: 16px;
+  height: 16px;
+  translate: 0 -50%;
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Body: the selection being rewritten or waiting, the result, or a message */
 
 .body {
   position: relative;
@@ -65,6 +127,8 @@ body[data-ready] {
    plays its wait over the text too). The result then lands in the same
    place. The band holds off for a beat, so a quick rewrite never flickers. */
 .working,
+.preview,
+.preview,
 .result {
   height: 100%;
   padding-right: var(--space-8);
@@ -106,7 +170,9 @@ body[data-ready] {
   }
 }
 
-/* The result takes the selection's place, so it fades in without travel. */
+/* The result takes the selection's place, and a waiting selection takes
+   the result's, so both fade in without travel. */
+.preview,
 .result {
   overflow-y: auto;
   color: var(--ink);
@@ -130,14 +196,16 @@ body[data-ready] {
   }
 }
 
-/* Focusable so the keyboard can scroll it; Enter there is still Replace.
+/* Focusable so the keyboard can scroll it; Enter there is still the main
+   action (Replace, or Rewrite on a waiting selection).
    The fade mask would clip an outline on the text itself, so the ring is
    drawn on the body around it. */
+.preview:focus-visible,
 .result:focus-visible {
   outline: none;
 }
 
-.body:has(> .result:focus-visible)::after {
+.body:has(> :is(.preview, .result):focus-visible)::after {
   content: "";
   position: absolute;
   inset: -4px 6px 4px 6px;
@@ -200,6 +268,7 @@ body[data-ready] {
 
 /* Last, so it beats each component's own `display`. */
 .working[hidden],
+.preview[hidden],
 .result[hidden],
 .message[hidden],
 .button[hidden],
