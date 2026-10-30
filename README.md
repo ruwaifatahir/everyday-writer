@@ -7,7 +7,7 @@
 
 <h1 align="center">Everyday Writer</h1>
 
-<p align="center"><strong>Fix your writing in any app, without leaving it.</strong></p>
+<p align="center"><strong>Rewrite anything you type, in any app.</strong></p>
 
 <p align="center">
   <a href="https://github.com/ruwaifatahir/everyday-writer/releases/latest"><strong>Download for Windows</strong></a>
@@ -15,19 +15,23 @@
   <a href="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml"><img src="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-Typos and messy sentences slip into emails, chats and docs. Fixing them usually means copying the text into a chatbot, typing the same instructions again and pasting the result back. Everyday Writer does it where you're already typing.
+Select your text and press a shortcut. Everyday Writer fixes it, shortens it, makes it polite or makes it sound like you, then puts it right back. No copying into a chatbot, no typing the same instructions again.
 
-**Before**
+**Fix my English**
 
 > hey cant make it to the meeting tmrw, can we moved it to friday. ill send the report befor then
->
-> thx
 
-**After**
+becomes
 
 > Hey, I can't make it to the meeting tomorrow. Can we move it to Friday? I'll send the report before then.
->
-> Thanks
+
+**Make it polite for a client**
+
+> we still dont have the files from you so the deadline is going to slip
+
+becomes
+
+> We're still waiting on the files from your side, so the deadline may need to move. Could you send them when you get a chance?
 
 ## How it works
 
@@ -38,7 +42,8 @@ Typos and messy sentences slip into emails, chats and docs. Fixing them usually 
 ## Why Everyday Writer
 
 - **Works everywhere.** Any app where you can select text: email, chat, browser, docs.
-- **Your instructions.** Tell it once how you want text fixed, like "fix grammar, keep my tone". No retyping.
+- **Your instructions.** Tell it once how you like to write, in plain words: "Fix my English." "Make it polite for a client." "Roman Urdu to English." It remembers them.
+- **One set for each kind of writing.** Keep instruction sets for chats, work email and short replies, and switch between them right in the popup.
 - **Your choice of AI.** OpenAI, Anthropic, Gemini, OpenRouter, a local Ollama, or any OpenAI-compatible endpoint.
 - **Your own key.** You pay your provider directly. There's no account and no subscription.
 
