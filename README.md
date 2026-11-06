@@ -15,6 +15,10 @@
   <a href="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml"><img src="https://github.com/ruwaifatahir/everyday-writer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
+<p align="center">
+  <img src="docs/media/demo.gif" alt="A messy WhatsApp message is selected, the shortcut opens the Everyday Writer popup with the corrected text, and Replace puts the fixed message back in the chat box" width="800">
+</p>
+
 Select your text and press a shortcut. Everyday Writer fixes it, shortens it, makes it polite or makes it sound like you, then puts it right back. No copying into a chatbot, no typing the same instructions again.
 
 **Fix my English**
